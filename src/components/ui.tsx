@@ -48,11 +48,13 @@ export function ScrollArea({
   children,
   className = "",
   orientation = "vertical",
+  scrollChaining = false,
   viewportRef,
   viewportProps,
   ...props
 }: ComponentPropsWithoutRef<typeof RadixScrollArea.Root> & {
   orientation?: "vertical" | "horizontal" | "both";
+  scrollChaining?: boolean;
   viewportRef?: Ref<HTMLDivElement>;
   viewportProps?: ComponentPropsWithoutRef<typeof RadixScrollArea.Viewport>;
 }) {
@@ -65,7 +67,7 @@ export function ScrollArea({
         {...viewportProps}
         ref={viewportRef}
         disableImplicitContentElement
-        className={`min-h-0 min-w-0 w-full rounded-[inherit] overscroll-contain ${viewportProps?.className || ""}`}
+        className={`min-h-0 min-w-0 w-full rounded-[inherit] ${scrollChaining ? "overscroll-auto" : "overscroll-contain"} ${viewportProps?.className || ""}`}
       >
         {/* Table layout expands to intrinsic content widths, including nested code blocks. */}
         <RadixScrollArea.Content

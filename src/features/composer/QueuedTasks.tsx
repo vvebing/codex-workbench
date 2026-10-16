@@ -97,7 +97,10 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
             </Button>
           </div>
           <p className="mb-1 text-[11px] text-muted" role="status">
-            {queue.paused || "当前轮次结束后，按顺序逐条发送"}
+            {queue.paused ||
+              (queue.items[0]?.question
+                ? "回答将在连接和写入权限恢复后发送"
+                : "当前轮次结束后，按顺序逐条发送")}
           </p>
           <ScrollArea className="max-h-[min(10rem,calc(var(--viewport-height,100dvh)*0.18))]">
             <ol className="m-0 list-none p-0">
@@ -148,7 +151,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                         移到最前
                       </DropdownMenu.Item>
                     )}
-                    {task.status === "queued" && (
+                    {task.status === "queued" && !task.question && (
                       <>
                         <DropdownMenu.Item
                           onSelect={() =>

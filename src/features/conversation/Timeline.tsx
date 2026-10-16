@@ -1,4 +1,4 @@
-import { AsyncQuestions } from "./AsyncQuestions";
+import { AsyncQuestionPanel } from "./AsyncQuestions";
 import { LocalMessageImage } from "./MessageImage";
 import { ConversationImage } from "../../components/ImagePreview";
 import { FileLinkProvider } from "../files/FileLinkContext";
@@ -646,13 +646,11 @@ export function Item({
   action,
   streaming = false,
   hideDivider = false,
-  threadId,
 }: {
   item: ThreadItem;
   action?: ReactNode;
   streaming?: boolean;
   hideDivider?: boolean;
-  threadId?: string;
 }) {
   if (item.type === "agentMessage")
     return (
@@ -661,9 +659,6 @@ export function Item({
           <hr className="mb-5 border-0 border-t border-border" />
         )}
         <Markdown text={item.text} streaming={streaming} />
-        {!!item.questions?.length && threadId && (
-          <AsyncQuestions key={item.id} item={item} threadId={threadId} />
-        )}
         {action}
       </article>
     );
@@ -729,7 +724,9 @@ function TimelineContent({
 }: TimelineProps) {
   const viewport = useRef<HTMLDivElement>(null);
   const following = useRef(true);
-  const anchor = useRef<{ element: Element; offset: number } | null>(null);
+  const lastScrollTop = useRef(0);
+  const scrollIntentUntil = useRef(0);
+  const anchor = useRef<{ element: Element; offset: number }[]>([]);
   const [away, setAway] = useState(false);
   const rollbackLock = useRef(false);
   const [rollingBack, setRollingBack] = useState<string | null>(null);
@@ -812,29 +809,67 @@ function TimelineContent({
   };
   useEffect(() => {
     following.current = true;
+    anchor.current = [];
+    scrollIntentUntil.current = 0;
     setAway(false);
     const el = viewport.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+      lastScrollTop.current = el.scrollTop;
+    }
   }, [thread?.id]);
   useEffect(() => {
     const el = viewport.current;
     if (!el) return;
-    const observer = new ResizeObserver(() => {
+    const synchronize = () => {
       if (!el.getClientRects().length || !el.clientWidth || !el.clientHeight)
         return;
-      if (following.current) el.scrollTop = el.scrollHeight;
-      else if (anchor.current?.element.isConnected) {
-        const offset =
-          anchor.current.element.getBoundingClientRect().top -
-          el.getBoundingClientRect().top;
-        el.scrollTop += offset - anchor.current.offset;
+      if (following.current) {
+        el.scrollTop = el.scrollHeight;
+        lastScrollTop.current = el.scrollTop;
+      } else {
+        // A folded task may disappear; fall back to the next surviving content.
+        const saved = anchor.current.find(
+          ({ element }) =>
+            element.isConnected && element.getClientRects().length > 0,
+        );
+        if (saved) {
+          const offset =
+            saved.element.getBoundingClientRect().top -
+            el.getBoundingClientRect().top;
+          el.scrollTop += offset - saved.offset;
+          lastScrollTop.current = el.scrollTop;
+        }
       }
-    });
+    };
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(synchronize);
+    };
+    const observer = new ResizeObserver(schedule);
+    const mutations = new MutationObserver(schedule);
     const body = el.firstElementChild;
-    if (body) observer.observe(body);
-    if (following.current) el.scrollTop = el.scrollHeight;
-    return () => observer.disconnect();
-  }, [thread?.turns]);
+    if (body) {
+      observer.observe(body);
+      mutations.observe(body, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+    }
+    observer.observe(el);
+    if (following.current) {
+      el.scrollTop = el.scrollHeight;
+      lastScrollTop.current = el.scrollTop;
+    }
+    schedule();
+    return () => {
+      observer.disconnect();
+      mutations.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [thread?.id]);
   return (
     <div
       data-slot="conversation-timeline-shell"
@@ -846,20 +881,62 @@ function TimelineContent({
       <ScrollArea
         className="min-h-0 flex-1"
         viewportRef={viewport}
+        onPointerDownCapture={(event) => {
+          if ((event.target as Element).closest("[data-orientation=vertical]"))
+            scrollIntentUntil.current = Date.now() + 2000;
+        }}
         viewportProps={{
+          onWheelCapture: () => {
+            scrollIntentUntil.current = Date.now() + 1500;
+          },
+          onTouchMove: () => {
+            scrollIntentUntil.current = Date.now() + 1500;
+          },
+          onKeyDown: (event) => {
+            if (
+              [
+                "ArrowUp",
+                "ArrowDown",
+                "PageUp",
+                "PageDown",
+                "Home",
+                "End",
+                " ",
+              ].includes(event.key) &&
+              !(event.target as Element).closest(
+                "input, textarea, [contenteditable=true]",
+              )
+            )
+              scrollIntentUntil.current = Date.now() + 1500;
+          },
           onScroll: (event) => {
             const el = event.currentTarget;
-            following.current =
-              el.scrollHeight - el.scrollTop - el.clientHeight < 90;
+            const atBottom =
+              el.scrollHeight - el.scrollTop - el.clientHeight < 5;
+            const movedUp = el.scrollTop < lastScrollTop.current - 1;
+            // Content growth changes the bottom distance without user scrolling.
+            // Only an actual upward scroll pauses an existing bottom follow.
+            if (atBottom) following.current = true;
+            else if (movedUp && Date.now() < scrollIntentUntil.current)
+              following.current = false;
+            lastScrollTop.current = el.scrollTop;
             if (!following.current) {
               const top = el.getBoundingClientRect().top;
-              const element = Array.from(
-                el.querySelectorAll("article, [data-slot=conversation-tool]"),
-              ).find((node) => node.getBoundingClientRect().bottom > top);
-              anchor.current = element
-                ? { element, offset: element.getBoundingClientRect().top - top }
-                : null;
-            } else anchor.current = null;
+              anchor.current = Array.from(
+                el.querySelectorAll(
+                  "article, [data-slot=conversation-tool], [data-slot=turn-process-divider]",
+                ),
+              )
+                .filter(
+                  (node) =>
+                    node.getClientRects().length &&
+                    node.getBoundingClientRect().bottom > top,
+                )
+                .map((element) => ({
+                  element,
+                  offset: element.getBoundingClientRect().top - top,
+                }));
+            } else anchor.current = [];
             setAway(!following.current);
           },
         }}
@@ -903,7 +980,6 @@ function TimelineContent({
                       group[0].type === "userMessage" ||
                       group[0].type === "agentMessage" ? (
                         <Item
-                          threadId={thread.id}
                           hideDivider={hideDivider}
                           item={group[0]}
                           streaming={turn.status === "inProgress"}
@@ -1005,14 +1081,19 @@ function TimelineContent({
           </div>
         </div>
       </ScrollArea>
+      {!loading && thread && <AsyncQuestionPanel thread={thread} />}
       {away && (
         <button
           className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-elevated px-[13px] py-2 text-[13px] font-medium hover:bg-hover absolute bottom-4 left-1/2 -translate-x-1/2 shadow-md"
           onClick={() => {
             following.current = true;
+            anchor.current = [];
             setAway(false);
             const el = viewport.current;
-            if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+            if (el) {
+              el.scrollTop = el.scrollHeight;
+              lastScrollTop.current = el.scrollTop;
+            }
           }}
         >
           <ArrowDown size={14} />

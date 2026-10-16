@@ -1,3 +1,4 @@
+import { QuestionDismissalsStore } from "../features/conversation/question-dismissals";
 import { ConnectionStore, sameEndpoint } from "../features/connection/store";
 import { SessionsStore } from "../features/sessions/store";
 import { RequestsStore } from "../features/requests/store";
@@ -15,6 +16,11 @@ export function createRuntime(
   const sessions = new SessionsStore(connection);
   const requests = new RequestsStore(connection);
   const drafts = new DraftsStore();
+  const questionDismissals = new QuestionDismissalsStore(draftScope);
+  if (!draftScope)
+    connection.subscribe(() =>
+      questionDismissals.activateScope(connection.getSnapshot().url),
+    );
   if (draftScope) drafts.activateScope(draftScope);
   else
     connection.subscribe(() =>
@@ -113,6 +119,7 @@ export function createRuntime(
     sessions,
     requests,
     drafts,
+    questionDismissals,
     connect,
     reconnect: () =>
       connect(connection.getSnapshot().url, reconnectToken, true),

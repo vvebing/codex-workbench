@@ -38,6 +38,7 @@ export interface MockOptions {
   streamIntervalMs?: number;
   streamGate?: Promise<void>;
   externalWriter?: boolean;
+  externalAsyncQuestion?: boolean;
   rejectEmptyThreadRead?: boolean;
   failThreadStartOnce?: boolean;
   failFirstTurnOnce?: boolean;
@@ -1329,6 +1330,15 @@ export function createMockServer(options: MockOptions = {}) {
         if (options.externalWriter && method === "thread/read") {
           t.status = { type: "active", activeFlags: [] };
           t.turns.at(-1)!.status = "inProgress";
+          if (options.externalAsyncQuestion) {
+            const item = t.turns
+              .at(-1)!
+              .items.findLast((item) => item.type === "agentMessage");
+            if (item?.type === "agentMessage")
+              item.questions = [
+                { title: "运行中的导航偏好", options: ["侧栏", "顶部"] },
+              ];
+          }
         }
         if (options.externalWriter && method === "thread/resume")
           return fail(id, `thread ${t.id} already has an active writer`);

@@ -44,7 +44,12 @@ test.beforeEach(async ({ page }) => {
           : test.info().title.startsWith("external activity")
             ? { externalActivity: true }
             : test.info().title.startsWith("external writer")
-              ? { externalWriter: true }
+              ? {
+                  externalWriter: true,
+                  externalAsyncQuestion: test
+                    .info()
+                    .title.includes("async question"),
+                }
               : test.info().title.startsWith("sidebar running state")
                 ? { staleActiveAfterCompletion: true }
                 : {
@@ -667,6 +672,14 @@ for (const running of [false, true]) {
     await send(page, running ? "async-question-running" : "async-question");
     const form = page.getByRole("form", { name: "回答异步问题" });
     await expect(form).toBeVisible();
+    await expect(
+      page
+        .locator("[data-slot=conversation-timeline]")
+        .getByRole("form", { name: "回答异步问题" }),
+    ).toHaveCount(0);
+    await expect(
+      page.locator("[data-slot=async-question-panel]"),
+    ).toBeVisible();
     await expect(page.locator("[data-slot=action-notification]")).toContainText(
       "需要你回答问题",
     );
@@ -692,7 +705,7 @@ for (const running of [false, true]) {
     }
     await form.getByRole("textbox", { name: "补充偏好" }).fill("紧凑布局");
     await form.getByRole("button", { name: "提交回答" }).click();
-    await expect(form.getByRole("status")).toHaveText("回答已发送");
+    await expect(form).toHaveCount(0);
     await expect(page.locator("[data-slot=action-notification]")).toHaveCount(
       0,
     );
@@ -710,7 +723,7 @@ for (const running of [false, true]) {
     if (!running) {
       await completed(page);
       await page.reload();
-      await expect(form).toContainText("此问题已有后续回复");
+      await expect(form).toHaveCount(0);
       await expect(form.getByRole("button", { name: "提交回答" })).toHaveCount(
         0,
       );
@@ -720,6 +733,133 @@ for (const running of [false, true]) {
     }
   });
 }
+
+test("external writer async question saves an answer then delivers after write access returns", async ({
+  page,
+}) => {
+  await openFirst(page);
+  const form = page.getByRole("form", { name: "回答异步问题" });
+  await expect(form).toBeVisible();
+  await expect(form).toContainText("提交后将保留回答");
+  const radio = form.getByRole("radio", { name: "顶部", exact: true });
+  await radio.check();
+  await expect(radio).toBeChecked();
+  await form.getByRole("radio", { name: "侧栏", exact: true }).check();
+  await expect(radio).not.toBeChecked();
+  await form.getByRole("radio", { name: "自定义回答" }).check();
+  await form
+    .getByRole("textbox", { name: "运行中的导航偏好" })
+    .fill("分组侧栏");
+  await expect(form.getByRole("button", { name: "提交回答" })).toBeEnabled();
+  const gap = await form.evaluate((element) => {
+    const buttons = [...element.querySelectorAll("button")];
+    const submit = buttons.find((button) => button.type === "submit")!;
+    const ignore = buttons.find((button) => button.textContent === "忽略")!;
+    return (
+      ignore.getBoundingClientRect().left - submit.getBoundingClientRect().right
+    );
+  });
+  expect(gap).toBeGreaterThanOrEqual(8);
+  expect(
+    fixtureServer.requestLog.filter((entry) =>
+      ["turn/start", "turn/steer"].includes(entry.method),
+    ),
+  ).toHaveLength(0);
+  await form.getByRole("button", { name: "提交回答" }).click();
+  await expect(form.getByRole("status")).toContainText("回答已保存");
+  await expect(page.locator("[data-slot=action-notification]")).toHaveCount(0);
+  expect(
+    fixtureServer.requestLog.filter((entry) =>
+      ["turn/start", "turn/steer"].includes(entry.method),
+    ),
+  ).toHaveLength(0);
+  fixtureServer.releaseWriter();
+  await expect(form).toHaveCount(0);
+  await expect
+    .poll(
+      () =>
+        fixtureServer.requestLog.filter((entry) =>
+          ["turn/start", "turn/steer"].includes(entry.method),
+        ).length,
+    )
+    .toBe(1);
+  const reply = fixtureServer.requestLog.find(
+    (entry) => entry.method === "turn/start",
+  );
+  expect(JSON.stringify(reply?.input)).toContain("分组侧栏");
+});
+
+test("external writer async question restores a saved answer and requires confirmation after reload", async ({
+  page,
+}) => {
+  await openFirst(page);
+  const form = page.getByRole("form", { name: "回答异步问题" });
+  await form.getByRole("radio", { name: "顶部", exact: true }).check();
+  await form.getByRole("button", { name: "提交回答" }).click();
+  await expect(form.getByRole("status")).toContainText("回答已保存");
+  await page.reload();
+  await expect(form.getByRole("status")).toContainText("待确认后继续发送");
+  await expect(form).toContainText("顶部");
+  expect(
+    fixtureServer.requestLog.filter((entry) =>
+      ["turn/start", "turn/steer"].includes(entry.method),
+    ),
+  ).toHaveLength(0);
+  fixtureServer.releaseWriter();
+  await form.getByRole("button", { name: "继续发送", exact: true }).click();
+  await expect(form).toHaveCount(0);
+  expect(
+    fixtureServer.requestLog.filter((entry) =>
+      ["turn/start", "turn/steer"].includes(entry.method),
+    ),
+  ).toHaveLength(1);
+});
+
+test("external writer async question can cancel a saved answer without sending", async ({
+  page,
+}) => {
+  await openFirst(page);
+  const form = page.getByRole("form", { name: "回答异步问题" });
+  await form.getByRole("radio", { name: "顶部", exact: true }).check();
+  await form.getByRole("button", { name: "提交回答" }).click();
+  await expect(form.getByRole("status")).toContainText("回答已保存");
+  await form.getByRole("button", { name: "取消待发送", exact: true }).click();
+  await expect(
+    form.getByRole("radio", { name: "顶部", exact: true }),
+  ).toBeEnabled();
+  fixtureServer.releaseWriter();
+  await expect(page.getByRole("button", { name: "停止执行" })).toHaveCount(0);
+  expect(
+    fixtureServer.requestLog.filter((entry) =>
+      ["turn/start", "turn/steer"].includes(entry.method),
+    ),
+  ).toHaveLength(0);
+});
+
+test("async questions can be ignored without sending and remain ignored after reload", async ({
+  page,
+}) => {
+  await openFirst(page);
+  await send(page, "async-question");
+  const panel = page.getByRole("region", { name: "待回答问题" });
+  await expect(panel).toBeVisible();
+  await completed(page);
+  const writes = () =>
+    fixtureServer.requestLog.filter((entry) =>
+      ["turn/start", "turn/steer"].includes(entry.method),
+    ).length;
+  const before = writes();
+  await panel.getByRole("button", { name: "忽略", exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(page.locator("[data-slot=action-notification]")).toHaveCount(0);
+  expect(writes()).toBe(before);
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  await expect(page.locator("[data-slot=action-notification]")).toHaveCount(0);
+  await send(page, "async-question");
+  await expect(panel).toBeVisible();
+});
 
 test("running work accepts steering and can be interrupted", async ({
   page,
@@ -2378,6 +2518,34 @@ test("composer completes slash commands, skills and workspace files", async ({
   ).toBeVisible();
 });
 
+test("conversation follows streamed updates and viewport resizing at the bottom", async ({
+  page,
+}) => {
+  await openFirst(page);
+  await send(
+    page,
+    Array.from({ length: 70 }, (_, index) => `底部验证 ${index}`).join("\n"),
+  );
+  await completed(page);
+  const viewport = page.locator(
+    '[data-slot="conversation-timeline"] > [data-radix-scroll-area-viewport]',
+  );
+  const gap = () =>
+    viewport.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  await send(page, "operation-lifecycle-progress");
+  await expect(
+    page
+      .locator('[data-slot="conversation-tool"][data-status="inProgress"]')
+      .last(),
+  ).toBeVisible();
+  await expect.poll(gap).toBeLessThan(5);
+  await completed(page);
+  await expect.poll(gap).toBeLessThan(5);
+  await expect(page.getByRole("button", { name: /回到底部/ })).toBeHidden();
+  await page.setViewportSize({ width: 1440, height: 700 });
+  await expect.poll(gap).toBeLessThan(5);
+});
+
 test("conversation uses the library viewport and returns to the latest message", async ({
   page,
 }) => {
@@ -2400,9 +2568,8 @@ test("conversation uses the library viewport and returns to the latest message",
       ),
     )
     .toBeLessThan(5);
-  await viewport.evaluate((el) => {
-    el.scrollTop = 0;
-  });
+  await viewport.hover();
+  await page.mouse.wheel(0, -10000);
   const latest = page.getByRole("button", { name: /回到底部/ });
   await expect(latest).toBeVisible();
   await latest.click();
@@ -3870,6 +4037,50 @@ test("operation history compacts successes while preserving errors and message o
   await expect(earlier).toHaveAttribute("aria-expanded", "true");
   await earlier.click();
   await expect(earlier).toHaveAttribute("aria-expanded", "false");
+});
+
+test("nested operation logs hand wheel scrolling to the conversation at both edges", async ({
+  page,
+}) => {
+  await openFirst(page);
+  await send(
+    page,
+    "operation-rich\n" +
+      Array.from({ length: 60 }, (_, index) => `滚动接力 ${index}`).join("\n"),
+  );
+  await completed(page);
+  const timeline = page.locator("[data-slot=conversation-timeline]");
+  const viewport = timeline.locator(
+    ":scope > [data-radix-scroll-area-viewport]",
+  );
+  const command = timeline
+    .locator("[data-slot=conversation-turn]")
+    .last()
+    .locator("[data-slot=conversation-tool]")
+    .filter({ hasText: "npm run test" });
+  await command.locator(":scope > summary").click();
+  const output = command.locator("[data-slot=operations-output]").first();
+  await expect(output).toBeVisible();
+  await expect(output).toHaveCSS("overscroll-behavior-y", "auto");
+  await expect(viewport).toHaveCSS("overscroll-behavior-y", "contain");
+  await output.hover();
+  await output.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  const beforeUp = await viewport.evaluate((el) => el.scrollTop);
+  await page.mouse.wheel(0, -180);
+  await expect
+    .poll(() => viewport.evaluate((el) => el.scrollTop))
+    .toBeLessThan(beforeUp - 20);
+  await output.hover();
+  await output.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  const beforeDown = await viewport.evaluate((el) => el.scrollTop);
+  await page.mouse.wheel(0, 180);
+  await expect
+    .poll(() => viewport.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(beforeDown + 20);
 });
 
 test("operation rich details show full logs, selectable diffs, MCP progress and media", async ({

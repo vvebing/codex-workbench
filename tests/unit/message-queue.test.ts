@@ -324,3 +324,139 @@ it("an occupied writer cannot enqueue a task or clear its composer draft", async
     request.mock.calls.filter(([method]) => method.startsWith("turn/")),
   ).toHaveLength(0);
 });
+
+const asyncQuestion = {
+  type: "agentMessage" as const,
+  id: "question",
+  text: "Choose",
+  phase: "commentary" as const,
+  memoryCitation: null,
+  delivery: null,
+  questions: [{ title: "Preference", options: ["A", "B"] }],
+};
+
+it("explicit answers steer the active turn ahead of ordinary queued work", async () => {
+  const { runtime, request, add, notify } = await fixture();
+  await add("next task");
+  notify({
+    method: "item/completed",
+    params: {
+      threadId: "a",
+      turnId: "working",
+      item: asyncQuestion,
+      completedAtMs: 1000,
+    },
+  });
+  await runtime.queue.addAnswer("a", asyncQuestion, ["B"]);
+  await vi.waitFor(() =>
+    expect(request).toHaveBeenCalledWith("turn/steer", {
+      threadId: "a",
+      expectedTurnId: "working",
+      input: [
+        { type: "text", text: "回答问题：\nPreference\nB", text_elements: [] },
+      ],
+    }),
+  );
+  await vi.waitFor(() =>
+    expect(runtime.queue.forThread("a").items).toHaveLength(1),
+  );
+  expect(runtime.queue.forThread("a").items[0].draft.text).toBe("next task");
+  expect(
+    request.mock.calls.filter(([method]) => method === "turn/start"),
+  ).toHaveLength(0);
+});
+
+it("saves and deduplicates answers while another writer holds the session", async () => {
+  const { runtime, request, notify } = await fixture();
+  notify({
+    method: "item/completed",
+    params: {
+      threadId: "a",
+      turnId: "working",
+      item: asyncQuestion,
+      completedAtMs: 1000,
+    },
+  });
+  notify({ method: "thread/closed", params: { threadId: "a" } });
+  vi.spyOn(runtime.sessions, "activate").mockResolvedValue();
+  await Promise.all([
+    runtime.queue.addAnswer("a", asyncQuestion, ["B"]),
+    runtime.queue.addAnswer("a", asyncQuestion, ["B"]),
+  ]);
+  expect(runtime.queue.forThread("a").items).toHaveLength(1);
+  expect(runtime.queue.forThread("a").items[0].question).toEqual({
+    itemId: "question",
+    answers: ["B"],
+  });
+  expect(
+    request.mock.calls.filter(([method]) => method.startsWith("turn/")),
+  ).toHaveLength(0);
+  await runtime.queue.remove("a", runtime.queue.forThread("a").items[0].id);
+});
+
+it("never automatically resends a question answer after an uncertain acknowledgement", async () => {
+  const { runtime, request, notify } = await fixture();
+  notify({
+    method: "item/completed",
+    params: {
+      threadId: "a",
+      turnId: "working",
+      item: asyncQuestion,
+      completedAtMs: 1000,
+    },
+  });
+  request.mockImplementation((async (method: string) => {
+    if (method === "turn/steer") throw new Error("Request timed out");
+    return {};
+  }) as never);
+  await runtime.queue.addAnswer("a", asyncQuestion, ["B"]);
+  await vi.waitFor(() =>
+    expect(runtime.queue.forThread("a").items[0].status).toBe("uncertain"),
+  );
+  await expect(runtime.queue.resume("a")).rejects.toThrow("核实");
+  expect(
+    request.mock.calls.filter(([method]) => method === "turn/steer"),
+  ).toHaveLength(1);
+});
+
+it("drops a superseded queued answer rather than sending it into later work", async () => {
+  const { runtime, request, notify } = await fixture();
+  notify({
+    method: "item/completed",
+    params: {
+      threadId: "a",
+      turnId: "working",
+      item: asyncQuestion,
+      completedAtMs: 1000,
+    },
+  });
+  const confirmations = vi
+    .spyOn(runtime.requests, "forThread")
+    .mockReturnValue([{} as never]);
+  await runtime.queue.addAnswer("a", asyncQuestion, ["B"]);
+  notify({
+    method: "item/completed",
+    params: {
+      threadId: "a",
+      turnId: "working",
+      completedAtMs: 1001,
+      item: {
+        type: "userMessage",
+        id: "followup",
+        clientId: null,
+        content: [{ type: "text", text: "Move on", text_elements: [] }],
+      },
+    },
+  });
+  confirmations.mockReturnValue([]);
+  notify({
+    method: "thread/status/changed",
+    params: { threadId: "a", status: { type: "active", activeFlags: [] } },
+  });
+  await vi.waitFor(() =>
+    expect(runtime.queue.forThread("a").items).toHaveLength(0),
+  );
+  expect(
+    request.mock.calls.filter(([method]) => method.startsWith("turn/")),
+  ).toHaveLength(0);
+});

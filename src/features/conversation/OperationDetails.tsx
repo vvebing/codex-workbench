@@ -276,6 +276,7 @@ export function OperationDetails({
           </div>
           {selected && <OpenCurrentFile path={selected.path} />}
           <ScrollArea
+            scrollChaining
             orientation="both"
             className="max-h-48"
             viewportProps={
@@ -300,6 +301,7 @@ export function OperationDetails({
         </div>
       ) : (
         <ScrollArea
+          scrollChaining
           orientation="both"
           className="max-h-40"
           viewportProps={
@@ -315,6 +317,7 @@ export function OperationDetails({
       )}
       {output && (
         <ScrollArea
+          scrollChaining
           orientation="both"
           className="max-h-40"
           viewportProps={
@@ -329,13 +332,19 @@ export function OperationDetails({
         </ScrollArea>
       )}
       {media?.map((part, index) => (
-        <ScrollArea key={index} orientation="both" className="max-h-48">
+        <ScrollArea
+          scrollChaining
+          key={index}
+          orientation="both"
+          className="max-h-48"
+        >
           <MediaContent value={part} />
         </ScrollArea>
       ))}
       {item.type === "mcpToolCall" &&
         item.result?.structuredContent != null && (
           <ScrollArea
+            scrollChaining
             orientation="both"
             className="max-h-40"
             viewportProps={

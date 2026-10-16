@@ -93,7 +93,7 @@ function CodeBlock({
         {message === "已复制" ? <Check size={14} /> : <Copy size={14} />}
         <span aria-live="polite">{message}</span>
       </button>
-      <ScrollArea orientation="both">
+      <ScrollArea scrollChaining orientation="both">
         <pre {...props} className="m-0 p-4 pr-14 text-[13px] leading-[1.65]">
           {children}
         </pre>
@@ -127,7 +127,7 @@ export function Markdown({
             a: MarkdownAnchor,
             img: imageComponent ?? MarkdownImage,
             table: ({ children, ...props }) => (
-              <ScrollArea orientation="both">
+              <ScrollArea scrollChaining orientation="both">
                 <table {...props}>{children}</table>
               </ScrollArea>
             ),

@@ -4,7 +4,12 @@ import type { ConnectionStore } from "../connection/store";
 import { SessionsStore, TurnBusyError } from "../sessions/store";
 import type { RequestsStore } from "../requests/store";
 import type { UserInput } from "../../generated/v2/UserInput";
-import type { Draft } from "./drafts";
+import { emptyDraft, type Draft } from "./drafts";
+import {
+  asyncAnswerText,
+  pendingAsyncQuestions,
+  type QuestionMessage,
+} from "../conversation/async-questions";
 import type { SendOptions } from "./submission";
 import { QueueStorage } from "./queue-storage";
 import { conversationExecuting } from "../conversation/activity";
@@ -15,6 +20,7 @@ export interface QueuedTask {
   input: UserInput[];
   options: SendOptions;
   status: "queued" | "sending" | "uncertain";
+  question?: { itemId: string; answers: string[] };
 }
 export interface TaskQueue {
   items: QueuedTask[];
@@ -29,7 +35,7 @@ interface QueueState {
 const emptyQueue = (): TaskQueue => ({ items: [], paused: null });
 type Queues = QueueState["threads"];
 
-/** A local outbox: never steer implicitly, and never replay an uncertain write. */
+/** A local outbox: only explicit question answers can steer automatically. Never replay an uncertain write. */
 export class MessageQueueStore extends Store<QueueState> {
   private storage = new QueueStorage();
   private scope = "";
@@ -38,6 +44,9 @@ export class MessageQueueStore extends Store<QueueState> {
   private scheduled = false;
   private channel?: BroadcastChannel;
   private stopping = new Set<string>();
+  private answerRetry?: ReturnType<typeof setTimeout>;
+  private activatingAnswers = new Set<string>();
+  private nextActivation = new Map<string, number>();
 
   constructor(
     private connection: ConnectionStore,
@@ -179,6 +188,50 @@ export class MessageQueueStore extends Store<QueueState> {
     this.schedule();
   }
 
+  async addAnswer(
+    id: string,
+    item: QuestionMessage,
+    answers: string[],
+  ): Promise<void> {
+    id = this.sessions.resolveId(id);
+    if (
+      !item.questions?.length ||
+      item.questions.length !== answers.length ||
+      answers.some((answer) => !answer.trim())
+    )
+      throw new Error("请填写所有问题的回答。");
+    const thread = this.sessions.getSnapshot().threads[id];
+    if (
+      !thread ||
+      !pendingAsyncQuestions(thread).some((question) => question.id === item.id)
+    )
+      throw new Error("此问题已有后续回复，请在会话中继续补充。");
+    const text = asyncAnswerText(item, answers);
+    await this.exclusive(async (queues) => {
+      const queue = (queues[id] ??= emptyQueue());
+      if (queue.items.some((task) => task.question?.itemId === item.id)) return;
+      if (queue.items.length >= 100)
+        throw new Error("最多排队 100 条任务，请先处理已有任务。");
+      const task: QueuedTask = {
+        id: crypto.randomUUID(),
+        draft: { ...emptyDraft(), text },
+        input: [{ type: "text", text, text_elements: [] }],
+        options: {},
+        status: "queued",
+        question: { itemId: item.id, answers: [...answers] },
+      };
+      const firstTask = queue.items.findIndex((queued) => !queued.question);
+      if (
+        firstTask >= 0 &&
+        !queue.editingId &&
+        queue.items.every((queued) => queued.status === "queued")
+      )
+        queue.items.splice(firstTask, 0, task);
+      else queue.items.push(task);
+    });
+    this.schedule();
+  }
+
   pause(id: string, reason = "队列已暂停。"): Promise<void> {
     // Prevent dispatch before the storage transaction can take the lock.
     this.stopping.add(id);
@@ -241,6 +294,7 @@ export class MessageQueueStore extends Store<QueueState> {
       const task = queue?.items.find((item) => item.id === taskId);
       if (!task || task.status !== "queued")
         throw new Error("任务已开始发送，不能编辑。");
+      if (task.question) throw new Error("请先取消待发送回答，再重新填写。");
       queue.editingId = taskId;
     });
   }
@@ -282,14 +336,15 @@ export class MessageQueueStore extends Store<QueueState> {
     this.schedule();
   }
 
-  private available(id: string): boolean {
+  private available(id: string, answer = false): boolean {
     const thread = this.sessions.getSnapshot().threads[id];
     const last = thread?.turns.at(-1);
     return (
       this.connection.getSnapshot().status === "connected" &&
       this.sessions.getSnapshot().threadAccess[id] === "editable" &&
-      !this.sessions.activeTurn(id) &&
-      (!conversationExecuting(thread) || last?.status === "completed") &&
+      (answer ||
+        (!this.sessions.activeTurn(id) &&
+          (!conversationExecuting(thread) || last?.status === "completed"))) &&
       !this.requests.forThread(id).length &&
       !this.stopping.has(id)
     );
@@ -300,14 +355,49 @@ export class MessageQueueStore extends Store<QueueState> {
     this.scheduled = true;
     queueMicrotask(() => {
       this.scheduled = false;
-      for (const [id, queue] of Object.entries(this.state.threads))
-        if (
-          queue.items[0]?.status === "queued" &&
-          !queue.paused &&
-          !queue.editingId &&
-          this.available(id)
-        )
-          void this.deliver(id, queue.items[0].id).catch(() => {});
+      let retry = false;
+      for (const [id, queue] of Object.entries(this.state.threads)) {
+        const task = queue.items[0];
+        if (task?.status !== "queued" || queue.paused || queue.editingId)
+          continue;
+        const answer = !!task.question;
+        if (this.available(id, answer)) {
+          void this.deliver(
+            id,
+            task.id,
+            answer ? this.sessions.activeTurn(id)?.id : undefined,
+          ).catch(() => {});
+        } else if (
+          answer &&
+          this.connection.getSnapshot().status === "connected" &&
+          this.sessions.getSnapshot().threads[id] &&
+          this.sessions.getSnapshot().threadAccess[id] !== "editable" &&
+          !this.requests.forThread(id).length
+        ) {
+          retry = true;
+          if (
+            !this.activatingAnswers.has(id) &&
+            Date.now() >= (this.nextActivation.get(id) ?? 0)
+          ) {
+            this.activatingAnswers.add(id);
+            this.nextActivation.set(id, Date.now() + 3000);
+            void this.sessions
+              .activate(id)
+              .catch(() => {})
+              .finally(() => {
+                this.activatingAnswers.delete(id);
+                this.schedule();
+              });
+          }
+        }
+      }
+      if (retry && !this.answerRetry) {
+        this.answerRetry = setTimeout(() => {
+          this.answerRetry = undefined;
+          this.schedule();
+        }, 3000);
+        this.answerRetry.unref?.();
+      }
     });
   }
 
@@ -321,12 +411,29 @@ export class MessageQueueStore extends Store<QueueState> {
       const task = queue?.items.find((item) => item.id === taskId);
       if (!queue || !task || task.status !== "queued" || queue.editingId)
         return;
+      if (task.question) {
+        const thread = this.sessions.getSnapshot().threads[id];
+        if (!thread) return;
+        if (
+          !pendingAsyncQuestions(thread).some(
+            (item) => item.id === task.question!.itemId,
+          )
+        ) {
+          queue.items = queue.items.filter((item) => item !== task);
+          return;
+        }
+        if (!this.available(id, true)) return;
+      }
       if (expectedTurnId) {
         if (this.requests.forThread(id).length)
           throw new Error("请先处理当前确认请求。");
         // Never redirect a different turn if the original one completed while waiting.
         if (this.sessions.activeTurn(id)?.id !== expectedTurnId) return;
-      } else if (queue.paused || queue.items[0] !== task || !this.available(id))
+      } else if (
+        queue.paused ||
+        queue.items[0] !== task ||
+        !this.available(id, !!task.question)
+      )
         return;
       const epoch = this.connection.getSnapshot().epoch;
       task.status = "sending";

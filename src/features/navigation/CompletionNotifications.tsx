@@ -71,6 +71,8 @@ function EnvironmentNotifications({
   const runtime = useRuntime();
   const sessions = useStore(runtime.sessions);
   const requests = useStore(runtime.requests);
+  const ignoredQuestions = useStore(runtime.questionDismissals);
+  const answerQueues = useStore(runtime.queue).threads;
   const actionRequests = useMemo(
     () => [
       ...requests.pending.flatMap((request) => {
@@ -86,14 +88,22 @@ function EnvironmentNotifications({
           : [];
       }),
       ...Object.values(sessions.threads).flatMap((thread) =>
-        pendingAsyncQuestions(thread).map((item) => ({
-          key: JSON.stringify(["async-question", thread.id, item.id]),
-          threadId: thread.id,
-          title: "需要你回答问题",
-        })),
+        pendingAsyncQuestions(thread)
+          .filter(
+            (item) =>
+              !ignoredQuestions[JSON.stringify([thread.id, item.id])] &&
+              !answerQueues[thread.id]?.items.some(
+                (task) => task.question?.itemId === item.id,
+              ),
+          )
+          .map((item) => ({
+            key: JSON.stringify(["async-question", thread.id, item.id]),
+            threadId: thread.id,
+            title: "需要你回答问题",
+          })),
       ),
     ],
-    [requests.pending, sessions.threads],
+    [requests.pending, sessions.threads, ignoredQuestions, answerQueues],
   );
   const [dismissedRequests, setDismissedRequests] = useState<Set<string>>(
     new Set(),
