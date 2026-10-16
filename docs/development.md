@@ -1,0 +1,122 @@
+# 开发与维护
+
+## 目录职责
+
+| 路径                                                | 职责                                                 |
+| --------------------------------------------------- | ---------------------------------------------------- |
+| `server/`                                           | HTTP 静态服务、同源 WebSocket relay 与连接校验       |
+| `src/features/connection/`                          | 环境配置、连接、模型与账户发现                       |
+| `src/features/sessions/`                            | 会话操作、状态迁移、历史读取与轮询                   |
+| `src/features/requests/`、`src/features/approvals/` | 服务端请求状态与审批界面                             |
+| `src/features/composer/`                            | 编辑器、内存草稿、发送流程和持久化待发送队列         |
+| `src/features/conversation/`                        | 时间线、操作详情、Markdown、子代理观察与导出         |
+| `src/features/navigation/`、`settings/`、`shell/`   | 导航、会话链接、偏好与应用组合                       |
+| `src/components/`                                   | 公共 UI 控件与界面 hooks                             |
+| `src/lib/`                                          | RPC、共享状态归并、runtime 组合与页面离开处理        |
+| `src/generated/`                                    | 生成的 app-server 协议类型，禁止手工修改             |
+| `public/`                                           | 随客户端构建交付的产品图标等静态资产                 |
+| `scripts/`                                          | 构建清理等维护脚本                                   |
+| `tests/unit/`                                       | Vitest 状态、模型与功能单元测试                      |
+| `tests/integration/`                                | Node test runner 的 bridge 与真实 WebSocket 协议测试 |
+| `tests/e2e/`                                        | Playwright 浏览器交互测试                            |
+| `tests/smoke/`                                      | 连接真实 Codex app-server 的非推理烟测               |
+| `tests/fixtures/`                                   | 测试专用 app-server 协议替身                         |
+| `.github/workflows/`                                | 持续集成检查与浏览器测试                             |
+| `docs/`                                             | 使用说明与维护约定                                   |
+| `dist/`、`test-results/`                            | 构建和验证产物，不纳入源码                           |
+
+功能代码按业务职责放在对应 feature；只被一个功能使用的模型、样式和工具与该功能放在一起。跨功能基础能力才放入 `lib/` 或 `components/`。生成类型和测试替身分别保留在独立目录，不进入产品界面流程。
+
+`src/features/files/` 管理文件工作区、编辑器与文件链接；`src/features/shell/` 中的 Git 模块管理工作区 Git 状态和操作。不要在上线收尾阶段仅为目录美观迁移这些功能或手改生成协议。维护脚本使用 ESM（`.mjs`），与应用代码一起接受 ESLint 检查。
+
+## 运行与构建
+
+```sh
+npm ci
+npm run dev
+```
+
+开发服务在 `127.0.0.1:5180` 提供页面并挂载 `/bridge`，通过 `npm run dev -- --port 5182` 可修改端口。`strictPort` 保证端口冲突时直接失败。
+
+`npm run build` 执行类型检查、清理旧构建、客户端打包和服务端编译，分别写入 `dist/client/`、`dist/server/`。`npm start` 运行编译后的服务端，生产依赖不需要 TypeScript 或 tsx；生产交付方法见 [README](../README.md)。`.npmrc` 与锁文件一同保留，以维持当前依赖树的安装方式。
+
+`server/http.ts` 负责静态文件与 `/healthz`，`server/bridge.ts` 负责 WebSocket relay，`server/request-policy.ts` 集中入口校验，`server/security-headers.ts` 统一开发与生产响应头。生产静态目录由模块路径定位。`npm run clean` 只删除 `dist/`。
+
+生产 `/healthz` 只检查网页服务存活。网页服务、app-server 和 SSH 转发是独立进程；开发服务关闭或重启只关闭网页和 relay，不管理用户终端中的进程。
+
+## 协议与状态边界
+
+浏览器连接同源 `/bridge`，首帧发送连接地址与可选 Token；bridge 转发上游帧，保留请求 ID、通知、审批响应和内容。浏览器入口校验 loopback Host／HTTP Origin；上游支持 `ws://`、`wss://`，拒绝 URL 内嵌凭据、片段和跳转。Token 仅转发为上游 Authorization header。relay 具有握手超时、心跳和缓冲区限制，断线不重放变更请求。
+
+每个环境由 `createRuntime()` 组合独立的 connection、sessions、requests、drafts、submissions 和 queue。连接 epoch 和选择 generation 防止旧请求影响新连接或新选择；异步结果归并前应检查它们是否仍有效。
+
+查看历史使用 `thread/read` 和分页读取，不获取 writer。发送时由会话层通过 `thread/resume` 确认写入能力；`threadAccess` 是唯一的写入能力来源，服务端 `active` 只描述执行状态。断线、线程关闭或服务端拒绝写入会撤销该能力。
+
+新建入口只保存本地草稿，首次发送依次执行 `thread/start`、`turn/start`，确认后才迁移到正式 ID。发送快照和草稿 revision 保护异步提交期间的新输入；发送状态位于环境级 store，切换会话不会产生重复提交。明确的立即引导使用 `turn/steer`，停止使用 `turn/interrupt`。
+
+待发送队列保存完整输入与配置快照，按环境、地址和会话隔离。IndexedDB 存储任务，Web Locks 串行化多标签页写入和发送，BroadcastChannel 同步变化。恢复和重连先暂停；结果不确定的变更请求必须由用户核实后处理。
+
+历史与实时事件在 `lib/state.ts` 中归并，读取旧快照不能回退较新的内容或完成状态。优先使用有效事件流，未订阅会话通过 `sessions/polling.ts` 串行轮询；断线停止，重连恢复，后台环境与隐藏页面降低频率。
+
+子代理列表和抽屉共用只读观察器；无人订阅时释放监听与计时器，完成后停止补读。临时线程精确匹配服务端的历史不可用错误时回退到元数据，其他读取错误继续报告。只读历史读取不代表服务端事件订阅。
+
+页面和系统通知按 app-server 的 `parentThreadId`、来源和显式子代理活动统一过滤。未知线程先用 `thread/read` 补读身份，未确认前不发送通知；问题与审批请求仍保留在原请求 store 中，由子代理抽屉处理。`optOutNotificationMethods` 按事件方法对整个连接生效，不能用于只屏蔽子代理，也不会屏蔽服务端请求。
+
+右上角分支与文件改动数通过现有 `command/exec` 在所选环境执行只读 `git status`，不创建会话或轮次。`gitInfo` 是会话存储的分支快照，未提供工作区改动计数；因此直接复用原生 Git 的 porcelain v2 NUL 输出，重命名只计一次，解析后不保存文件路径。页面可见时约每十秒同步，并在 diff、轮次完成和恢复可见时刷新；切换连接、会话或目录丢弃旧结果。原生调用方式见 [OpenAI 官方 app-server 文档](https://learn.chatgpt.com/docs/app-server#command-execution)。
+
+保留完整的 `src/generated/` 协议快照，不按当前引用情况裁剪，也不手工修改。升级 Codex CLI 或更新协议时，应重新运行类型检查和相关测试，并核对初始化、分页历史、writer 冲突、审批选项和临时线程行为。项目中的类型描述协议，不保证所有服务端版本都提供同样能力。
+
+更新类型时先将当前 CLI 的完整协议生成到临时目录，审阅差异后再替换 `src/generated/`：
+
+```sh
+codex app-server generate-ts --out /tmp/codex-workbench-protocol --experimental
+```
+
+示例通过 `--experimental` 保留完整类型快照；客户端初始化使用 `experimentalApi: true`，使应用发现等已接入接口可以通过能力检查；这项声明不修改服务端实验功能开关。生成类型本身不会启用运行时能力。记录执行时的 `codex --version`，并在替换后执行 `npm run check`。
+
+## 界面与样式
+
+布局、间距和交互状态优先使用 Tailwind utility；重复控件复用 `src/components/ui.tsx` 中的 Button、IconButton、Modal、Menu 和 SelectField。主题颜色集中在 `src/styles.css`，使用 `bg-surface`、`text-muted`、`border-border` 等语义 token。
+
+设置弹窗由 `SettingsDialog.tsx` 组合分类导航和独立滚动内容，包含通用、工作环境、已归档会话与终端输出四个分类；通用包含显示与执行中发送偏好；工作环境先选择设备，再切换连接与账户、模型与权限、工具与集成、配置迁移。浏览器模型偏好与服务端模型配置放在同一页，分别标明作用范围。表单状态保留在弹窗的职责 hook 中，连接表单和浏览器模型偏好在切换分类时保留普通未保存字段，设备工具表单随页面或设备切换重置；Token 在关闭、切换分类、子页面或环境时清空。环境选择器仅用于工作环境与归档，浏览器模型偏好是当前浏览器的全局偏好；跟随设备默认的新草稿首发不指定模型和非显式推理强度，由服务端解析有效配置。设置内使用四像素间距单位，控件、卡片和弹窗圆角分别为 8、12、16 像素；圆角变量限定在设置弹窗，避免受根字体大小影响。
+
+命令汇总的手动展开／折叠选择保存在现有 `OperationGroup`，按汇总成员和会话／轮次身份关联；命令追加和历史压缩保留用户选择；操作结束统一收起，之后可手动重开。最终总结保持可见。
+
+菜单、编辑器和 Markdown 等复杂或第三方节点排版使用作用域明确的局部 CSS，保持 `@layer components` 和低优先级选择器。样式类只负责展示，测试定位使用可访问名称或 `data-slot`。Radix 负责弹窗和菜单焦点，面板库负责尺寸调整。
+
+编辑器使用 Tiptap／ProseMirror 的文本、段落、换行、原子引用节点与历史能力。草稿同时保存结构化文档和协议所需文本／技能信息，删除、粘贴、撤销引用时应保持两者一致。
+
+Mermaid 按需加载并串行渲染，以隔离其共享配置；保持严格安全模式、移除图表导航链接，渲染失败时保留源码。`public/icons/` 和 `public/favicon.ico` 是产品资产，运行态 favicon 汇总所有已连接环境的已加载执行状态。
+
+Monaco 的可见差异编辑器和离屏 Git 行标记共用 `src/features/files/diff-model.ts` 管理 diff ViewModel。切换、关闭或卸载时先解绑并释放 ViewModel，以取消异步计算，再释放编辑器和文本模型；不要仅依赖隐式模型清理。单元测试验证取消顺序，浏览器生命周期回归验证真实 worker 在文件切换、进出 diff 和关闭重开后仍能诊断、编辑和保存，且无页面异常。
+
+## 验证
+
+```sh
+npm run check
+npm run test:e2e
+npm run build
+E2E_PRODUCTION=1 npm run test:e2e
+```
+
+`check` 包含提交内容检查、类型检查、lint、格式检查和 `npm test`；类型检查覆盖产品代码、配置和测试。可用 `npm run test:unit`、`npm run test:integration` 单独运行对应测试。
+
+`npm run check:repository` 检查 Git 暂存区和未忽略的工作区文件，阻止常见凭据、私钥、私人配置、生成产物、未批准的图片／PDF、含 NUL 的二进制文件和未审查的符号链接／子模块进入仓库，报错只显示文件路径和类别。当前白名单是 `public/` 中的六张 PNG 产品图标和一个 ICO；新增产品图片需要先检查内容与元数据，再更新脚本白名单和 `.gitignore`。常见位图、PDF、`.env`、本地认证配置、截图、报告与图像生成输出均已加入忽略规则；SVG 不静默忽略，但提交检查会拒绝。`.env.example` 只允许占位值，仍接受凭据扫描。
+
+该检查不是完整的秘密扫描器：不遍历 Git 历史、不读取忽略文件、不解包归档，也不能识别所有凭据格式或图片中的敏感信息。修改工作区不会清除暂存区旧内容；暂存最终版本后应再次检查。详见[安全说明](../SECURITY.md)和[发布流程](release.md)。
+
+首次运行 E2E 可执行 `npx playwright install chromium`。测试网页使用 `127.0.0.1:5181`，每项用例的协议替身监听随机端口并在结束后关闭。单元、协议和浏览器测试不连接用户 app-server，不执行真实推理或 SSH。仅在失败时生成浏览器截图与追踪，和烟测结果一起写入 `test-results/`，不写入文档目录，也不在 CI 中上传。trace 可能包含本机路径，排查结束后删除该目录。
+
+本机已安装 Codex CLI 时可单独执行：
+
+```sh
+npm run test:app-server
+```
+
+该脚本启动独立的 stdio app-server，用生产 RPC、历史读取层和子代理观察器创建一个只读临时测试线程，验证初始化与临时会话的元数据读取；不执行模型推理，不恢复已有线程。结果记录 CLI 版本和检查项，不保存会话内容或凭据。
+
+CI 使用 Node.js 22 安装锁定依赖，执行 `npm audit --audit-level=low`、`check`、生产构建和生产模式 Playwright。`E2E_PRODUCTION=1` 使用 `tests/fixtures/production-server.mjs` 加载 `dist/server/http.js` 与 `dist/client/`，而不是运行会管理本机进程的 `npm start`；它不启动或探测真实 app-server。生产模式启用分包加载测试，并验收终端输出界面；开发模式保留手动启动提示的回归。真实 app-server 烟测需要本机 Codex CLI，单独运行。
+
+`package.json` 暂时将 Monaco 的传递依赖 DOMPurify 覆盖为 `3.4.17`，避免其固定依赖 `3.4.15` 引入已知安全公告 GHSA-p98j-92pf-mc4p 和 GHSA-6688-9rhm-gjv2。升级 Monaco 时复核上游依赖；上游包含修复后移除覆盖，并重新运行依赖审计、编辑器与 Markdown／Mermaid 测试。不要为消除审计提示强制降级编辑器。
+
+自动化协议替身和非推理烟测不覆盖真实模型推理、命令执行、文件修改、远端认证和 SSH 稳定性。这些行为需要在实际使用的 app-server 环境中验证；发布记录应描述当次真实结果，不复用旧验收计数。

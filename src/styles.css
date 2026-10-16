@@ -1,0 +1,179 @@
+@import "tailwindcss";
+@import "./components/menu.css";
+@import "./features/navigation/search.css";
+@import "./features/conversation/markdown.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --spacing: 4px;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --font-sans:
+    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-hover: var(--hover);
+  --color-selected: var(--selected);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --background: #ffffff;
+    --surface: #f5f6f2;
+    --elevated: #ffffff;
+    --hover: #e9ece5;
+    --selected: #e4eade;
+    --foreground: #262a27;
+    --muted: #697361;
+    --subtle: #78816f;
+    --border: #e0e5db;
+    --accent: #247356;
+    --danger: #a83f32;
+    --danger-soft: #fbece9;
+    --warning: #916419;
+    --warning-soft: #f5f1e6;
+    --success: #328050;
+    --success-soft: #eaf3e9;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-synthesis: none;
+    color: var(--foreground);
+    background: var(--background);
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --background: #191c19;
+    --surface: #20251f;
+    --elevated: #262c25;
+    --hover: #323b30;
+    --selected: #354632;
+    --foreground: #e7ece4;
+    --muted: #a7b39f;
+    --subtle: #98a68f;
+    --border: #3b4437;
+    --accent: #8bc6a6;
+    --danger: #f59f91;
+    --danger-soft: #432b28;
+    --warning: #dfbb76;
+    --warning-soft: #3a3324;
+    --success: #91cba0;
+    --success-soft: #263b2b;
+  }
+
+  body {
+    margin: 0;
+  }
+  button {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+  :where(
+    button,
+    input,
+    textarea,
+    select,
+    summary,
+    a,
+    [tabindex]
+  ):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+  button {
+    transition:
+      background-color 140ms,
+      color 140ms;
+  }
+  svg {
+    flex-shrink: 0;
+  }
+  kbd {
+    font:
+      11px ui-monospace,
+      monospace;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 5px;
+    background: var(--elevated);
+    color: var(--muted);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Keep controls inside notches and the visible area above the mobile keyboard. */
+@media (max-width: 900px) {
+  [data-slot="app-shell"] {
+    height: var(--viewport-height, 100dvh);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  [data-slot="modal"] {
+    top: calc(var(--viewport-top, 0px) + var(--viewport-height, 100dvh) / 2);
+    max-height: calc(
+      var(--viewport-height, 100dvh) - 24px - env(safe-area-inset-top) -
+        env(safe-area-inset-bottom)
+    );
+  }
+
+  [data-slot="modal"][data-variant="drawer"],
+  [data-slot="modal"][data-variant="details"] {
+    top: var(--viewport-top, 0px);
+    bottom: auto;
+    height: var(--viewport-height, 100dvh);
+    max-height: var(--viewport-height, 100dvh);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* 16px prevents automatic zoom when focusing text fields on iOS. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  [contenteditable="true"][role="textbox"] {
+    font-size: 16px;
+  }
+
+  [data-slot="sidebar-actions"] button > span:last-child {
+    display: none;
+  }
+
+  [data-slot="sidebar"] [role="tab"],
+  [data-slot="workspace-toggle"] {
+    min-height: 44px;
+  }
+}

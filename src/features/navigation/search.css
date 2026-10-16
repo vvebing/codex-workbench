@@ -1,0 +1,8 @@
+@layer components {
+  /* cmdk generates this heading; JSX exposes only the enclosing group. */
+  .session-search-group :where([cmdk-group-heading]) {
+    padding: 10px 12px;
+    font-size: 10px;
+    color: var(--subtle);
+  }
+}

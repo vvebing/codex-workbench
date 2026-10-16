@@ -1,0 +1,355 @@
+.conversation-workspace {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.conversation-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.conversation-editor-resize {
+  width: 4px;
+  background: var(--border);
+  transition: background-color 140ms;
+}
+.conversation-editor-resize:hover,
+.conversation-editor-resize[data-resize-handle-active] {
+  background: var(--accent);
+}
+.file-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--background);
+  color: inherit;
+}
+.file-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.file-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.file-tabs {
+  display: flex;
+  flex: 1;
+  min-width: 120px;
+  overflow-x: auto;
+  align-self: stretch;
+}
+.file-tab > .is-preview {
+  font-style: italic;
+}
+.file-tab {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding-right: 4px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
+}
+.file-tab.is-active {
+  border-bottom-color: var(--accent);
+  background: var(--selected);
+}
+.file-tab > [role="tab"] {
+  align-self: stretch;
+  max-width: 230px;
+  padding: 6px 8px 6px 12px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-tab:hover:not(.is-active) {
+  background: var(--hover);
+}
+.file-breadcrumb {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.file-breadcrumb span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.file-breadcrumb button {
+  flex-shrink: 0;
+}
+.file-monaco {
+  flex: 1;
+  min-height: 100px;
+  min-width: 0;
+}
+.file-readonly {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  white-space: pre;
+  margin: 0;
+  padding: 12px;
+  font: 12px/1.65 monospace;
+}
+.file-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.file-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-height: 28px;
+  border-top: 1px solid var(--border);
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.file-status-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-width: 0;
+}
+.file-status-group > span {
+  overflow-wrap: anywhere;
+}
+.file-status-details {
+  margin-left: auto;
+}
+.file-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+.file-editor-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.file-view-preview > .file-editor-pane {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.file-markdown-preview {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+  overflow-wrap: anywhere;
+}
+.file-markdown-preview img {
+  max-width: 100%;
+  height: auto;
+}
+.file-view-split > .file-markdown-preview {
+  border-left: 1px solid var(--border);
+}
+.file-image-placeholder {
+  display: inline-block;
+  border: 1px dashed var(--border);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.file-view-modes {
+  display: flex;
+  gap: 4px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+.file-view-modes [aria-pressed="true"] {
+  background: var(--selected);
+  color: var(--accent);
+}
+.file-comparison-labels {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+  font-size: 11px;
+}
+.file-comparison-labels strong {
+  flex: 1;
+}
+.file-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #0006;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+.file-dialog {
+  background: var(--elevated, #fff);
+  color: var(--foreground, #222);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 50px #0003;
+  padding: 24px;
+  width: min(100%, 480px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+}
+.file-dialog h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.file-dialog label {
+  font-size: 13px;
+}
+.file-dialog input {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  width: 100%;
+  padding: 8px;
+  margin-top: 6px;
+  background: transparent;
+}
+.file-dialog > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.file-dialog p {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 900px) {
+  .file-tab > button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .file-toolbar {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+  .file-breadcrumb {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+  .file-breadcrumb span {
+    flex-basis: 100%;
+  }
+  .file-markdown-preview {
+    padding: 16px;
+  }
+  .file-dialog input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .file-comparison-labels {
+    flex-wrap: wrap;
+  }
+  .file-view-split {
+    flex-direction: column;
+  }
+  .file-view-split > .file-markdown-preview {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
+.file-modal {
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100dvh - 40px);
+  background: transparent;
+  color: inherit;
+  margin: auto;
+}
+.file-modal::backdrop {
+  background: #0006;
+}
+
+.file-git-diff-engine {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 600px;
+  height: 100px;
+  visibility: hidden;
+  pointer-events: none;
+}
+.monaco-editor .git-gutter-added,
+.monaco-editor .git-gutter-modified,
+.monaco-editor .git-gutter-deleted {
+  cursor: pointer;
+}
+.monaco-editor .git-gutter-added::before,
+.monaco-editor .git-gutter-modified::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--success);
+}
+.monaco-editor .git-gutter-modified::before {
+  background: #388bfd;
+}
+.monaco-editor .git-gutter-deleted::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  bottom: -3px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid var(--danger);
+}
+.monaco-editor .git-gutter-before::before {
+  top: -3px;
+  bottom: auto;
+}

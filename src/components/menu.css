@@ -1,0 +1,41 @@
+/* Radix menu items share presentation across action and radio groups. */
+@layer components {
+  .menu-content :where([role="menuitem"], [role="menuitemradio"]) {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border-radius: var(--radius-md);
+    padding: 9px 10px;
+    font-size: 12px;
+    outline: none;
+  }
+
+  .menu-content :where([data-highlighted]) {
+    background: var(--hover);
+  }
+
+  .menu-content :where([data-disabled]) {
+    pointer-events: none;
+    opacity: 0.4;
+  }
+
+  .menu-content :where(small) {
+    display: block;
+    max-width: 265px;
+    margin-top: 3px;
+    font-size: 10px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+
+  .menu-content :where(strong) {
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  @media (width < 900px) {
+    .menu-content :where([role="menuitem"], [role="menuitemradio"]) {
+      min-height: 44px;
+    }
+  }
+}

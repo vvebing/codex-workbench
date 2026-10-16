@@ -1,0 +1,71 @@
+import type { JSONContent } from "@tiptap/core";
+import type { DraftsStore } from "../composer/drafts";
+import { textDocument } from "../composer/editor-document";
+
+export const MAX_PREVIEW_BYTES = 256 * 1024;
+
+export function workspacePath(root: string, relative: string): string {
+  const parts = relative.replace(/\\/g, "/").split("/");
+  if (
+    parts.some((part) => !part || part === "." || part === "..") ||
+    relative.startsWith("/") ||
+    /^[a-z]:[\\/]/i.test(relative) ||
+    (/^[a-z]:[\\/]/i.test(root) && parts.some((part) => part.includes(":")))
+  )
+    throw new Error("无效的项目路径。");
+  return `${root.replace(/[\\/]$/, "")}/${parts.join("/")}`;
+}
+
+export function previewText(base64: string): string {
+  if (base64.length > Math.ceil(MAX_PREVIEW_BYTES / 3) * 4)
+    throw new Error("文件超过 256 KB，无法在面板中预览。可以引用到输入框。");
+  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+  if (bytes.length > MAX_PREVIEW_BYTES)
+    throw new Error("文件超过 256 KB，无法在面板中预览。");
+  if (bytes.includes(0)) throw new Error("二进制文件不支持文本预览。");
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("该文件不是 UTF-8 文本，无法预览。");
+  }
+}
+
+export function referenceProjectFile(
+  drafts: DraftsStore,
+  threadId: string,
+  relative: string,
+  absolute: string,
+): void {
+  const draft = drafts.get(threadId);
+  const document = structuredClone(draft.document ?? textDocument(draft.text));
+  const value = /\s/.test(absolute) ? JSON.stringify(absolute) : absolute;
+  const paragraph: JSONContent = {
+    type: "paragraph",
+    content: [
+      {
+        type: "reference",
+        attrs: {
+          kind: "file",
+          label: relative,
+          name: relative,
+          path: absolute,
+          value,
+        },
+      },
+      { type: "text", text: " " },
+    ],
+  };
+  if (
+    !draft.text &&
+    document.content?.length === 1 &&
+    !document.content[0].content?.length
+  )
+    document.content = [paragraph];
+  else document.content = [...(document.content ?? []), paragraph];
+  drafts.setDocument(
+    threadId,
+    document,
+    `${draft.text}${draft.text ? "\n" : ""}${value} `,
+    draft.skills ?? [],
+  );
+}
