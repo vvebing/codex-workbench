@@ -5,7 +5,13 @@ import { createMockServer } from "../fixtures/app-server";
 
 let fixtureServer: ReturnType<typeof createMockServer>;
 let fixtureUrl: string;
+let resumeMermaidStream: () => void;
 test.beforeEach(async ({ page }) => {
+  const streamGate = test.info().title.startsWith("mermaid rendering")
+    ? new Promise<void>((resolve) => {
+        resumeMermaidStream = resolve;
+      })
+    : undefined;
   await page.addInitScript(() => {
     if (!localStorage.getItem("codex-environments"))
       localStorage.setItem(
@@ -97,15 +103,14 @@ test.beforeEach(async ({ page }) => {
                     imageInput: test
                       .info()
                       .title.startsWith("rich composer images"),
+                    streamGate,
                     streamIntervalMs: test
                       .info()
-                      .title.startsWith("mermaid rendering")
-                      ? 500
-                      : test.info().title.startsWith("message queue supports")
-                        ? 300
-                        : test.info().title.startsWith("message queue")
-                          ? 120
-                          : undefined,
+                      .title.startsWith("message queue supports")
+                      ? 300
+                      : test.info().title.startsWith("message queue")
+                        ? 120
+                        : undefined,
                   },
   );
   fixtureServer.listen(0, "127.0.0.1");
@@ -230,6 +235,32 @@ test("connect form validates endpoint and keeps token out of persistent browser 
     }),
   );
   expect(stored).not.toContain("fictional-test-token");
+});
+
+test("connection settings reuse a connected environment and retain its selected history", async ({
+  page,
+}) => {
+  await openFirst(page);
+  const initializations = fixtureServer.requestLog.filter(
+    (request) => request.method === "initialize",
+  ).length;
+  const turn = await page
+    .locator("#main [data-slot=conversation-turn]")
+    .first()
+    .elementHandle();
+  await input(page).fill("保留当前草稿");
+  await page.locator("[data-slot=connection-entry]").click();
+  const dialog = page.getByRole("dialog", { name: "连接与设置" });
+  await dialog.getByRole("tab", { name: "工作环境", exact: true }).click();
+  await dialog.getByRole("button", { name: "使用此连接", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(input(page)).toHaveText("保留当前草稿");
+  expect(await turn!.evaluate((node) => node.isConnected)).toBe(true);
+  expect(
+    fixtureServer.requestLog.filter(
+      (request) => request.method === "initialize",
+    ),
+  ).toHaveLength(initializations);
 });
 
 test("pages all 90 conversations and keyboard search opens hydrated history", async ({
@@ -608,6 +639,87 @@ test("questions support custom choices and secret input then resume execution", 
     page.locator("[data-slot=conversation-timeline]"),
   ).not.toContainText("fictional-only");
 });
+
+for (const running of [false, true]) {
+  test(`async questions accept answers ${running ? "during execution" : "after completion"}`, async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      const notices: { title: string; closed: boolean }[] = [];
+      Object.defineProperty(window, "Notification", {
+        configurable: true,
+        value: class {
+          static permission = "granted";
+          title: string;
+          closed = false;
+          constructor(title: string) {
+            this.title = title;
+            notices.push(this);
+          }
+          close() {
+            this.closed = true;
+          }
+        },
+      });
+      Object.defineProperty(window, "asyncNotices", { value: notices });
+    });
+    await openFirst(page);
+    await send(page, running ? "async-question-running" : "async-question");
+    const form = page.getByRole("form", { name: "回答异步问题" });
+    await expect(form).toBeVisible();
+    await expect(page.locator("[data-slot=action-notification]")).toContainText(
+      "需要你回答问题",
+    );
+    await expect(form.getByRole("button", { name: "提交回答" })).toBeDisabled();
+    const nativeQuestions = () =>
+      page.evaluate(() =>
+        (
+          window as unknown as {
+            asyncNotices: { title: string; closed: boolean }[];
+          }
+        ).asyncNotices.filter((notice) => notice.title === "需要你回答问题"),
+      );
+    await expect
+      .poll(nativeQuestions)
+      .toEqual([{ title: "需要你回答问题", closed: false }]);
+    if (running)
+      await form.getByRole("radio", { name: "顶部", exact: true }).check();
+    else {
+      await form.getByRole("radio", { name: "自定义回答" }).check();
+      await form
+        .getByRole("textbox", { name: "选择导航布局" })
+        .fill("分组导航");
+    }
+    await form.getByRole("textbox", { name: "补充偏好" }).fill("紧凑布局");
+    await form.getByRole("button", { name: "提交回答" }).click();
+    await expect(form.getByRole("status")).toHaveText("回答已发送");
+    await expect(page.locator("[data-slot=action-notification]")).toHaveCount(
+      0,
+    );
+    await expect(
+      page.locator("[data-slot=conversation-timeline]"),
+    ).toContainText(`选择导航布局\n${running ? "顶部" : "分组导航"}`);
+    const method = running ? "turn/steer" : "turn/start";
+    const reply = fixtureServer.requestLog.findLast(
+      (entry) => entry.method === method,
+    );
+    expect(JSON.stringify(reply?.input)).toContain("紧凑布局");
+    await expect
+      .poll(nativeQuestions)
+      .toEqual([{ title: "需要你回答问题", closed: true }]);
+    if (!running) {
+      await completed(page);
+      await page.reload();
+      await expect(form).toContainText("此问题已有后续回复");
+      await expect(form.getByRole("button", { name: "提交回答" })).toHaveCount(
+        0,
+      );
+      await expect(page.locator("[data-slot=action-notification]")).toHaveCount(
+        0,
+      );
+    }
+  });
+}
 
 test("running work accepts steering and can be interrupted", async ({
   page,
@@ -1460,7 +1572,7 @@ test("local and remote environments keep independent drafts, background turns an
     await expect(groups).toHaveCount(1);
     await expect(
       page.locator("[data-slot=breadcrumb] [data-slot=environment-icon] svg"),
-    ).toHaveClass(/lucide-monitor/);
+    ).toHaveClass(/lucide-server/);
     await expect(
       groups
         .locator(
@@ -1508,7 +1620,7 @@ test("local and remote environments keep independent drafts, background turns an
     );
     await expect(
       page.locator("[data-slot=breadcrumb] [data-slot=environment-icon] svg"),
-    ).toHaveClass(/lucide-monitor/);
+    ).toHaveClass(/lucide-server/);
     await newDialog.getByRole("button", { name: "取消", exact: true }).click();
     await expect(newDialog).toBeHidden();
     await expect(
@@ -1516,7 +1628,7 @@ test("local and remote environments keep independent drafts, background turns an
     ).toBeFocused();
     await expect(
       page.locator("[data-slot=breadcrumb] [data-slot=environment-icon] svg"),
-    ).toHaveClass(/lucide-monitor/);
+    ).toHaveClass(/lucide-server/);
     await filters.getByRole("tab", { name: "dev-box", exact: true }).focus();
     await page.keyboard.press("Home");
     await expect(filters.getByRole("tab", { name: "全部" })).toBeFocused();
@@ -1529,7 +1641,7 @@ test("local and remote environments keep independent drafts, background turns an
     );
     await expect(
       page.locator("[data-slot=breadcrumb] [data-slot=environment-icon] svg"),
-    ).toHaveClass(/lucide-monitor/);
+    ).toHaveClass(/lucide-server/);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     for (const index of [0, 1]) {
       for (const project of [1, 2])
@@ -3618,7 +3730,14 @@ test("mermaid rendering supports streaming, source copying, zoom and syntax fall
   await openFirst(page);
   await send(page, "mermaid-test");
   const block = page.locator('[data-slot="mermaid-block"]').last();
-  await expect(block).toContainText("图表生成中");
+  try {
+    await expect(block).toContainText("图表生成中");
+    await expect(block.locator('[data-slot="mermaid-svg"] > svg')).toHaveCount(
+      0,
+    );
+  } finally {
+    resumeMermaidStream();
+  }
   await completed(page);
   await expect(block.locator('[data-slot="mermaid-svg"] > svg')).toBeVisible({
     timeout: 20000,

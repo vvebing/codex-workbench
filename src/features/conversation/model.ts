@@ -6,7 +6,7 @@ export function isTimelineProgress(
 ): boolean {
   if (item.type === "userMessage") return false;
   if (item.type !== "agentMessage") return true;
-  if (item.phase === "final_answer") return false;
+  if (item.questions?.length || item.phase === "final_answer") return false;
   if (item.phase === "commentary") return true;
   return (
     item !==

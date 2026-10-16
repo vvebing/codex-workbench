@@ -167,6 +167,103 @@ it("opens for viewing and ignores repeated selection without enabling writes", a
   f.disconnect();
 });
 
+it("shows cached history immediately and refreshes changed history in the background", async () => {
+  const f = fixture();
+  f.connect();
+  const cached = { ...thread("cached"), preview: "original", updatedAt: 1 };
+  f.request.mockResolvedValue({ thread: cached });
+  await f.sessions.open("cached");
+  f.sessions.clearSelection();
+  let resolve!: (value: { thread: Thread }) => void;
+  f.request.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  await f.sessions.open("cached");
+  expect(f.sessions.getSnapshot()).toMatchObject({
+    selectedId: "cached",
+    openingId: null,
+    loading: false,
+    threads: { cached: { preview: "original" } },
+  });
+  const updated = { ...cached, preview: "updated", updatedAt: 2 };
+  f.request.mockResolvedValue({ thread: updated });
+  resolve({ thread: updated });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.sessions.getSnapshot().threads.cached.preview).toBe("updated");
+  expect(
+    f.request.mock.calls.some(([method]) => method === "thread/resume"),
+  ).toBe(false);
+  f.disconnect();
+});
+
+it("checks only metadata for unchanged cached history and preserves loaded turns", async () => {
+  const f = fixture();
+  f.connect();
+  const cached: Thread = {
+    ...thread("cached"),
+    turns: [
+      {
+        id: "saved-turn",
+        rootTurnId: null,
+        items: [],
+        itemsView: "full",
+        status: "completed",
+        error: null,
+        startedAt: 1,
+        completedAt: 2,
+        durationMs: 1000,
+      },
+    ],
+  };
+  f.request.mockResolvedValue({ thread: cached });
+  await f.sessions.open("cached");
+  f.sessions.clearSelection();
+  f.request.mockClear();
+  f.request.mockResolvedValue({ thread: { ...cached, turns: [] } });
+  await f.sessions.open("cached");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.request).toHaveBeenCalledExactlyOnceWith("thread/read", {
+    threadId: "cached",
+    includeTurns: false,
+  });
+  expect(f.sessions.getSnapshot().threads.cached.turns).toEqual(cached.turns);
+  f.disconnect();
+});
+
+it.each([false, true])(
+  "keeps cached history readable on refresh failure (navigated away: %s)",
+  async (leave) => {
+    const f = fixture();
+    f.connect();
+    f.request.mockResolvedValue({ thread: thread("cached") });
+    await f.sessions.open("cached");
+    f.sessions.clearSelection();
+    let reject!: (error: Error) => void;
+    f.request.mockImplementationOnce(
+      () =>
+        new Promise((_, fail) => {
+          reject = fail;
+        }),
+    );
+    await f.sessions.open("cached");
+    if (leave) await f.sessions.create({ cwd: "/other" });
+    const selectedId = f.sessions.getSnapshot().selectedId;
+    reject(new Error("remote unavailable"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.sessions.getSnapshot()).toMatchObject({
+      selectedId,
+      openingId: null,
+      error: null,
+      historySyncError: leave ? null : "remote unavailable",
+    });
+    expect(f.sessions.getSnapshot().threads.cached).toBeDefined();
+    f.disconnect();
+  },
+);
+
 it("deduplicates explicit activation and grants editing only after success", async () => {
   const f = fixture();
   f.request

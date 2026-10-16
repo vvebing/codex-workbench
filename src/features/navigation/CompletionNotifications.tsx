@@ -1,7 +1,8 @@
+import { pendingAsyncQuestions } from "../conversation/async-questions";
 import { requestThreadId } from "../requests/store";
 import { isSubagentThread, shouldNotifyThread } from "../sessions/state";
 import type { RpcRequest } from "../../lib/rpc";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleCheck, CircleHelp, X } from "lucide-react";
 import { RuntimeContext, useRuntime } from "../../lib/runtime-context";
 import { environments, type Environment } from "../connection/environments";
@@ -70,6 +71,30 @@ function EnvironmentNotifications({
   const runtime = useRuntime();
   const sessions = useStore(runtime.sessions);
   const requests = useStore(runtime.requests);
+  const actionRequests = useMemo(
+    () => [
+      ...requests.pending.flatMap((request) => {
+        const threadId = requestThreadId(request);
+        return threadId
+          ? [
+              {
+                key: JSON.stringify(request.id),
+                threadId,
+                title: requestNoticeTitle(request),
+              },
+            ]
+          : [];
+      }),
+      ...Object.values(sessions.threads).flatMap((thread) =>
+        pendingAsyncQuestions(thread).map((item) => ({
+          key: JSON.stringify(["async-question", thread.id, item.id]),
+          threadId: thread.id,
+          title: "需要你回答问题",
+        })),
+      ),
+    ],
+    [requests.pending, sessions.threads],
+  );
   const [dismissedRequests, setDismissedRequests] = useState<Set<string>>(
     new Set(),
   );
@@ -89,9 +114,7 @@ function EnvironmentNotifications({
     [
       ...new Set([
         ...sessions.completionNotifications.map((notice) => notice.threadId),
-        ...requests.pending
-          .map(requestThreadId)
-          .filter((id): id is string => !!id),
+        ...actionRequests.map((request) => request.threadId),
       ]),
     ]
       .filter(
@@ -165,9 +188,7 @@ function EnvironmentNotifications({
     }
   }, [sessions, runtime, environment.id]);
   useEffect(() => {
-    const pendingKeys = new Set(
-      requests.pending.map((request) => JSON.stringify(request.id)),
-    );
+    const pendingKeys = new Set(actionRequests.map((request) => request.key));
     for (const [key, entry] of actionNative.current) {
       if (
         !pendingKeys.has(key) ||
@@ -177,9 +198,8 @@ function EnvironmentNotifications({
         actionNative.current.delete(key);
       }
     }
-    for (const request of requests.pending) {
-      const threadId = requestThreadId(request);
-      const key = JSON.stringify(request.id);
+    for (const request of actionRequests) {
+      const { threadId, key } = request;
       if (
         !threadId ||
         !shouldNotifyThread(sessions, threadId) ||
@@ -193,7 +213,7 @@ function EnvironmentNotifications({
       )
         continue;
       try {
-        const notification = new Notification(requestNoticeTitle(request), {
+        const notification = new Notification(request.title, {
           icon: productIconUrl,
           body: titleOf(sessions.threads[threadId]),
           tag: `${environment.id}:request:${key}`,
@@ -209,7 +229,7 @@ function EnvironmentNotifications({
         /* The in-app request notice remains available. */
       }
     }
-  }, [requests.pending, sessions, runtime, environment.id]);
+  }, [actionRequests, sessions, runtime, environment.id]);
   useEffect(() => {
     const actions = actionNative.current;
     return () => {
@@ -224,20 +244,20 @@ function EnvironmentNotifications({
   }, []);
   return (
     <>
-      {requests.pending
+      {actionRequests
         .filter(
           (request) =>
-            requestThreadId(request) &&
-            shouldNotifyThread(sessions, requestThreadId(request)!) &&
-            !dismissedRequests.has(JSON.stringify(request.id)),
+            shouldNotifyThread(sessions, request.threadId) &&
+            !dismissedRequests.has(request.key),
         )
         .map((request) => (
           <ActionNotice
-            key={JSON.stringify(request.id)}
-            request={request}
+            key={request.key}
+            threadId={request.threadId}
+            title={request.title}
             environment={environment}
             onDismiss={() => {
-              const key = JSON.stringify(request.id);
+              const key = request.key;
               actionNative.current.get(key)?.notification.close();
               actionNative.current.delete(key);
               setDismissedRequests((value) => new Set([...value, key]));
@@ -280,17 +300,18 @@ function requestNoticeTitle(request: RpcRequest): string {
 }
 
 function ActionNotice({
-  request,
+  threadId,
+  title,
   environment,
   onDismiss,
 }: {
-  request: RpcRequest;
+  threadId: string;
+  title: string;
   environment: Environment;
   onDismiss: () => void;
 }) {
   const runtime = useRuntime();
   const sessions = useStore(runtime.sessions);
-  const threadId = requestThreadId(request)!;
   return (
     <div
       data-slot="action-notification"
@@ -309,7 +330,7 @@ function ActionNotice({
         <span className="min-w-0">
           <strong className="flex items-center gap-1.5 text-xs">
             <EnvironmentIcon environment={environment} focusable={false} />
-            {requestNoticeTitle(request)}
+            {title}
           </strong>
           <small className="mt-1 block max-w-[225px] truncate text-xs text-muted">
             {titleOf(sessions.threads[threadId])}

@@ -1,4 +1,4 @@
-import { ConnectionStore } from "../features/connection/store";
+import { ConnectionStore, sameEndpoint } from "../features/connection/store";
 import { SessionsStore } from "../features/sessions/store";
 import { RequestsStore } from "../features/requests/store";
 import { DraftsStore } from "../features/composer/drafts";
@@ -21,18 +21,54 @@ export function createRuntime(
       drafts.activateScope(connection.getSnapshot().url),
     );
   let reconnectToken: string | undefined;
-  const connect = async (url: string, token?: string): Promise<void> => {
+  let connecting:
+    | { url: string; token?: string; epoch: number; promise: Promise<void> }
+    | undefined;
+  const connect = async (
+    url: string,
+    token?: string,
+    force = false,
+  ): Promise<void> => {
+    if (!force) {
+      if (
+        connecting &&
+        connecting.epoch === connection.getSnapshot().epoch &&
+        sameEndpoint(url, connecting.url) &&
+        (!token || token === connecting.token)
+      )
+        return connecting.promise;
+      const state = connection.getSnapshot();
+      if (
+        state.status === "connected" &&
+        sameEndpoint(url, state.url) &&
+        (!token || token === reconnectToken)
+      )
+        return;
+    }
     reconnectToken = token;
-    const pending = connection.connect(url, token);
-    const epoch = connection.getSnapshot().epoch;
-    await pending;
-    if (
-      connection.getSnapshot().epoch === epoch &&
-      connection.getSnapshot().status === "connected"
-    ) {
-      await sessions.refresh();
-      if (connection.getSnapshot().epoch === epoch)
-        await sessions.restoreSelected();
+    const pending = (async () => {
+      const opening = connection.connect(url, token);
+      const epoch = connection.getSnapshot().epoch;
+      await opening;
+      if (
+        connection.getSnapshot().epoch === epoch &&
+        connection.getSnapshot().status === "connected"
+      ) {
+        await sessions.refresh();
+        if (connection.getSnapshot().epoch === epoch)
+          await sessions.restoreSelected();
+      }
+    })();
+    connecting = {
+      url,
+      token,
+      epoch: connection.getSnapshot().epoch,
+      promise: pending,
+    };
+    try {
+      await pending;
+    } finally {
+      if (connecting?.promise === pending) connecting = undefined;
     }
   };
   const queue = new MessageQueueStore(
@@ -78,7 +114,8 @@ export function createRuntime(
     requests,
     drafts,
     connect,
-    reconnect: () => connect(connection.getSnapshot().url, reconnectToken),
+    reconnect: () =>
+      connect(connection.getSnapshot().url, reconnectToken, true),
     submissions,
     queue,
     sendDraft: submissions.send,

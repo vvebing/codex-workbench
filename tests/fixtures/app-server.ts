@@ -36,6 +36,7 @@ export interface MockOptions {
   initiallyArchived?: number;
   sameNamedWorkspaces?: boolean;
   streamIntervalMs?: number;
+  streamGate?: Promise<void>;
   externalWriter?: boolean;
   rejectEmptyThreadRead?: boolean;
   failThreadStartOnce?: boolean;
@@ -460,7 +461,9 @@ export function createMockServer(options: MockOptions = {}) {
             }
           : {}),
         threadId: msg.params?.threadId,
-        ...(method === "turn/start" ? { input: msg.params?.input } : {}),
+        ...(["turn/start", "turn/steer"].includes(method)
+          ? { input: msg.params?.input }
+          : {}),
         ...(method === "externalAgentConfig/import"
           ? { migrationItems: msg.params?.migrationItems }
           : {}),
@@ -1985,9 +1988,13 @@ export function createMockServer(options: MockOptions = {}) {
                 itemId: item.id,
                 delta,
               });
-              if (cursor < answerText.length)
-                later(chunk, options.streamIntervalMs ?? 25);
-              else {
+              if (cursor < answerText.length) {
+                if (options.streamGate)
+                  void options.streamGate.then(() =>
+                    later(chunk, options.streamIntervalMs ?? 25),
+                  );
+                else later(chunk, options.streamIntervalMs ?? 25);
+              } else {
                 notify("item/completed", { ...base, item });
                 notify("turn/plan/updated", {
                   ...base,
@@ -2047,6 +2054,23 @@ export function createMockServer(options: MockOptions = {}) {
                   availableDecisions: decisions,
                 },
               });
+              return;
+            }
+            if (text.startsWith("async-question")) {
+              const item = agent("请选择以下偏好。");
+              item.questions = [
+                { title: "选择导航布局", options: ["侧栏", "顶部"] },
+                { title: "补充偏好", options: null },
+              ];
+              turn.items.push(item);
+              notify("item/completed", { ...base, item });
+              if (text.includes("running"))
+                later(() => finish("completed"), 10000);
+              else finish("completed");
+              return;
+            }
+            if (text.startsWith("回答问题：")) {
+              run();
               return;
             }
             if (/question|问题/.test(text)) {

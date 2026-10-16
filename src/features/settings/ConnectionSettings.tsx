@@ -104,11 +104,7 @@ export function useConnectionSettings({
     action(async () => {
       const entry = saveProfile();
       await entry.runtime.connect(entry.url, token);
-      if (
-        environments.active().runtime.connection.getSnapshot().status !==
-        "connected"
-      )
-        environments.select(entry.id);
+      environments.select(entry.id);
       setToken("");
       onOpenChange(false);
     });
@@ -279,7 +275,7 @@ export function ConnectionSettings({
               {settings.busy
                 ? "正在连接…"
                 : settings.connected
-                  ? "重新连接"
+                  ? "使用此连接"
                   : "连接"}
             </Button>
           </SettingsActions>

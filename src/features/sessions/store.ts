@@ -223,7 +223,12 @@ export class SessionsStore extends Store<SessionsState> {
     const merged = this.mergeRead(thread, before);
     if (merged) {
       if (changed) this.recordHistory(thread);
-      this.update({ ...this.state, ...merged, historySyncError: null });
+      this.update({
+        ...this.state,
+        ...merged,
+        historySyncError:
+          this.state.selectedId === id ? null : this.state.historySyncError,
+      });
     }
   }
   activate(id: string): Promise<void> {
@@ -695,6 +700,36 @@ export class SessionsStore extends Store<SessionsState> {
         error: null,
         historySyncError: null,
       });
+      return Promise.resolve();
+    }
+    // A previously loaded conversation can be displayed while its history refreshes.
+    if (this.historySynced.has(id) && this.state.threads[id]) {
+      this.historySync.stop();
+      const generation = ++this.selectionGeneration;
+      const epoch = this.connection.getSnapshot().epoch;
+      this.update({
+        ...clearCompletion(this.state, id),
+        selectedId: id,
+        openingId: null,
+        error: null,
+        historySyncError: null,
+      });
+      const selected = () =>
+        this.current(epoch) &&
+        this.selectionGeneration === generation &&
+        this.state.selectedId === id;
+      if (!this.canWrite(id))
+        void this.locked(`read:${id}`, () => this.syncViewedThread(id, epoch))
+          .catch((error) => {
+            if (selected())
+              this.update({
+                ...this.state,
+                historySyncError: errorMessage(error),
+              });
+          })
+          .finally(() => {
+            if (selected()) this.scheduleHistorySync(id, epoch);
+          });
       return Promise.resolve();
     }
     const pending = this.locks.get(`read:${id}`);

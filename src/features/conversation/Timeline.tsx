@@ -1,3 +1,4 @@
+import { AsyncQuestions } from "./AsyncQuestions";
 import { LocalMessageImage } from "./MessageImage";
 import { ConversationImage } from "../../components/ImagePreview";
 import { FileLinkProvider } from "../files/FileLinkContext";
@@ -645,11 +646,13 @@ export function Item({
   action,
   streaming = false,
   hideDivider = false,
+  threadId,
 }: {
   item: ThreadItem;
   action?: ReactNode;
   streaming?: boolean;
   hideDivider?: boolean;
+  threadId?: string;
 }) {
   if (item.type === "agentMessage")
     return (
@@ -658,6 +661,9 @@ export function Item({
           <hr className="mb-5 border-0 border-t border-border" />
         )}
         <Markdown text={item.text} streaming={streaming} />
+        {!!item.questions?.length && threadId && (
+          <AsyncQuestions key={item.id} item={item} threadId={threadId} />
+        )}
         {action}
       </article>
     );
@@ -897,6 +903,7 @@ function TimelineContent({
                       group[0].type === "userMessage" ||
                       group[0].type === "agentMessage" ? (
                         <Item
+                          threadId={thread.id}
                           hideDivider={hideDivider}
                           item={group[0]}
                           streaming={turn.status === "inProgress"}
