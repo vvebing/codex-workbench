@@ -8,6 +8,7 @@ import type { ProjectTab } from "./project-panel-state";
 export type { ProjectTab } from "./project-panel-state";
 import type { Thread } from "../../generated/v2/Thread";
 import { FilesPanel } from "../shell/FilesPanel";
+import { ContentSearch } from "../search/ContentSearch";
 import { GitPanel } from "../shell/GitPanel";
 import { useMemo } from "react";
 import ProjectWorkspace from "../projects/ProjectWorkspace";
@@ -59,6 +60,7 @@ export function Details({
           {(
             [
               ["files", "文件"],
+              ["search", "搜索"],
               ["git", "Git"],
               ["workspace", "工作区"],
             ] as const
@@ -87,6 +89,21 @@ export function Details({
               <p className="text-muted">选择会话查看项目文件。</p>
             )}
           </ResourceScrollArea>
+        </Tabs.Content>
+        <Tabs.Content
+          value="search"
+          forceMount
+          className="min-h-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col data-[state=inactive]:hidden"
+        >
+          {thread ? (
+            <ContentSearch
+              key={JSON.stringify([cacheScope, epoch, thread.cwd])}
+              thread={thread}
+              active={tab === "search"}
+            />
+          ) : (
+            <p className="p-4 text-muted">选择会话后搜索项目内容。</p>
+          )}
         </Tabs.Content>
         <Tabs.Content
           value="git"

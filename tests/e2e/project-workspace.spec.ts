@@ -64,7 +64,7 @@ test("workspace follows each session cwd and only explicitly runs its current co
   const tabs = page
     .getByRole("complementary", { name: "项目面板" })
     .getByRole("tab");
-  await expect(tabs).toHaveText(["文件", "Git", "工作区"]);
+  await expect(tabs).toHaveText(["文件", "搜索", "Git", "工作区"]);
   await expect(
     page.getByRole("tab", { name: /^(会话|项目空间)$/ }),
   ).toHaveCount(0);

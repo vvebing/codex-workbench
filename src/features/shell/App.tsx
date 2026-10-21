@@ -24,6 +24,8 @@ import {
   X,
   Folder,
   Check,
+  FileSearch,
+  Search,
 } from "lucide-react";
 import { RuntimeContext, useRuntime } from "../../lib/runtime-context";
 import { environments } from "../connection/environments";
@@ -56,6 +58,11 @@ import { SessionActionNotifications } from "../navigation/SessionActionNotificat
 const SearchDialog = lazy(() =>
   import("../navigation/SearchDialog").then((module) => ({
     default: module.SearchDialog,
+  })),
+);
+const QuickOpen = lazy(() =>
+  import("../search/QuickOpen").then((module) => ({
+    default: module.QuickOpen,
   })),
 );
 const SettingsDialog = lazy(() =>
@@ -205,6 +212,7 @@ function AppView() {
   }, [files.visible, files.openRevision]);
   const [mobileNav, setMobileNav] = useState(false);
   const [search, setSearch] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
   const [taskCenter, setTaskCenter] = useState(false);
   const [settings, setSettings] = useState(false);
   const [settingsSection, setSettingsSection] = useState<
@@ -333,6 +341,15 @@ function AppView() {
     return () => document.removeEventListener("keydown", close);
   }, [agentId, closeAgent]);
   const connected = connection.status === "connected";
+  const openContentSearch = useCallback(() => {
+    setQuickOpen(false);
+    setAgentId(undefined);
+    setProjectTab("search");
+    setDetails(true);
+    requestAnimationFrame(() =>
+      window.dispatchEvent(new Event("workspace-content-search-focus")),
+    );
+  }, [setProjectTab]);
   const canCreate = environmentState.entries.some(
     (entry) => entry.runtime.connection.getSnapshot().status === "connected",
   );
@@ -363,6 +380,20 @@ function AppView() {
   useEffect(() => {
     function key(e: KeyboardEvent) {
       if (e.isComposing || e.defaultPrevented) return;
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && thread?.cwd) {
+        if (!e.shiftKey && e.key.toLowerCase() === "p") {
+          e.preventDefault();
+          setSearch(false);
+          setQuickOpen(true);
+          return;
+        }
+        if (e.shiftKey && e.key.toLowerCase() === "f") {
+          e.preventDefault();
+          setSearch(false);
+          openContentSearch();
+          return;
+        }
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setSearch((v) => !v);
@@ -379,7 +410,7 @@ function AppView() {
     }
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [canCreate, newChat]);
+  }, [canCreate, newChat, thread?.cwd, openContentSearch]);
   async function create(e: React.FormEvent) {
     e.preventDefault();
     if (createLock.current) return;
@@ -501,6 +532,24 @@ function AppView() {
           <ThreadMenu key={`${environment.id}:${thread.id}`} thread={thread} />
         )}
         <div className="flex-1 max-[900px]:hidden" />
+        {thread?.cwd && (
+          <>
+            <IconButton
+              label="快速打开文件"
+              title="快速打开文件 (⌘/Ctrl+P)"
+              onClick={() => setQuickOpen(true)}
+            >
+              <FileSearch size={18} />
+            </IconButton>
+            <IconButton
+              label="搜索文件内容"
+              title="搜索文件内容 (⌘/Ctrl+Shift+F)"
+              onClick={openContentSearch}
+            >
+              <Search size={18} />
+            </IconButton>
+          </>
+        )}
         <BranchChanges
           thread={thread}
           onOpenGit={() => {
@@ -795,6 +844,21 @@ function AppView() {
             onOpenChange={setSearch}
             initialScope={sessionFilter}
             onLocated={selectNavigation}
+          />
+        </LazyFeature>
+      )}
+      {quickOpen && thread && (
+        <LazyFeature>
+          <QuickOpen
+            key={JSON.stringify([
+              environment.id,
+              connection.epoch,
+              connection.scope,
+              thread.cwd,
+              thread.id,
+            ])}
+            thread={thread}
+            onClose={() => setQuickOpen(false)}
           />
         </LazyFeature>
       )}

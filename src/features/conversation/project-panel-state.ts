@@ -1,10 +1,12 @@
 import type { Thread } from "../../generated/v2/Thread";
 
-export type ProjectTab = "files" | "git" | "workspace";
+export type ProjectTab = "files" | "search" | "git" | "workspace";
 /** Preserve a previously selected tools tab when the UI is updated in place. */
 export function normalizeProjectTab(tab: string): ProjectTab {
   if (tab === "session" || tab === "project") return "workspace";
-  return tab === "git" || tab === "workspace" ? tab : "files";
+  return tab === "git" || tab === "workspace" || tab === "search"
+    ? tab
+    : "files";
 }
 export function projectPanelKey(
   scope: string,

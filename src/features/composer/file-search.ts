@@ -11,8 +11,8 @@ export type FileSearchClient = Pick<CodexClient, "request">;
 export async function filterIgnoredFiles(
   files: FuzzyFileSearchResult[],
   client: FileSearchClient,
+  rules = new Map<string, Promise<Ignore>>(),
 ): Promise<FuzzyFileSearchResult[]> {
-  const rules = new Map<string, Promise<Ignore>>();
   function load(root: string, directory: string): Promise<Ignore> {
     const path = `${root.replace(/[\\/]$/, "")}/${directory}.gitignore`;
     let pending = rules.get(path);
