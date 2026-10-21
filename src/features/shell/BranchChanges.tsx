@@ -41,7 +41,7 @@ export function BranchChanges({
             type="button"
             onClick={onOpenGit}
             data-slot="header-branch"
-            className="flex min-w-0 max-w-[220px] shrink items-center gap-[7px] whitespace-nowrap rounded text-[11px] text-muted focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-accent max-[900px]:min-h-11 max-[900px]:max-w-[160px] max-[550px]:size-11 max-[550px]:shrink-0 max-[550px]:justify-center max-[550px]:[&>span]:hidden"
+            className="flex min-w-0 max-w-[220px] shrink items-center gap-[7px] whitespace-nowrap rounded text-meta text-muted focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-accent max-[900px]:min-h-11 max-[900px]:max-w-[160px] max-[550px]:size-11 max-[550px]:shrink-0 max-[550px]:justify-center max-[550px]:[&>span]:hidden"
             aria-label={label}
           >
             <GitBranch size={14} aria-hidden="true" className="shrink-0" />

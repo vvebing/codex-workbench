@@ -31,14 +31,14 @@ export function ErrorNotice({
         {children}
       </div>
       {onDismiss && (
-        <button
-          type="button"
+        <IconButton
+          size="sm"
           onClick={onDismiss}
-          aria-label="关闭错误提示"
-          className="grid size-6 shrink-0 place-items-center rounded hover:bg-danger/10 max-[900px]:size-11"
+          label="关闭错误提示"
+          className="text-danger hover:bg-danger/10"
         >
           <X size={14} aria-hidden="true" />
-        </button>
+        </IconButton>
       )}
     </div>
   );
@@ -118,7 +118,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg border font-medium ${size === "sm" ? "min-h-8 px-2 py-1.5 text-[12px] max-[900px]:min-h-11" : "min-h-9 px-[13px] py-2 text-[13px] max-[900px]:min-h-11"} ${buttonVariants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg border font-medium ${size === "sm" ? "min-h-8 px-2 py-1.5 text-caption max-[900px]:min-h-11" : "min-h-9 px-[13px] py-2 text-control max-[900px]:min-h-11"} ${buttonVariants[variant]} ${className}`}
       {...props}
     />
   );
@@ -191,7 +191,7 @@ export function Modal({
         }
       >
         <Dialog.Title
-          className={`m-0 font-semibold ${variant === "settings" ? "text-base" : "text-[18px]"}`}
+          className={`m-0 font-semibold ${variant === "settings" ? "text-base" : "text-title-sm"}`}
         >
           {title}
         </Dialog.Title>
@@ -207,8 +207,8 @@ export function Modal({
         className={
           description && !drawer
             ? variant === "settings"
-              ? "mb-5 shrink-0 px-6 text-[12px] leading-[1.7] text-muted max-[450px]:mb-4 max-[450px]:px-4"
-              : `mb-[23px] shrink-0 text-[12px] leading-[1.7] text-muted ${variant === "search" ? "mx-[22px] mb-3.5" : ""}`
+              ? "mb-5 shrink-0 px-6 text-caption leading-copy text-muted max-[450px]:mb-4 max-[450px]:px-4"
+              : `mb-[23px] shrink-0 text-caption leading-copy text-muted ${variant === "search" ? "mx-[22px] mb-3.5" : ""}`
             : "sr-only"
         }
       >
@@ -220,7 +220,7 @@ export function Modal({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[3px]" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-overlay backdrop-blur-[3px]" />
         <Dialog.Content
           data-slot="modal"
           data-variant={variant}
@@ -314,7 +314,7 @@ export function MenuLabel(
     <DropdownMenu.Label
       data-slot="menu-label"
       {...props}
-      className={`px-2.5 py-[9px] text-[10px] text-muted ${props.className || ""}`}
+      className={`px-2.5 py-[9px] text-fine text-muted ${props.className || ""}`}
     />
   );
 }
@@ -363,7 +363,7 @@ export function SelectField({
     >
       <Select.Trigger
         id={id}
-        className={`inline-flex min-h-9 min-w-0 max-w-full items-center justify-between max-[900px]:min-h-11 [&>span:first-child]:truncate gap-2 rounded-lg border border-border bg-elevated px-3 py-2 text-[12px] hover:bg-hover data-[state=open]:bg-hover ${className}`}
+        className={`inline-flex min-h-9 min-w-0 max-w-full items-center justify-between max-[900px]:min-h-11 [&>span:first-child]:truncate gap-2 rounded-lg border border-border bg-elevated px-3 py-2 text-caption hover:bg-hover data-[state=open]:bg-hover ${className}`}
         aria-label={label}
         aria-describedby={descriptionId}
         aria-invalid={invalid}
@@ -387,7 +387,7 @@ export function SelectField({
           <Select.Viewport>
             {options.map((option) => (
               <Select.Item
-                className="flex cursor-pointer items-center justify-between gap-4 rounded px-3 py-2 text-[12px] [overflow-wrap:anywhere] outline-none data-[highlighted]:bg-hover data-[state=checked]:text-accent max-[900px]:min-h-11"
+                className="flex cursor-pointer items-center justify-between gap-4 rounded px-3 py-2 text-caption [overflow-wrap:anywhere] outline-none data-[highlighted]:bg-hover data-[state=checked]:text-accent max-[900px]:min-h-11"
                 key={option.value}
                 value={option.value}
               >

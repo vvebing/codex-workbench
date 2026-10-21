@@ -1,4 +1,5 @@
 import { AccountAccess } from "./AccountAccess";
+import { AppServerVersion } from "./AppServerVersion";
 import { useEffect, useRef, useState } from "react";
 import {
   LoaderCircle,
@@ -8,7 +9,7 @@ import {
   Trash2,
   Unplug,
 } from "lucide-react";
-import { Button } from "../../components/ui";
+import { Button, ErrorNotice } from "../../components/ui";
 import { useStore } from "../../components/hooks";
 import { environments, type Environment } from "../connection/environments";
 import {
@@ -128,6 +129,8 @@ export function useConnectionSettings({
     busy,
     selected,
     connected,
+    serverVersion: connection.serverVersion,
+    connectionEpoch: connection.epoch,
     connecting: !!selected && connection.status === "connecting",
     setName,
     setUrl,
@@ -160,13 +163,19 @@ export function ConnectionSettings({
         trailing={
           <span className="shrink-0 text-xs text-muted">
             {settings.connected
-              ? "已连接"
+              ? `已连接${settings.serverVersion ? ` · ${settings.serverVersion}` : ""}`
               : settings.connecting
                 ? "正在连接…"
                 : "未连接"}
           </span>
         }
       >
+        {settings.connected && (
+          <AppServerVersion
+            key={`${settings.selected?.id}:${settings.connectionEpoch}`}
+            version={settings.serverVersion}
+          />
+        )}
         <form
           className="space-y-6"
           onSubmit={(event) => {
@@ -231,14 +240,7 @@ export function ConnectionSettings({
                 : "网页服务会自动启动或复用本机 app-server；若连接失败，请查看终端输出，或在本机终端手动启动后填写监听地址。"
               : "先在远端启动 app-server，再填写 SSH 端口转发后的本机地址。"}
           </p>
-          {settings.error && (
-            <p
-              role="alert"
-              className="text-xs text-danger [overflow-wrap:anywhere]"
-            >
-              {settings.error}
-            </p>
-          )}
+          {settings.error && <ErrorNotice>{settings.error}</ErrorNotice>}
           <SettingsActions>
             {settings.connected && (
               <Button

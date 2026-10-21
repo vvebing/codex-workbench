@@ -16,7 +16,7 @@ test.beforeEach(async ({ page }) => {
         { type: "image", url: "https://images.example.test/broken.png" },
       ],
       answer:
-        "![设计截图](https://images.example.test/remote.png)\n\n[![带链接图片](https://images.example.test/remote.png)](https://example.com/reference)",
+        "![设计截图](https://images.example.test/remote.png)\n\n[![带链接图片](https://images.example.test/remote.png)](https://example.com/reference)\n\n[本地截图](/demo/atlas-web/screenshot.png) [同源截图](http://127.0.0.1:5181/demo/atlas-web/screenshot.png) [缺失截图](/demo/atlas-web/absent.png)",
     },
     base64Files: { "/demo/atlas-web/screenshot.png": png },
   });
@@ -104,6 +104,29 @@ for (const width of [1440, 390]) {
       await expect(viewer).toBeHidden();
       await expect(trigger).toBeFocused();
     }
+    for (const name of ["本地截图", "同源截图"]) {
+      const link = turn.getByRole("link", { name, exact: true });
+      await link.click();
+      const viewer = page.getByRole("dialog", {
+        name: "screenshot.png",
+        exact: true,
+      });
+      const image = viewer.getByRole("img");
+      await expect
+        .poll(() =>
+          image.evaluate(
+            (element) => (element as HTMLImageElement).naturalWidth,
+          ),
+        )
+        .toBeGreaterThan(0);
+      await page.keyboard.press("Escape");
+      await expect(link).toBeFocused();
+    }
+    await turn.getByRole("link", { name: "缺失截图", exact: true }).click();
+    await expect(
+      turn.getByRole("status").filter({ hasText: "ENOENT" }),
+    ).toBeVisible();
+    await turn.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(
       turn.getByRole("button", {
         name: "重新加载图片 missing.png",

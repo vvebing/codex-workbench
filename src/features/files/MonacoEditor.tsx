@@ -19,6 +19,8 @@ import "monaco-editor/languages/features/json/register.js";
 import EditorWorker from "monaco-editor/editor/editor.worker.js?worker";
 import JsonWorker from "monaco-editor/languages/features/json/json.worker.js?worker";
 import type { FileDocument } from "./store";
+import { observeAppearance } from "../../lib/appearance";
+import { applyEditorAppearance } from "./editor-appearance";
 
 (
   self as typeof self & {
@@ -79,22 +81,10 @@ export default function MonacoEditor({
   callbacks.current = { onChange, onSave, onPosition, onGitCompare };
   useEffect(() => {
     const viewMap = views.current;
-    const theme = () =>
-      monaco.editor.setTheme(
-        window.document.documentElement.dataset.theme === "dark"
-          ? "vs-dark"
-          : "vs",
-      );
-    theme();
-    const observer = new MutationObserver(theme);
-    observer.observe(window.document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme"],
-    });
     const options = {
+      ...applyEditorAppearance(),
       automaticLayout: true,
       minimap: { enabled: false },
-      fontSize: 13,
       scrollBeyondLastLine: false,
       padding: { top: 12, bottom: 12 },
       readOnly: true,
@@ -112,6 +102,11 @@ export default function MonacoEditor({
       : monaco.editor.create(container.current!, options);
     diffEditor.current = diff;
     editor.current = instance;
+    const stopObservingAppearance = observeAppearance((appearance) => {
+      const options = applyEditorAppearance(appearance);
+      if (diff) diff.updateOptions(options);
+      else instance.updateOptions(options);
+    });
     instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () =>
       callbacks.current.onSave(),
     );
@@ -141,7 +136,7 @@ export default function MonacoEditor({
       gutterCleanup.current = undefined;
       cursor.dispose();
       listener.dispose();
-      observer.disconnect();
+      stopObservingAppearance();
       const view = instance.saveViewState();
       if (view && selected.current) viewMap.set(selected.current, view);
       diffModelCleanup.current?.();
@@ -170,6 +165,24 @@ export default function MonacoEditor({
   }, []);
   useEffect(() => {
     const instance = editor.current!;
+    // Keep text models (including undo history) alive while an image tab is shown.
+    for (const [id, old] of models.current) {
+      if (!documents.some((item) => item.id === id)) {
+        old.dispose();
+        models.current.delete(id);
+        views.current.delete(id);
+        revealed.current.delete(id);
+        synchronized.current.delete(id);
+      }
+    }
+    if (document.kind === "image") {
+      const view = instance.saveViewState();
+      if (view && selected.current) views.current.set(selected.current, view);
+      selected.current = undefined;
+      if (diffEditor.current) diffEditor.current.setModel(null);
+      else instance.setModel(null);
+      return;
+    }
     updating.current = true;
     let model = models.current.get(document.id);
     if (!model) {
@@ -225,15 +238,6 @@ export default function MonacoEditor({
     instance.updateOptions({ readOnly });
     diffEditor.current?.updateOptions({ readOnly });
     updating.current = false;
-    for (const [id, old] of models.current) {
-      if (!documents.some((item) => item.id === id)) {
-        old.dispose();
-        models.current.delete(id);
-        views.current.delete(id);
-        revealed.current.delete(id);
-        synchronized.current.delete(id);
-      }
-    }
   }, [document, documents, comparison, comparing]);
   useEffect(() => {
     if (

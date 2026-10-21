@@ -2,11 +2,43 @@ import { describe, expect, it } from "vitest";
 import {
   fileLinkUrlTransform,
   parseFileLink,
+  parseImageFileLink,
 } from "../../src/features/files/file-links";
 
 const origin = { cwd: "/projects/original", threadId: "original-thread" };
 
 describe("conversation file destinations", () => {
+  it("resolves image links through their original workspace and limits accidental HTTP paths", () => {
+    const browser = "http://127.0.0.1:5180";
+    expect(
+      parseImageFileLink(
+        `${browser}/projects/original/a%20b.png`,
+        origin,
+        browser,
+      ),
+    ).toEqual({ ...origin, path: "/projects/original/a b.png" });
+    expect(parseImageFileLink("./capture.webp", origin, browser)).toEqual({
+      ...origin,
+      path: "./capture.webp",
+    });
+    expect(
+      parseImageFileLink(
+        "file:///projects/original/capture.jpg",
+        origin,
+        browser,
+      ),
+    ).toEqual({ ...origin, path: "/projects/original/capture.jpg" });
+    for (const href of [
+      `${browser}/etc/private.png`,
+      `${browser}/projects/original-other/capture.png`,
+      `${browser}/projects/original/%2e%2e/private.png`,
+      `${browser}/projects/original/folder%2f..%2f..%2fprivate.png`,
+      `${browser}/projects/original/capture.png?download=1`,
+      "https://example.com/projects/original/capture.png",
+      `${browser}/projects/original/code.ts`,
+    ])
+      expect(parseImageFileLink(href, origin, browser), href).toBeNull();
+  });
   it("retains originating thread and cwd without consulting selection", () => {
     expect(parseFileLink("README.md:12:2", origin)).toEqual({
       ...origin,

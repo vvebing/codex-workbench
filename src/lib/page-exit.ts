@@ -7,6 +7,9 @@ export function hasTransientData(runtimes: Runtime[]): boolean {
     (runtime) =>
       runtime.drafts.hasContent() ||
       runtime.files?.hasDirty() ||
+      runtime.submissions.messages
+        .getSnapshot()
+        .some((message) => message.status !== "accepted") ||
       Object.values(runtime.submissions.getSnapshot()).some(Boolean) ||
       Object.values(runtime.queue.getSnapshot().threads).some(
         (queue) => queue.items.length > 0,
@@ -47,7 +50,13 @@ export function protectPageExit(
     unsubscribeStores.forEach((unsubscribe) => unsubscribe());
     previous = runtimes;
     unsubscribeStores = runtimes.flatMap((runtime) =>
-      [runtime.drafts, runtime.submissions, runtime.queue, runtime.files]
+      [
+        runtime.drafts,
+        runtime.submissions,
+        runtime.submissions.messages,
+        runtime.queue,
+        runtime.files,
+      ]
         .filter(Boolean)
         .map((store) => store.subscribe(update)),
     );

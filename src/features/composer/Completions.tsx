@@ -129,7 +129,7 @@ export function Completions({
         aria-label="输入补全"
         className="border-b border-border p-2"
       >
-        <div className="px-2 py-1 text-[10px] text-subtle">
+        <div className="px-2 py-1 text-fine text-subtle">
           {token.prefix === "/"
             ? "快捷命令"
             : token.prefix === "$"

@@ -3,32 +3,40 @@ import type { ThreadItem } from "../../generated/v2/ThreadItem";
 
 export type QuestionMessage = Extract<ThreadItem, { type: "agentMessage" }>;
 
-/** A later user message supersedes the preceding prompts, including manual replies. */
+/** Resolve only explicitly associated replies; unrelated follow-ups preserve prompts. */
 export function pendingAsyncQuestions(thread: Thread): QuestionMessage[] {
   const pending: QuestionMessage[] = [];
-  const replies: string[] = [];
-  for (const turn of [...thread.turns].reverse()) {
-    for (const item of [...turn.items].reverse()) {
-      if (item.type === "userMessage") {
-        const text = item.content
-          .flatMap((part) => (part.type === "text" ? [part.text] : []))
-          .join("\n");
-        if (!text.startsWith("回答问题：\n")) return pending.reverse();
-        replies.push(text);
-      }
-      if (
-        item.type === "agentMessage" &&
-        item.questions?.length &&
-        !replies.some((reply) =>
-          item.questions!.every((question) =>
-            reply.includes(`${question.title}\n`),
-          ),
-        )
-      )
+  for (const turn of thread.turns) {
+    for (const item of turn.items) {
+      if (item.type === "agentMessage" && item.questions?.length)
         pending.push(item);
+      if (item.type !== "userMessage") continue;
+      const text = item.content
+        .flatMap((part) => (part.type === "text" ? [part.text] : []))
+        .join("\n");
+      if (!text.startsWith("回答问题：\n")) continue;
+      const associated = asyncAnswerItemId(item.clientId);
+      const marker = associated
+        ? ["", encodeURIComponent(associated)]
+        : text.match(/^回答问题：\n问题编号：([^\n]+)\n/);
+      if (marker) {
+        const index = pending.findIndex(
+          (question) => encodeURIComponent(question.id) === marker[1],
+        );
+        if (index >= 0) pending.splice(index, 1);
+      } else {
+        // Historical replies have no identity. Resolve only an unambiguous match.
+        const matches = pending.filter((question) =>
+          question.questions!.every((entry) =>
+            text.includes(`${entry.title}\n`),
+          ),
+        );
+        if (matches.length === 1)
+          pending.splice(pending.indexOf(matches[0]), 1);
+      }
     }
   }
-  return pending.reverse();
+  return pending;
 }
 
 export function asyncAnswerText(
@@ -36,4 +44,19 @@ export function asyncAnswerText(
   answers: string[],
 ): string {
   return `回答问题：\n${item.questions!.map((question, index) => `${question.title}\n${answers[index].trim()}`).join("\n\n")}`;
+}
+
+export function asyncAnswerClientId(
+  itemId: string,
+  deliveryId: string,
+): string {
+  return `codex-question:${encodeURIComponent(itemId)}:${deliveryId}`;
+}
+export function asyncAnswerItemId(clientId: string | null): string | undefined {
+  const match = clientId?.match(/^codex-question:([^:]+):[^:]+$/);
+  try {
+    return match ? decodeURIComponent(match[1]) : undefined;
+  } catch {
+    return undefined;
+  }
 }

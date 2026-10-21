@@ -120,6 +120,7 @@ it("creates on the first send, applies chosen options and promotes exactly once"
   });
   expect(request).toHaveBeenNthCalledWith(2, "turn/start", {
     threadId: "real",
+    clientUserMessageId: expect.any(String),
     model: "chosen",
     approvalPolicy: "never",
     effort: "high",
@@ -188,12 +189,19 @@ it("keeps the local draft if creation fails and creates only on a deliberate ret
   expect(
     runtime.sessions.getSnapshot().localDrafts[draft.id].serverId,
   ).toBeUndefined();
-  expect(runtime.drafts.get(draft.id).text).toBe("重试的内容");
+  expect(runtime.drafts.get(draft.id).text).toBe("");
+  const [message] = runtime.submissions.messages.forThread(draft.id);
+  expect(message.input).toContainEqual({
+    type: "text",
+    text: "重试的内容",
+    text_elements: [],
+  });
   await runtime.sessions.open(draft.id);
   expect(request).toHaveBeenCalledTimes(1);
   request
     .mockResolvedValueOnce({ thread: thread("real") })
     .mockResolvedValueOnce({ turn: turn() });
+  runtime.submissions.restoreMessage(message.id);
   await runtime.sendDraft(draft.id);
   expect(request.mock.calls.map(([method]) => method)).toEqual([
     "thread/start",
@@ -215,7 +223,13 @@ it("reuses the created ID after the first send fails and never reads the empty s
     "real",
   );
   expect(runtime.sessions.getSnapshot().listIds).toEqual([]);
-  expect(runtime.drafts.get(draft.id).text).toBe("不会丢失");
+  expect(runtime.drafts.get(draft.id).text).toBe("");
+  const [message] = runtime.submissions.messages.forThread(draft.id);
+  expect(message.input).toContainEqual({
+    type: "text",
+    text: "不会丢失",
+    text_elements: [],
+  });
   await runtime.sessions.open(draft.id);
   await runtime.sessions.restoreSelected();
   expect(request).toHaveBeenCalledTimes(2);
@@ -226,12 +240,14 @@ it("reuses the created ID after the first send fails and never reads the empty s
   await runtime.sessions.refresh();
   expect(runtime.sessions.getSnapshot().listIds).toEqual(["other"]);
   request.mockResolvedValueOnce({ turn: turn() });
+  runtime.submissions.restoreMessage(message.id);
   await runtime.sendDraft(draft.id);
   expect(
     request.mock.calls.filter(([method]) => method === "thread/start"),
   ).toHaveLength(1);
   expect(request).toHaveBeenLastCalledWith("turn/start", {
     threadId: "real",
+    clientUserMessageId: expect.any(String),
     input: [{ type: "text", text: "不会丢失", text_elements: [] }],
   });
   expect(runtime.sessions.getSnapshot().selectedId).toBe("real");
@@ -278,7 +294,13 @@ it("keeps both the draft and its known ID if the connection changes during the f
   expect(runtime.sessions.getSnapshot().localDrafts[draft.id].serverId).toBe(
     "real",
   );
-  expect(runtime.drafts.get(draft.id).text).toBe("保留的内容");
+  expect(runtime.drafts.get(draft.id).text).toBe("");
+  const [message] = runtime.submissions.messages.forThread(draft.id);
+  expect(message.input).toContainEqual({
+    type: "text",
+    text: "保留的内容",
+    text_elements: [],
+  });
 });
 
 it("does not promote a draft when the connection changes between acknowledgement and promotion", async () => {
@@ -300,7 +322,13 @@ it("does not promote a draft when the connection changes between acknowledgement
   expect(runtime.sessions.getSnapshot().localDrafts[draft.id]?.serverId).toBe(
     "real",
   );
-  expect(runtime.drafts.get(draft.id).text).toBe("保留已确认但尚未迁移的内容");
+  expect(runtime.drafts.get(draft.id).text).toBe("");
+  const [message] = runtime.submissions.messages.forThread(draft.id);
+  expect(message.input).toContainEqual({
+    type: "text",
+    text: "保留已确认但尚未迁移的内容",
+    text_elements: [],
+  });
   expect(runtime.submissions.getSnapshot()).toEqual({});
 });
 
@@ -359,6 +387,8 @@ it("recreates an unsent bound draft only after the server confirms its old empty
     .mockRejectedValueOnce(new Error("thread old-empty not found"))
     .mockResolvedValueOnce({ thread: thread("new") })
     .mockResolvedValueOnce({ turn: turn() });
+  const [message] = runtime.submissions.messages.forThread(draft.id);
+  runtime.submissions.restoreMessage(message.id);
   await runtime.sendDraft(draft.id);
   expect(request.mock.calls.map(([method]) => method)).toEqual([
     "thread/start",
@@ -411,4 +441,30 @@ it("discarding a draft never removes a turn already observed on the server", asy
     "thread/start",
     "turn/start",
   ]);
+});
+
+it("clears the first message before creation resolves and keeps later edits through acknowledgement", async () => {
+  const { runtime, request } = fixture();
+  const draft = await runtime.sessions.create();
+  runtime.drafts.setText(draft.id, "first message");
+  const creation = deferred<{ thread: Thread }>();
+  const sending = deferred<{ turn: Turn }>();
+  request
+    .mockReturnValueOnce(creation.promise)
+    .mockReturnValueOnce(sending.promise);
+  const pending = runtime.sendDraft(draft.id);
+  expect(runtime.drafts.get(draft.id).text).toBe("");
+  expect(runtime.submissions.messages.forThread(draft.id)[0].status).toBe(
+    "creating",
+  );
+  runtime.drafts.setText(draft.id, "next message");
+  creation.resolve({ thread: thread("real") });
+  await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+  expect(runtime.submissions.messages.forThread(draft.id)[0].status).toBe(
+    "sending",
+  );
+  expect(runtime.drafts.get(draft.id).text).toBe("next message");
+  sending.resolve({ turn: turn() });
+  await pending;
+  expect(runtime.drafts.get("real").text).toBe("next message");
 });

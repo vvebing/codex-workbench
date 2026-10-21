@@ -383,7 +383,7 @@ it("incrementally reads only recent turns when a viewing paginated thread change
     updatedAt: 30,
   };
   f.request.mockResolvedValueOnce({ thread: metadata }).mockResolvedValueOnce({
-    data: [{ ...oldTurn, id: "old-1" }, { ...oldTurn, id: "old-2" }, oldTurn],
+    data: [oldTurn, { ...oldTurn, id: "old-2" }, { ...oldTurn, id: "old-1" }],
     nextCursor: null,
   });
   await f.sessions.open("paginated");
@@ -506,19 +506,23 @@ it("preserves edited drafts while the first send is waiting for automatic activa
   ]);
   expect(request).toHaveBeenLastCalledWith("turn/start", {
     threadId: "draft",
+    clientUserMessageId: expect.any(String),
     input: [{ type: "text", text: "第一份消息", text_elements: [] }],
   });
   expect(runtime.drafts.get("draft").text).toBe("后续未发送草稿");
 });
 
-it("does not clear or replay a draft when automatic activation finds another writer", async () => {
+it("keeps submitted content recoverable without replay when activation finds another writer", async () => {
   const runtime = createRuntime();
   const request = vi
     .spyOn(runtime.connection.client, "request")
     .mockRejectedValue(new Error("thread already has an active writer"));
   runtime.drafts.setText("draft", "保留的消息");
   await expect(runtime.sendDraft("draft")).rejects.toThrow("草稿已保留");
-  expect(runtime.drafts.get("draft").text).toBe("保留的消息");
+  expect(runtime.drafts.get("draft").text).toBe("");
+  expect(runtime.submissions.messages.forThread("draft")[0].draft?.text).toBe(
+    "保留的消息",
+  );
   expect(runtime.sessions.getSnapshot().threadAccess.draft).toBe("occupied");
   expect(request.mock.calls.map(([method]) => method)).toEqual([
     "thread/resume",
@@ -673,7 +677,7 @@ it("polls the selected thread after returning to a pending history read", async 
   f.disconnect();
 });
 
-it("keeps archived threads removed when an earlier list response arrives", async () => {
+it("keeps archived threads out of the list and preserves read-only current context when an earlier response arrives", async () => {
   const f = fixture();
   f.request
     .mockResolvedValueOnce({ thread: thread("a") })
@@ -690,7 +694,10 @@ it("keeps archived threads removed when an earlier list response arrives", async
   f.notify({ method: "thread/archived", params: { threadId: "a" } });
   resolve({ data: [thread("a")], nextCursor: null });
   await refresh;
-  expect(f.sessions.getSnapshot().threads.a).toBeUndefined();
+  expect(f.sessions.getSnapshot().threads.a?.id).toBe("a");
+  expect(f.sessions.getSnapshot().archivedIds.a).toBe(true);
+  expect(f.sessions.getSnapshot().selectedId).toBe("a");
+  expect(f.sessions.getSnapshot().threadAccess.a).toBe("viewing");
   expect(f.sessions.getSnapshot().listIds).toEqual([]);
   f.disconnect();
 });
@@ -724,7 +731,7 @@ it("syncs unloaded paginated history after discovery advances metadata, and retr
   };
   let turns: Thread["turns"] = [turn];
   let failHistory = false;
-  f.request.mockImplementation(async (method) => {
+  f.request.mockImplementation(async (...[method]) => {
     if (method === "thread/list") return { data: [metadata], nextCursor: null };
     if (method === "thread/read") return { thread: metadata };
     if (method === "thread/turns/list") {
@@ -819,4 +826,49 @@ it("reconnect uses the last connection credentials without persisting them", asy
     "ws://127.0.0.1:4501",
     "memory-only-token",
   );
+});
+
+it("preserves project updates for unknown threads while discovery is in flight", async () => {
+  const f = fixture();
+  let resolve!: (value: { data: Thread[] }) => void;
+  f.request.mockReturnValueOnce(
+    new Promise((done) => {
+      resolve = done;
+    }),
+  );
+  f.connect();
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(f.request).toHaveBeenCalledTimes(1);
+  f.notify({
+    method: "thread/project/updated",
+    params: { threadId: "external", projectId: "new-project" },
+  });
+  f.notify({
+    method: "thread/project/updated",
+    params: { threadId: "unassigned", projectId: null },
+  });
+  resolve({
+    data: [
+      {
+        ...thread("external"),
+        projectId: "old-project",
+        cwd: "/real-directory",
+      },
+      { ...thread("unassigned"), projectId: "old-project" },
+    ],
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.sessions.getSnapshot().threads.external).toMatchObject({
+    projectId: "new-project",
+    cwd: "/real-directory",
+  });
+  expect(f.sessions.getSnapshot().threads.unassigned.projectId).toBeNull();
+  f.request.mockResolvedValueOnce({
+    data: [{ ...thread("external"), projectId: "later-project" }],
+  });
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(f.sessions.getSnapshot().threads.external.projectId).toBe(
+    "later-project",
+  );
+  f.disconnect();
 });

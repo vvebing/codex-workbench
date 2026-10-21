@@ -1,6 +1,8 @@
+import { settingsInputClass } from "../settings/settings-ui";
 import { useEffect, useId, useState } from "react";
+import { Popover } from "radix-ui";
 import { Folder } from "lucide-react";
-import { Button } from "../../components/ui";
+import { Button, ErrorNotice } from "../../components/ui";
 import type { FsReadDirectoryResponse } from "../../generated/v2/FsReadDirectoryResponse";
 import type { FileSearchClient } from "../composer/file-search";
 import {
@@ -10,8 +12,7 @@ import {
   parentDirectory,
   separator,
 } from "./workspace-path";
-const pathInputClass =
-  "min-w-0 rounded-lg border border-border bg-elevated px-3 py-[11px] font-mono text-[12px]";
+const pathInputClass = `${settingsInputClass} font-mono`;
 
 type Listing = { key: string; directories: string[]; error?: string };
 function directoryError(error: unknown): string {
@@ -120,80 +121,109 @@ export function WorkspacePicker({
               setFocused(false);
           }}
         >
-          <input
-            id="new-workspace-path"
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={suggestions.length > 0}
-            aria-controls={listId}
-            aria-activedescendant={
-              active >= 0 && active < suggestions.length
-                ? `${listId}-${active}`
-                : undefined
-            }
-            aria-describedby="new-workspace-help"
-            value={value}
-            onChange={(event) => {
-              onChange(event.target.value);
-              setActive(-1);
+          <Popover.Root
+            open={suggestions.length > 0}
+            onOpenChange={(open) => {
+              if (!open) setFocused(false);
             }}
-            onFocus={() => setFocused(true)}
-            onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing) return;
-              if (event.key === "Escape" && focused) {
-                event.preventDefault();
-                event.stopPropagation();
-                setFocused(false);
-              }
-              if (
-                suggestions.length &&
-                (event.key === "ArrowDown" || event.key === "ArrowUp")
-              ) {
-                event.preventDefault();
-                setActive((index) =>
-                  event.key === "ArrowDown"
-                    ? (index + 1) % suggestions.length
-                    : index <= 0
-                      ? suggestions.length - 1
-                      : index - 1,
-                );
-              }
-              if (event.key === "Enter" && active >= 0 && suggestions[active]) {
-                event.preventDefault();
-                choose(suggestions[active]);
-              }
-            }}
-            placeholder="输入或粘贴项目目录的完整路径"
-            autoComplete="off"
-            spellCheck={false}
-            disabled={disabled}
-            className={`${pathInputClass} w-full`}
-          />
-          {suggestions.length > 0 && (
-            <ul
-              id={listId}
-              role="listbox"
-              aria-label="目录建议"
-              className="mt-1 max-h-40 overflow-auto rounded-lg border border-border bg-elevated p-1"
-            >
-              {suggestions.map((name, index) => (
-                <li
-                  key={name}
-                  id={`${listId}-${index}`}
-                  role="option"
-                  aria-selected={active === index}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => choose(name)}
-                  className="cursor-pointer break-all rounded px-3 py-2 text-[12px] hover:bg-hover aria-selected:bg-hover"
+          >
+            <Popover.Anchor asChild>
+              <input
+                id="new-workspace-path"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={suggestions.length > 0}
+                aria-controls={listId}
+                aria-activedescendant={
+                  active >= 0 && active < suggestions.length
+                    ? `${listId}-${active}`
+                    : undefined
+                }
+                aria-describedby="new-workspace-help"
+                value={value}
+                onChange={(event) => {
+                  onChange(event.target.value);
+                  setActive(-1);
+                }}
+                onFocus={() => setFocused(true)}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing) return;
+                  if (event.key === "Escape" && focused) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setFocused(false);
+                  }
+                  if (
+                    suggestions.length &&
+                    (event.key === "ArrowDown" || event.key === "ArrowUp")
+                  ) {
+                    event.preventDefault();
+                    setActive((index) =>
+                      event.key === "ArrowDown"
+                        ? (index + 1) % suggestions.length
+                        : index <= 0
+                          ? suggestions.length - 1
+                          : index - 1,
+                    );
+                  }
+                  if (
+                    event.key === "Enter" &&
+                    active >= 0 &&
+                    suggestions[active]
+                  ) {
+                    event.preventDefault();
+                    choose(suggestions[active]);
+                  }
+                }}
+                placeholder="输入或粘贴项目目录的完整路径"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={disabled}
+                className={`${pathInputClass} w-full`}
+              />
+            </Popover.Anchor>
+            {suggestions.length > 0 && (
+              <Popover.Portal>
+                <Popover.Content
+                  sideOffset={4}
+                  align="start"
+                  onOpenAutoFocus={(event) => event.preventDefault()}
+                  onCloseAutoFocus={(event) => event.preventDefault()}
+                  onInteractOutside={(event) => {
+                    if (
+                      (event.target as HTMLElement).id === "new-workspace-path"
+                    )
+                      event.preventDefault();
+                  }}
+                  className="z-[80] w-[var(--radix-popover-trigger-width)] max-h-[var(--radix-popover-content-available-height)] overflow-auto rounded-lg border border-border bg-elevated p-1 text-foreground shadow-xl"
                 >
-                  {name}
-                  {separator(completion!.parent)}
-                </li>
-              ))}
-            </ul>
-          )}
+                  <ul
+                    id={listId}
+                    role="listbox"
+                    aria-label="目录建议"
+                    className="max-h-40 overflow-auto"
+                  >
+                    {suggestions.map((name, index) => (
+                      <li
+                        key={name}
+                        id={`${listId}-${index}`}
+                        role="option"
+                        aria-selected={active === index}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => choose(name)}
+                        className="cursor-pointer break-all rounded px-3 py-2 text-caption hover:bg-hover aria-selected:bg-hover"
+                      >
+                        {name}
+                        {separator(completion!.parent)}
+                      </li>
+                    ))}
+                  </ul>
+                </Popover.Content>
+              </Popover.Portal>
+            )}
+          </Popover.Root>
           {browsePath === null && focused && current?.error && (
-            <p role="status" className="mt-2 text-[12px] text-muted">
+            <p role="status" className="mt-2 text-caption text-muted">
               {current.error}
             </p>
           )}
@@ -214,7 +244,7 @@ export function WorkspacePicker({
       </div>
       <p
         id="new-workspace-help"
-        className="mt-2 text-[12px] leading-[1.7] text-muted"
+        className="mt-2 text-caption leading-copy text-muted"
       >
         目录位于「{environmentName}」所在机器。留空使用该环境的默认目录。
       </p>
@@ -223,7 +253,7 @@ export function WorkspacePicker({
           aria-label="目录浏览器"
           className="mt-3 rounded-lg border border-border p-3"
         >
-          <p className="mb-2 text-[12px] text-muted">
+          <p className="mb-2 text-caption text-muted">
             正在浏览：{environmentName}
           </p>
           <div className="flex items-center gap-2">
@@ -250,9 +280,7 @@ export function WorkspacePicker({
             </Button>
           </div>
           {addressError && (
-            <p role="alert" className="mt-2 text-[12px] text-danger">
-              {addressError}
-            </p>
+            <ErrorNotice className="mt-2">{addressError}</ErrorNotice>
           )}
           <div className="my-2 flex gap-2">
             <Button
@@ -281,19 +309,19 @@ export function WorkspacePicker({
             aria-busy={connected && !current}
           >
             {!connected ? (
-              <p role="status" className="text-[12px] text-muted">
+              <p role="status" className="text-caption text-muted">
                 环境已断开，重新连接后可继续浏览。
               </p>
             ) : !current ? (
-              <p role="status" className="text-[12px] text-muted">
+              <p role="status" className="text-caption text-muted">
                 正在读取目录…
               </p>
             ) : current.error ? (
-              <p role="status" className="break-all text-[12px] text-danger">
+              <p role="status" className="break-all text-caption text-danger">
                 {current.error}
               </p>
             ) : current.directories.length === 0 ? (
-              <p role="status" className="text-[12px] text-muted">
+              <p role="status" className="text-caption text-muted">
                 此目录下没有子文件夹，可以直接选择此目录。
               </p>
             ) : (
@@ -303,7 +331,7 @@ export function WorkspacePicker({
                   type="button"
                   disabled={disabled}
                   onClick={() => navigate(joinDirectory(browsePath, name))}
-                  className="flex min-h-10 w-full items-center gap-2 rounded px-2 py-2 text-left text-[12px] hover:bg-hover"
+                  className="flex min-h-10 w-full items-center gap-2 rounded px-2 py-2 text-left text-caption hover:bg-hover"
                 >
                   <Folder size={15} className="shrink-0 text-muted" />
                   <span className="break-all">{name}</span>

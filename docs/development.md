@@ -76,13 +76,21 @@ codex app-server generate-ts --out /tmp/codex-workbench-protocol --experimental
 
 ## 界面与样式
 
-布局、间距和交互状态优先使用 Tailwind utility；重复控件复用 `src/components/ui.tsx` 中的 Button、IconButton、Modal、Menu 和 SelectField。主题颜色集中在 `src/styles.css`，使用 `bg-surface`、`text-muted`、`border-border` 等语义 token。
+布局、间距和交互状态优先使用 Tailwind utility；重复控件复用 `src/components/ui.tsx` 中的 Button、IconButton、Modal、Menu 和 SelectField。入口 `src/main.tsx` 必须先导入 `src/styles.css`，再导入 App 和功能模块，确保生产打包时先声明 Tailwind 层顺序，避免基础重置覆盖组件样式。输入框内边距使用 `px-4 pt-4 pb-2`，窄屏用 `px-3 pt-3`，遵循四像素间距单位。设计变量集中在 `src/theme.css`，`src/styles.css` 负责导入、基础样式和移动端视口保护。主题使用 `bg-surface`、`text-muted`、`border-border` 等语义 token；局部 CSS 读取同一组变量，不再单独定义颜色或固定字号。
+
+字号使用已有的 `text-xs/sm/base/lg` 或命名角色：`text-fine`（10px 提示）、`text-meta`（11px 元信息）、`text-caption`（12px 辅助说明）、`text-control`（13px 控件）、`text-body`（14px 正文）、`text-prose`（15px Markdown）、`text-code`（13px 代码）。品牌和标题保留独立角色，避免重构改变现有层级。命名角色默认继承行高；标准字号保留 Tailwind 原有行高。正文、代码等特殊行高使用 `leading-copy/prose/code`。不要新增 `text-[13px]` 等重复定义；确有新层级时先扩展 token。
+
+在根元素设置 `--font-scale: 1.125` 可统一放大文字；`--code-font-size` 独立控制 Monaco 和 Markdown 代码块字号（默认 13px），`--font-sans`、`--font-mono` 分别控制界面与等宽字体。界面默认倍率为 1；`--root-font-size` 固定 rem 布局基准，`--spacing` 独立控制间距。移动端输入框通过 `--mobile-input-size` 保持至少 16px，避免聚焦自动缩放。设置弹窗的“通用 → 字体与字号”提供界面基准字号、代码字号、界面字体、等宽字体、即时预览和重置入口。字号选项以 px 展示和保存，界面基准默认为 14px，标题和辅助文字按比例调整；代码默认为 13px，不受界面字号影响。旧百分比偏好自动换算为等效 px，保留小数值以避免改变原有显示大小。偏好以 `codex-workbench.typography` 保存到当前浏览器，在 React 挂载前恢复，并同步其他标签页；存储不可用时仍可在本次访问中调整。重置仅清除字体覆盖，保留主题与视口变量。字体预设集中在主题文件，未安装的字体使用备用字体，不下载外部字体。
+
+Monaco 和 Mermaid 通过 `src/lib/appearance.ts` 读取同一组变量；字号经过浏览器计算后传入渲染器，不能直接对含 `calc()` 的 CSS 变量使用 `parseFloat`。根元素的主题、class 或内联变量改变后，编辑器更新外观，图表重新渲染。供这两个渲染器使用的主题颜色采用十六进制值；编辑器继承原生语言主题并覆盖应用表面色及常见语法色。遮罩、差异颜色和文件弹窗阴影也在主题文件维护。
 
 设置弹窗由 `SettingsDialog.tsx` 组合分类导航和独立滚动内容，包含通用、工作环境、已归档会话与终端输出四个分类；通用包含显示与执行中发送偏好；工作环境先选择设备，再切换连接与账户、模型与权限、工具与集成、配置迁移。浏览器模型偏好与服务端模型配置放在同一页，分别标明作用范围。表单状态保留在弹窗的职责 hook 中，连接表单和浏览器模型偏好在切换分类时保留普通未保存字段，设备工具表单随页面或设备切换重置；Token 在关闭、切换分类、子页面或环境时清空。环境选择器仅用于工作环境与归档，浏览器模型偏好是当前浏览器的全局偏好；跟随设备默认的新草稿首发不指定模型和非显式推理强度，由服务端解析有效配置。设置内使用四像素间距单位，控件、卡片和弹窗圆角分别为 8、12、16 像素；圆角变量限定在设置弹窗，避免受根字体大小影响。
 
 命令汇总的手动展开／折叠选择保存在现有 `OperationGroup`，按汇总成员和会话／轮次身份关联；命令追加和历史压缩保留用户选择；操作结束统一收起，之后可手动重开。最终总结保持可见。
 
 菜单、编辑器和 Markdown 等复杂或第三方节点排版使用作用域明确的局部 CSS，保持 `@layer components` 和低优先级选择器。样式类只负责展示，测试定位使用可访问名称或 `data-slot`。Radix 负责弹窗和菜单焦点，面板库负责尺寸调整。
+
+是否保留局部 CSS 取决于第三方 DOM、结构选择器和组件内部关联状态，不以类名长度作为唯一依据。简单布局直接写 utility，重复控件优先抽组件/变体，不批量使用 `@apply` 隐藏重复。utility 层优先于 components 层，给通用控件设置选中状态时应使用 `aria-pressed:*` 等变体。动态宽度、树缩进与图表缩放可保留内联数值。`styles.css` 中视口安全区和移动输入框保护有意不分层，以覆盖工具类和第三方样式。
 
 编辑器使用 Tiptap／ProseMirror 的文本、段落、换行、原子引用节点与历史能力。草稿同时保存结构化文档和协议所需文本／技能信息，删除、粘贴、撤销引用时应保持两者一致。
 
@@ -120,3 +128,23 @@ CI 使用 Node.js 22 安装锁定依赖，执行 `npm audit --audit-level=low`�
 `package.json` 暂时将 Monaco 的传递依赖 DOMPurify 覆盖为 `3.4.17`，避免其固定依赖 `3.4.15` 引入已知安全公告 GHSA-p98j-92pf-mc4p 和 GHSA-6688-9rhm-gjv2。升级 Monaco 时复核上游依赖；上游包含修复后移除覆盖，并重新运行依赖审计、编辑器与 Markdown／Mermaid 测试。不要为消除审计提示强制降级编辑器。
 
 自动化协议替身和非推理烟测不覆盖真实模型推理、命令执行、文件修改、远端认证和 SSH 稳定性。这些行为需要在实际使用的 app-server 环境中验证；发布记录应描述当次真实结果，不复用旧验收计数。
+
+会话布局默认为自适应宽度；“通用 → 会话布局”可切换到 840px 阅读宽度。`--conversation-max-width` 与 `.conversation-content` 统一正文、输入区和问答面板的宽度及标准间距。布局偏好单独保存在 `codex-workbench.conversation-width`，支持跨标签页同步。输入区使用命名容器 `conversation` 的断点；编辑器并排依据可用工作区宽度，不依赖浏览器窗口宽度。
+
+连接初始化时从 `initialize.userAgent` 的首个 `codex_web/<version>` 标识提取运行中 app-server 的版本，不使用末尾客户端版本；无法识别则显示未知。版本按连接隔离，断开即清除。“工作环境 → 连接信息”提供手动检查更新，通过同源 `GET /codex-release` 查询 OpenAI Codex 官方 GitHub 最新稳定发布。开发与生产服务共用实现，成功缓存 5 分钟、失败冷却 30 秒、请求超时 8 秒，并合并并发查询。只提示稳定版本更新和发布说明，不执行更新或重启；预发布版本不会被建议降级。
+
+左右侧栏采用 px 偏好：导航默认 280px（240～400px）、项目面板默认 320px（280～480px）。`ShellPanels` 将像素转换为面板库比例，但只在用户拖拽结束或键盘调整后保存 `codex-workbench.sidebar-widths`；窗口缩放、隐藏面板和临时收缩均不改写偏好。中间工作区至少保留 480px，空间不足时项目面板改为抽屉。设置中的“重置侧栏宽度”恢复默认值，也可双击分隔条重置对应侧栏；旧版百分比存储不再用于新布局。
+
+会话 Markdown 中的 PNG/JPEG/GIF/WebP 文件链接点击后通过当前 app-server 的 `fs/readFile` 读取，验证图片格式与大小后复用缩放预览弹窗。意外生成的同源 HTTP 图片链接仅在原会话 cwd 内回收为工作区文件链接，拒绝路径穿越；读取结果按连接与文件路径隔离。该功能不将工作区目录开放为静态 HTTP 资源，直接访问裸 `/data/...` URL 仍可能返回 404。
+
+每次环境连接成功会触发后台版本检查，共用浏览器内 5 分钟缓存并合并并发请求；失败冷却 30 秒，设置中的手动检查可立即重试。主界面仅在当前环境版本可识别且存在更高稳定版本时显示可关闭的更新提示，重连后可再次提示；无更新或检查失败时保持安静。若仍在运行的旧网页后端对 `/codex-release` 返回 HTML/404，浏览器兼容性回退直接请求官方公开 GitHub 发布 API（不携带凭据），无需为此中断 app-server。新后端仍优先使用同源更新接口。
+
+文件工作区中的 PNG/JPEG/GIF/WebP 在原文件标签页中自适应预览，不进入 Monaco 文本模型。图片通过 app-server 读取并复用格式和编码大小（10 MB）校验；只读预览不提供文本保存/比较操作，读取或解码失败显示错误。切换图片与文本标签保留代码模型和撤销历史。
+
+`ImageViewer` 统一负责预览图片的渲染、等比适应与加载失败提示，图片源变化时重置失败状态。`ImagePreview` 提供弹窗和焦点恢复，`FileImagePreview` 提供文件标签页布局，两者复用同一查看组件；会话缩略图保留独立的尺寸与交互。
+
+## app-server 接口审计
+
+RPC 请求参数通过 `ClientRequest` 派生的 `RpcCall` 绑定方法与参数，业务层不能直接再次初始化连接。不要添加 `string/unknown` 透传或绕过契约的类型断言。返回类型目前仍需调用方引用生成类型；完整响应映射尚待补齐。
+
+修改调用或通知处理后，运行 `npm run audit:protocol` 更新 [逐项清单](app-server-interface-matrix.md)。`npm run check:protocol` 会验证生成结果，已纳入 `npm run check`。类型负例在 `tests/types/rpc-contract.ts`；审计结论与版本限制见 [审计报告](app-server-audit-2026-10-20.md)。

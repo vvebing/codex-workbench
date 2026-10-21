@@ -1,3 +1,4 @@
+import { sameEnvironmentSessions } from "./environment-summary";
 import { createRuntime } from "../../lib/runtime";
 import { sameEndpoint } from "./store";
 import { Store } from "../../lib/store";
@@ -49,7 +50,7 @@ export class EnvironmentsStore extends Store<{
   constructor(profiles: EnvironmentProfile[] = savedProfiles()) {
     const entries = profiles.map((profile) => ({
       ...profile,
-      runtime: createRuntime({}, profile.id),
+      runtime: createRuntime({}, profile.id, profile.url),
     }));
     let activeId = entries[0].id;
     try {
@@ -62,6 +63,7 @@ export class EnvironmentsStore extends Store<{
     for (const entry of entries) {
       this.observe(entry);
       entry.runtime.sessions.setForeground(entry.id === this.state.activeId);
+      entry.runtime.files.setForeground(entry.id === this.state.activeId);
     }
   }
   private restored = false;
@@ -78,6 +80,7 @@ export class EnvironmentsStore extends Store<{
   }
   private observers = new Map<string, (() => void)[]>();
   private observe(entry: Environment) {
+    let sessions = entry.runtime.sessions.getSnapshot();
     this.observers.set(
       entry.id,
       [
@@ -86,6 +89,11 @@ export class EnvironmentsStore extends Store<{
         entry.runtime.requests,
       ].map((store) =>
         store.subscribe(() => {
+          if (store === entry.runtime.sessions) {
+            const next = entry.runtime.sessions.getSnapshot();
+            if (sameEnvironmentSessions(sessions, next)) return;
+            sessions = next;
+          }
           if (store === entry.runtime.connection) {
             const current = this.state.entries.find((e) => e.id === entry.id);
             if (current)
@@ -102,8 +110,10 @@ export class EnvironmentsStore extends Store<{
   }
   select(id: string) {
     if (!this.state.entries.some((e) => e.id === id)) return;
-    for (const entry of this.state.entries)
+    for (const entry of this.state.entries) {
       entry.runtime.sessions.setForeground(entry.id === id);
+      entry.runtime.files.setForeground(entry.id === id);
+    }
     this.update({ ...this.state, activeId: id });
     try {
       localStorage.setItem("codex-active-environment", id);
@@ -118,7 +128,7 @@ export class EnvironmentsStore extends Store<{
     const entry = {
       ...profile,
       autoConnect: profile.autoConnect ?? old?.autoConnect,
-      runtime: old?.runtime || createRuntime({}, profile.id),
+      runtime: old?.runtime || createRuntime({}, profile.id, profile.url),
     };
     if (old && !sameEndpoint(old.url, profile.url))
       old.runtime.connection.disconnect();
@@ -127,6 +137,7 @@ export class EnvironmentsStore extends Store<{
       : [...this.state.entries, entry];
     this.update({ ...this.state, entries });
     if (!old) this.observe(entry);
+    entry.runtime.files.setForeground(entry.id === this.state.activeId);
     this.persist();
     if (activate) this.select(entry.id);
     return entry;

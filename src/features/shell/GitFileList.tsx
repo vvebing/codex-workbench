@@ -44,10 +44,16 @@ export function GitFileList({
   files,
   treeView,
   renderFile,
+  directoryOpen,
+  directoryKey,
+  onDirectoryChange,
 }: {
   files: GitFile[];
   treeView: boolean;
   renderFile: (file: GitFile) => ReactNode;
+  directoryOpen: Record<string, boolean>;
+  directoryKey: string;
+  onDirectoryChange: (key: string, open: boolean) => void;
 }) {
   const tree = useMemo(() => buildTree(files), [files]);
   const renderDirectory = (directory: Directory): ReactNode => (
@@ -56,14 +62,22 @@ export function GitFileList({
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((child) => (
           <li key={child.path}>
-            <details className="git-folder" open>
+            <details
+              className="git-folder"
+              open={directoryOpen[`${directoryKey}:${child.path}`] ?? true}
+            >
               <summary
+                onClick={(event) => {
+                  event.preventDefault();
+                  const key = `${directoryKey}:${child.path}`;
+                  onDirectoryChange(key, !(directoryOpen[key] ?? true));
+                }}
                 title={child.path}
                 aria-label={`目录 ${child.path}，${child.descendants.length} 个更改文件`}
               >
                 <ChevronRight size={12} className="git-folder-chevron" />
                 <Folder size={14} className="text-muted" />
-                <span className="git-filename">{child.name}</span>
+                <span className="min-w-0 truncate">{child.name}</span>
                 <span className="git-folder-count">
                   {child.descendants.length}
                 </span>

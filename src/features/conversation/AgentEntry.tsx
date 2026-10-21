@@ -10,6 +10,7 @@ import {
 import type { Thread } from "../../generated/v2/Thread";
 import { useRuntime } from "../../lib/runtime-context";
 import { useStore } from "../../components/hooks";
+import { ScrollArea } from "../../components/ui";
 import {
   directAgentTasks,
   resolveAgentStatus,
@@ -52,7 +53,7 @@ function AgentRow({
         <div className="flex items-center gap-2">
           <span className="truncate text-xs font-medium">{name}</span>
           <span
-            className={`shrink-0 text-[11px] ${waiting ? "text-accent" : "text-muted"}`}
+            className={`shrink-0 text-meta ${waiting ? "text-accent" : "text-muted"}`}
           >
             {status === "waiting"
               ? "等待确认"
@@ -66,7 +67,7 @@ function AgentRow({
           </span>
         </div>
         <p
-          className="mt-1 truncate text-[11px] text-muted"
+          className="mt-1 truncate text-meta text-muted"
           title={activity.replace(/\s+/g, " ").slice(0, 240)}
         >
           {activity}
@@ -185,37 +186,37 @@ export function AgentEntry({
           >
             <Bot size={14} />
             {counts.running > 0 && (
-              <span className="hidden text-[10px] @min-[650px]:inline">
+              <span className="hidden text-fine @min-[650px]:inline">
                 {counts.running} 运行中
               </span>
             )}
             {counts.completed > 0 && (
-              <span className="hidden text-[10px] @min-[650px]:inline">
+              <span className="hidden text-fine @min-[650px]:inline">
                 {counts.completed} 已完成
               </span>
             )}
             {counts.preparing > 0 && (
-              <span className="hidden text-[10px] @min-[650px]:inline">
+              <span className="hidden text-fine @min-[650px]:inline">
                 {counts.preparing} 准备中
               </span>
             )}
             {counts.failed > 0 && (
-              <span className="hidden text-[10px] text-danger @min-[650px]:inline">
+              <span className="hidden text-fine text-danger @min-[650px]:inline">
                 {counts.failed} 失败
               </span>
             )}
             {counts.interrupted > 0 && (
-              <span className="hidden text-[10px] @min-[650px]:inline">
+              <span className="hidden text-fine @min-[650px]:inline">
                 {counts.interrupted} 已中断
               </span>
             )}
             {counts.unknown > 0 && (
-              <span className="hidden text-[10px] @min-[650px]:inline">
+              <span className="hidden text-fine @min-[650px]:inline">
                 {counts.unknown} 状态待确认
               </span>
             )}
             <span
-              className="flex items-center gap-1 text-[10px] @min-[650px]:hidden"
+              className="flex items-center gap-1 text-fine @min-[650px]:hidden"
               aria-hidden="true"
             >
               {counts.running > 0 && (
@@ -245,7 +246,7 @@ export function AgentEntry({
               )}
             </span>
             {pendingCount > 0 && (
-              <span className="text-[10px] text-accent">
+              <span className="text-fine text-accent">
                 {pendingCount} 待处理
               </span>
             )}
@@ -259,7 +260,7 @@ export function AgentEntry({
             align="start"
             sideOffset={8}
             collisionPadding={12}
-            className="z-50 w-80 max-w-[calc(100vw-24px)] rounded-lg border border-border bg-elevated p-1 text-foreground shadow-xl"
+            className="z-50 w-80 max-w-[calc(100vw-24px)] overflow-hidden rounded-lg border border-border bg-elevated text-foreground shadow-xl"
             onMouseEnter={cancelClose}
             onMouseLeave={closeLater}
             onFocusCapture={cancelClose}
@@ -299,11 +300,14 @@ export function AgentEntry({
               rows[next].focus();
             }}
           >
-            <p className="px-3 py-2 text-[11px] text-muted">
+            <p className="px-4 pt-3 pb-2 text-meta text-muted">
               子代理 · {agents.length}
               {pendingCount ? ` · ${pendingCount} 待处理` : ""}
             </p>
-            <div className="max-h-72 overflow-y-auto">
+            <ScrollArea
+              className="max-h-72"
+              viewportProps={{ className: "pl-1 pr-3 pb-1" }}
+            >
               {agents.map((agent) => (
                 <AgentRow
                   key={agent.id}
@@ -318,7 +322,7 @@ export function AgentEntry({
                   }}
                 />
               ))}
-            </div>
+            </ScrollArea>
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>

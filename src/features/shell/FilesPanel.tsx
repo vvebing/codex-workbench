@@ -1,4 +1,5 @@
-import { Button } from "../../components/ui";
+import { settingsInputClass } from "../settings/settings-ui";
+import { Button, IconButton, ErrorNotice } from "../../components/ui";
 import { readIgnoredPaths } from "./git-ignore";
 import {
   useEffect,
@@ -22,7 +23,11 @@ import { ContextMenu } from "radix-ui";
 import { useStore } from "../../components/hooks";
 import { useRuntime } from "../../lib/runtime-context";
 import type { Thread } from "../../generated/v2/Thread";
-import type { FsReadDirectoryResponse } from "../../generated/v2/FsReadDirectoryResponse";
+import {
+  workspaceDirectories,
+  type DirectoryEntry as Entry,
+  type DirectoryListing as Listing,
+} from "./workspace-directories";
 import { searchWorkspaceFiles } from "../composer/file-search";
 import { referenceProjectFile, workspacePath } from "./project-files";
 
@@ -31,11 +36,6 @@ import { treeGitDecorations } from "./tree-git";
 import { watchWorkspace } from "./workspace-watch";
 import "../files/files.css";
 import { FileDialog } from "../files/FileDialog";
-
-type Entry = { path: string; directory: boolean; file: boolean };
-type Listing = { entries?: Entry[]; error?: string };
-const actionClass =
-  "rounded px-2 py-1 text-xs hover:bg-hover disabled:opacity-50";
 
 export function FilesPanel({ thread }: { thread: Thread }) {
   const { connection } = useRuntime();
@@ -46,7 +46,7 @@ export function FilesPanel({ thread }: { thread: Thread }) {
     return <p className="p-4 text-xs text-muted">当前会话没有项目目录。</p>;
   return (
     <ConnectedFiles
-      key={JSON.stringify([epoch, scope, thread.id, thread.cwd])}
+      key={JSON.stringify([epoch, scope, thread.cwd])}
       thread={thread}
     />
   );
@@ -60,15 +60,23 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
   );
   const git = useWorkspaceGitStatus(thread.cwd);
   const refreshGit = git.refresh;
+  const gitDirectory =
+    git.value?.repoRoot && git.workspacePrefix !== undefined
+      ? `${git.value.repoRoot.replace(/\/$/, "")}/${git.workspacePrefix}`
+      : thread.cwd;
   const decorations = useMemo(
-    () => treeGitDecorations(git.value, thread.cwd),
-    [git.value, thread.cwd],
+    () => treeGitDecorations(git.value, gitDirectory),
+    [git.value, gitDirectory],
   );
-  const [directories, setDirectories] = useState<Record<string, Listing>>({});
-  const [expanded, setExpanded] = useState<Set<string>>(new Set([""]));
-  const [query, setQuery] = useState("");
+  const cache = useMemo(
+    () => workspaceDirectories(connection, thread.cwd),
+    [connection, thread.cwd],
+  );
+  const directories = useSyncExternalStore(cache.subscribe, cache.getSnapshot);
+  const [expanded, setExpanded] = useState<Set<string>>(cache.expanded);
+  const [query, setQuery] = useState(cache.query);
   const [search, setSearch] = useState<Listing>({});
-  const [revision, setRevision] = useState(0);
+  const [revision, setRevision] = useState(cache.revision);
   const ignoreStatus = JSON.stringify(git.value?.files);
   const ignoreRoot = git.value?.repoRoot;
   const [ignored, setIgnored] = useState<Set<string>>(new Set());
@@ -114,8 +122,10 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
   ]);
   const [menuEntry, setMenuEntry] = useState<Entry>();
   const menuFocus = useRef<HTMLElement | null>(null);
-  const [selected, setSelected] = useState<string>();
-  const [selectedDirectory, setSelectedDirectory] = useState(false);
+  const [selected, setSelected] = useState<string | undefined>(cache.selected);
+  const [selectedDirectory, setSelectedDirectory] = useState(
+    cache.selectedDirectory,
+  );
   const [operation, setOperation] = useState<
     "file" | "directory" | "copy" | "delete"
   >();
@@ -125,7 +135,16 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
   const [notice, setNotice] = useState("");
   const active = useRef(true);
   const directoryGeneration = useRef(0);
-  const requestedDirectories = useRef(new Map<string, number>());
+  const scroll = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    cache.expanded = expanded;
+    cache.query = query;
+    cache.selected = selected;
+    cache.selectedDirectory = selectedDirectory;
+  }, [cache, expanded, query, selected, selectedDirectory]);
+  useEffect(() => {
+    if (scroll.current) scroll.current.scrollTop = cache.scrollTop;
+  }, [cache]);
   const searchQuery = useRef("");
   const identity = useRef(connection.getSnapshot());
   const current = () => {
@@ -145,60 +164,9 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
   }, []);
 
   useEffect(() => {
-    const generation = directoryGeneration.current;
-    const snapshot = connection.getSnapshot();
-    const valid = () =>
-      active.current &&
-      generation === directoryGeneration.current &&
-      connection.getSnapshot().epoch === snapshot.epoch &&
-      connection.getSnapshot().scope === snapshot.scope;
-    for (const relative of expanded) {
-      if (requestedDirectories.current.get(relative) === generation) continue;
-      requestedDirectories.current.set(relative, generation);
-      // Keep cached rows mounted while a remote refresh is in flight.
-      setDirectories((old) =>
-        old[relative] ? old : { ...old, [relative]: {} },
-      );
-      void Promise.resolve()
-        .then(() =>
-          connection.client.request<FsReadDirectoryResponse>(
-            "fs/readDirectory",
-            {
-              path: relative ? workspacePath(thread.cwd, relative) : thread.cwd,
-            },
-          ),
-        )
-        .then((result) => {
-          if (!valid()) return;
-          const entries = result.entries
-            .filter(
-              (entry) =>
-                entry.fileName !== ".git" &&
-                !/[\\/]/.test(entry.fileName) &&
-                entry.fileName !== "." &&
-                entry.fileName !== "..",
-            )
-            .map((entry) => ({
-              path: relative ? `${relative}/${entry.fileName}` : entry.fileName,
-              directory: entry.isDirectory,
-              file: entry.isFile,
-            }))
-            .sort(
-              (a, b) =>
-                Number(b.directory) - Number(a.directory) ||
-                a.path.localeCompare(b.path),
-            );
-          setDirectories((old) => ({ ...old, [relative]: { entries } }));
-        })
-        .catch((error: unknown) => {
-          if (valid())
-            setDirectories((old) => ({
-              ...old,
-              [relative]: { ...old[relative], error: String(error) },
-            }));
-        });
-    }
-  }, [connection, thread.cwd, expanded, revision]);
+    cache.revision = revision;
+    for (const relative of expanded) void cache.read(relative, revision);
+  }, [cache, expanded, revision]);
 
   useEffect(() => {
     if (!query.trim()) return;
@@ -241,19 +209,33 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
     };
   }, [connection, thread.cwd, query, revision]);
 
-  useEffect(
-    () =>
-      watchWorkspace(connection, thread.cwd, () => {
-        ++directoryGeneration.current;
-        setRevision((value) => value + 1);
-      }),
-    [connection, thread.cwd],
-  );
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
+      cache.invalidate();
+      ++directoryGeneration.current;
+      setRevision((value) => value + 1);
+    };
+    const off = watchWorkspace(connection, thread.cwd, refresh);
+    const timer = setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      off();
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [cache, connection, thread.cwd]);
 
   useEffect(() => {
-    ++directoryGeneration.current;
-    setRevision((value) => value + 1);
-  }, [fileRevision]);
+    if (
+      cache.consumeFileRevision(fileRevision, files.getSnapshot().changedPaths)
+    ) {
+      ++directoryGeneration.current;
+      setRevision(cache.revision);
+    }
+  }, [cache, files, fileRevision]);
 
   const open = async (path: string) => {
     setSelected(path);
@@ -269,10 +251,21 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       if (current()) setNotice(String(error));
     }
   };
+  const creationDirectory = selected
+    ? selectedDirectory
+      ? selected
+      : selected.replace(/\\/g, "/").split("/").slice(0, -1).join("/")
+    : "";
   const beginOperation = (kind: "file" | "directory" | "copy" | "delete") => {
     setOperation(kind);
     setOperationError("");
-    setDestination(kind === "copy" ? `${selected ?? ""}.copy` : "");
+    setDestination(
+      kind === "copy"
+        ? `${selected ?? ""}.copy`
+        : kind !== "delete" && creationDirectory
+          ? `${creationDirectory}/`
+          : "",
+    );
   };
   const prepareMenu = (target: HTMLElement) => {
     const row = target.closest<HTMLElement>("[data-file-entry]");
@@ -300,9 +293,9 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
   ): React.ReactNode => {
     if (listing?.error && !listing.entries)
       return (
-        <p role="alert" className="px-3 py-2 text-xs text-muted break-words">
+        <ErrorNotice className="mx-3 my-2">
           读取失败：{listing.error}。请刷新重试。
-        </p>
+        </ErrorNotice>
       );
     if (!listing?.entries)
       return <p className="px-3 py-2 text-xs text-muted">正在读取…</p>;
@@ -314,7 +307,8 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       return (
         <div key={entry.path}>
           <div
-            className="group flex items-center rounded hover:bg-hover"
+            className={`group flex items-center rounded hover:bg-hover ${selected === entry.path ? "bg-selected" : ""}`}
+            data-selected={selected === entry.path || undefined}
             data-file-entry={entry.path}
             data-directory={entry.directory}
             data-file={entry.file}
@@ -327,6 +321,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
               title={`${entry.path}${decoration ? `：${decoration.label}` : isIgnored ? "：已被 Git 忽略" : ""}`}
               aria-label={`${entry.path}${decoration ? `，${decoration.label}` : isIgnored ? "，已被 Git 忽略" : ""}`}
               disabled={!entry.directory && !entry.file}
+              aria-pressed={selected === entry.path}
               aria-expanded={
                 entry.directory ? expanded.has(entry.path) : undefined
               }
@@ -363,16 +358,15 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
               {decoration && (
                 <span
                   aria-hidden="true"
-                  className="ml-auto shrink-0 font-mono text-[10px]"
+                  className="ml-auto shrink-0 font-mono text-fine"
                 >
                   {decoration.badge}
                 </span>
               )}
             </button>
-            <button
-              type="button"
-              className="shrink-0 rounded p-1.5 text-muted opacity-0 hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100 max-[900px]:opacity-100"
-              aria-label={`更多操作：${entry.path}`}
+            <IconButton
+              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-[900px]:opacity-100"
+              label={`更多操作：${entry.path}`}
               title="更多操作"
               aria-haspopup="menu"
               disabled={!entry.directory && !entry.file}
@@ -389,7 +383,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
               }}
             >
               <MoreHorizontal size={14} />
-            </button>
+            </IconButton>
           </div>
           {entry.directory &&
             expanded.has(entry.path) &&
@@ -401,12 +395,19 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="项目文件">
       <div className="flex items-center gap-2 p-3">
-        <span
-          className="min-w-0 flex-1 truncate text-xs font-medium"
+        <button
+          type="button"
+          aria-label="选择项目根目录"
+          aria-pressed={selected === undefined}
+          onClick={() => {
+            setSelected(undefined);
+            setSelectedDirectory(false);
+          }}
+          className={`min-w-0 flex-1 truncate rounded px-1 text-left text-xs font-medium hover:bg-hover ${selected === undefined ? "bg-selected" : ""}`}
           title={`${thread.cwd}${decorations.get("") ? `：${decorations.get("")!.label}` : ""}`}
         >
           {thread.cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? thread.cwd}
-        </span>
+        </button>
         {decorations.get("") && (
           <span
             className={`text-xs font-mono ${decorations.get("")!.className}`}
@@ -416,38 +417,30 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
             {decorations.get("")!.badge}
           </span>
         )}
-        <button
-          type="button"
-          className={actionClass}
-          aria-label="新建文件"
-          title="新建文件"
+        <IconButton
+          label="新建文件"
+          title={`新建文件于：${creationDirectory || "项目根目录"}`}
           onClick={() => beginOperation("file")}
         >
           <FilePlus size={14} />
-        </button>
-        <button
-          type="button"
-          className={actionClass}
-          aria-label="新建目录"
-          title="新建目录"
+        </IconButton>
+        <IconButton
+          label="新建目录"
+          title={`新建目录于：${creationDirectory || "项目根目录"}`}
           onClick={() => beginOperation("directory")}
         >
           <FolderPlus size={14} />
-        </button>
-        <button
-          type="button"
-          className={actionClass}
-          aria-label="折叠所有文件夹"
+        </IconButton>
+        <IconButton
+          label="折叠所有文件夹"
           title="折叠所有文件夹"
           disabled={expanded.size <= 1}
           onClick={() => setExpanded(new Set([""]))}
         >
           <ListCollapse size={14} />
-        </button>
-        <button
-          type="button"
-          className={actionClass}
-          aria-label="刷新项目文件"
+        </IconButton>
+        <IconButton
+          label="刷新项目文件"
           onClick={() => {
             void refreshGit();
             ++directoryGeneration.current;
@@ -455,11 +448,11 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
           }}
         >
           <RefreshCw size={14} />
-        </button>
+        </IconButton>
       </div>
       <div className="px-3 pb-2">
         <input
-          className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs"
+          className={settingsInputClass}
           aria-label="搜索项目文件"
           placeholder="搜索文件…"
           value={query}
@@ -478,6 +471,10 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       <ContextMenu.Root>
         <ContextMenu.Trigger asChild>
           <div
+            ref={scroll}
+            onScroll={(event) => {
+              cache.scrollTop = event.currentTarget.scrollTop;
+            }}
             className="min-h-24 flex-1 overflow-auto pb-3"
             onContextMenu={(event) => {
               if (!prepareMenu(event.target as HTMLElement))
@@ -628,7 +625,26 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                   );
                   setSelected(undefined);
                 }
-                if (current()) setOperation(undefined);
+                if (current()) {
+                  if (operation === "file" || operation === "directory") {
+                    const relative = destination.trim().replace(/\\/g, "/");
+                    setSelected(relative);
+                    setSelectedDirectory(operation === "directory");
+                    setExpanded((old) => {
+                      const next = new Set(old);
+                      const parts = relative.split("/");
+                      for (let i = 1; i < parts.length; i++)
+                        next.add(parts.slice(0, i).join("/"));
+                      if (operation === "directory") next.add(relative);
+                      return next;
+                    });
+                    setQuery("");
+                    setNotice(
+                      `已创建${operation === "file" ? "文件" : "目录"}：${relative}`,
+                    );
+                  }
+                  setOperation(undefined);
+                }
               })()
                 .catch((error: unknown) => {
                   if (current()) setOperationError(String(error));
@@ -645,6 +661,12 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                     ? "复制到新路径"
                     : "永久删除"}
             </h2>
+            {(operation === "file" || operation === "directory") && (
+              <p>
+                创建位置：{creationDirectory || "项目根目录"}
+                。可修改下方完整路径。
+              </p>
+            )}
             {operation === "copy" && (
               <p>复制磁盘上的内容；编辑器内尚未保存的修改不会包含在副本中。</p>
             )}
@@ -658,6 +680,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
               <label>
                 相对于项目根目录的路径
                 <input
+                  className={`${settingsInputClass} mt-1.5`}
                   autoFocus
                   required
                   value={destination}
@@ -666,8 +689,8 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                 />
               </label>
             )}
-            {operationError && <p role="alert">{operationError}</p>}
-            <div>
+            {operationError && <ErrorNotice>{operationError}</ErrorNotice>}
+            <div className="file-dialog-actions">
               <Button
                 type="button"
                 autoFocus={operation === "delete"}

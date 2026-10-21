@@ -25,6 +25,7 @@ export function sameEndpoint(a: string, b: string): boolean {
   }
 }
 export interface ConnectionState {
+  serverVersion: string | null;
   status: ConnectionStatus;
   epoch: number;
   scope: number;
@@ -69,6 +70,7 @@ export class ConnectionStore extends Store<ConnectionState> {
   reconnectOnReload = false;
   constructor(options: CodexClientOptions = {}) {
     super({
+      serverVersion: null,
       status: "disconnected",
       epoch: 0,
       scope: 0,
@@ -95,6 +97,8 @@ export class ConnectionStore extends Store<ConnectionState> {
       this.update({
         ...this.state,
         status,
+        serverVersion:
+          status === "connected" ? this.client.serverVersion : null,
         ...(status === "disconnected"
           ? {
               epoch: this.state.epoch + 1,
@@ -114,6 +118,12 @@ export class ConnectionStore extends Store<ConnectionState> {
     this.client.onNotification((event) => {
       if (this.state.status !== "connected") return;
       switch (event.method) {
+        case "account/rateLimits/updated":
+          // Rolling updates are sparse: re-read the authoritative account snapshot.
+          // Invalidate an older read and coalesce bursts into one follow-up read.
+          this.limitsRead++;
+          void this.loadRateLimits(true);
+          break;
         case "account/updated":
           this.accountVersion++;
           this.resetKeys.clear();

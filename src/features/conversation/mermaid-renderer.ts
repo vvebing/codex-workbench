@@ -1,16 +1,43 @@
+import type { Appearance } from "../../lib/appearance";
+
 let sequence = 0;
 let queue: Promise<unknown> = Promise.resolve();
 
 /** Mermaid has shared configuration and rendering state: keep each render isolated. */
-export function renderMermaid(source: string, dark: boolean): Promise<string> {
+export function renderMermaid(
+  source: string,
+  appearance: Appearance,
+): Promise<string> {
   const result = queue.then(async () => {
     const { default: mermaid } = await import("mermaid");
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: "strict",
       suppressErrorRendering: true,
-      theme: dark ? "dark" : "default",
-      fontFamily: "system-ui, sans-serif",
+      theme: "base",
+      fontFamily: appearance.fontFamily,
+      themeVariables: {
+        darkMode: appearance.dark,
+        fontFamily: appearance.fontFamily,
+        fontSize: appearance.diagramFontSize,
+        background: appearance.background,
+        primaryColor: appearance.surface,
+        primaryTextColor: appearance.foreground,
+        primaryBorderColor: appearance.border,
+        secondaryColor: appearance.selected,
+        secondaryTextColor: appearance.foreground,
+        secondaryBorderColor: appearance.border,
+        tertiaryColor: appearance.elevated,
+        tertiaryTextColor: appearance.foreground,
+        tertiaryBorderColor: appearance.border,
+        lineColor: appearance.muted,
+        textColor: appearance.foreground,
+        mainBkg: appearance.surface,
+        nodeBorder: appearance.border,
+        clusterBkg: appearance.elevated,
+        clusterBorder: appearance.border,
+        edgeLabelBackground: appearance.background,
+      },
       maxTextSize: 50000,
     });
     await mermaid.parse(source);

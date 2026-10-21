@@ -5,7 +5,7 @@ import {
 } from "../../src/features/navigation/history-search";
 import type { Thread } from "../../src/generated/v2/Thread";
 
-function setup() {
+function setup(query = "Case 标题") {
   const pending: {
     resolve: (page: unknown) => void;
     reject: (error: Error) => void;
@@ -16,7 +16,7 @@ function setup() {
   let current = true;
   const search = new HistorySearch(
     { request } as HistorySearchClient,
-    "Case 标题",
+    query,
     () => current,
   );
   return {
@@ -150,4 +150,64 @@ test("stops repeated pagination cursors and excludes child threads", async () =>
   expect(search.getSnapshot().error).toContain("重复");
   search.more();
   expect(request).toHaveBeenCalledTimes(3);
+});
+
+test("a complete Session ID performs one metadata-only lookup instead of paging titles or bodies", async () => {
+  vi.useFakeTimers();
+  const id = "01a157fd-bf5b-75b3-a7e0-4777be2812b0";
+  const { search, request, pending } = setup(`Session ID: ${id.toUpperCase()}`);
+  search.start();
+  await vi.advanceTimersByTimeAsync(250);
+  expect(request).toHaveBeenCalledExactlyOnceWith("thread/read", {
+    threadId: id,
+    includeTurns: false,
+  });
+  pending[0].resolve({ thread: thread(id) });
+  await Promise.resolve();
+  expect(search.getSnapshot()).toMatchObject({
+    threads: [thread(id)],
+    nextCursor: null,
+    loading: false,
+    error: null,
+  });
+  search.more();
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+test("exact lookup handles a shared session ID, a missing session, and unrelated metadata safely", async () => {
+  vi.useFakeTimers();
+  const id = "01a157fd-bf5b-75b3-a7e0-4777be2812b0";
+  for (const result of [
+    { thread: { ...thread("root"), sessionId: id } },
+    { thread: thread("unrelated") },
+    Error(`thread ${id} not found`),
+  ]) {
+    const { search, pending } = setup(id);
+    search.start();
+    await vi.advanceTimersByTimeAsync(250);
+    if (result instanceof Error) pending[0].reject(result);
+    else pending[0].resolve(result);
+    await Promise.resolve();
+    expect(search.getSnapshot().loading).toBe(false);
+    expect(search.getSnapshot().error).toBeNull();
+    expect(search.getSnapshot().threads.map((entry) => entry.id)).toEqual(
+      !(result instanceof Error) && result.thread.id === "root" ? ["root"] : [],
+    );
+  }
+});
+
+test("switching environments ignores an outstanding exact lookup and suppresses stale errors", async () => {
+  vi.useFakeTimers();
+  const id = "01a157fd-bf5b-75b3-a7e0-4777be2812b0";
+  for (const fail of [false, true]) {
+    const { search, pending, invalidate } = setup(id);
+    search.start();
+    await vi.advanceTimersByTimeAsync(250);
+    const before = search.getSnapshot();
+    invalidate();
+    if (fail) pending[0].reject(Error("disconnected environment"));
+    else pending[0].resolve({ thread: thread(id) });
+    await Promise.resolve();
+    expect(search.getSnapshot()).toBe(before);
+  }
 });

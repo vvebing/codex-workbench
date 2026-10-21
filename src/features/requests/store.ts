@@ -11,6 +11,14 @@ export interface RequestsState {
   pending: RpcRequest[];
   respondingIds: RpcId[];
   error: string | null;
+  submittedAnswers: SubmittedAnswer[];
+}
+export interface SubmittedAnswer {
+  id: RpcId;
+  epoch: number;
+  threadId: string;
+  answers: { question: string; answer: string }[];
+  status: "submitted" | "resolved" | "uncertain";
 }
 export function requestThreadId(request: RpcRequest): string | undefined {
   return "threadId" in request.params
@@ -36,6 +44,24 @@ export function validApprovalResponse(
   request: RpcRequest,
   result: unknown,
 ): boolean {
+  if (request.method === "item/tool/requestUserInput") {
+    if (!record(result) || !record(result.answers)) return false;
+    const answers = result.answers;
+    return (
+      Object.keys(answers).length === request.params.questions.length &&
+      request.params.questions.every((question) => {
+        const value = answers[question.id];
+        return (
+          record(value) &&
+          Array.isArray(value.answers) &&
+          value.answers.length > 0 &&
+          value.answers.every(
+            (answer) => typeof answer === "string" && answer.trim().length > 0,
+          )
+        );
+      })
+    );
+  }
   if (request.method === "item/permissions/requestApproval")
     return (
       record(result) &&
@@ -99,14 +125,34 @@ export function validApprovalResponse(
 export class RequestsStore extends Store<RequestsState> {
   private answered = new Set<RpcId>();
   constructor(private connection: ConnectionStore) {
-    super({ pending: [], respondingIds: [], error: null });
+    super({
+      pending: [],
+      respondingIds: [],
+      error: null,
+      submittedAnswers: [],
+    });
     let epoch = connection.getSnapshot().epoch;
+    let scope = connection.getSnapshot().scope;
     connection.subscribe(() => {
       const next = connection.getSnapshot().epoch;
+      const nextScope = connection.getSnapshot().scope;
+      if (nextScope !== scope) {
+        scope = nextScope;
+        this.update({ ...this.state, submittedAnswers: [] });
+      }
       if (next !== epoch) {
         epoch = next;
         this.answered.clear();
-        this.update({ pending: [], respondingIds: [], error: null });
+        this.update({
+          pending: [],
+          respondingIds: [],
+          error: null,
+          submittedAnswers: this.state.submittedAnswers.map((answer) =>
+            answer.status === "submitted"
+              ? { ...answer, status: "uncertain" }
+              : answer,
+          ),
+        });
       }
     });
     connection.client.onRequest((request) => {
@@ -136,8 +182,26 @@ export class RequestsStore extends Store<RequestsState> {
     connection.client.onNotification((event) => {
       if (event.method === "serverRequest/resolved") {
         this.answered.add(event.params.requestId);
+        this.update({
+          ...this.state,
+          submittedAnswers: this.state.submittedAnswers.map((answer) =>
+            answer.id === event.params.requestId &&
+            answer.threadId === event.params.threadId &&
+            answer.epoch === epoch
+              ? { ...answer, status: "resolved" }
+              : answer,
+          ),
+        });
         this.remove(event.params.requestId);
       }
+    });
+  }
+  dismissAnswer(id: RpcId, epoch: number): void {
+    this.update({
+      ...this.state,
+      submittedAnswers: this.state.submittedAnswers.filter(
+        (answer) => answer.id !== id || answer.epoch !== epoch,
+      ),
     });
   }
   forThread(threadId: string): RpcRequest[] {
@@ -157,11 +221,37 @@ export class RequestsStore extends Store<RequestsState> {
     if (!request || !validApprovalResponse(request, result)) {
       this.update({
         ...this.state,
-        error: "Invalid or unadvertised approval decision.",
+        error: "回答不完整或不符合当前请求，请检查后重试。",
       });
       return false;
     }
-    return this.reply(id, () => this.connection.client.respond(id, result));
+    const sent = this.reply(id, () =>
+      this.connection.client.respond(id, result),
+    );
+    if (sent && request.method === "item/tool/requestUserInput") {
+      const answers = (
+        result as { answers: Record<string, { answers: string[] }> }
+      ).answers;
+      this.update({
+        ...this.state,
+        submittedAnswers: [
+          ...this.state.submittedAnswers,
+          {
+            id,
+            epoch: this.connection.getSnapshot().epoch,
+            threadId: request.params.threadId,
+            status: "submitted",
+            answers: request.params.questions.map((question) => ({
+              question: question.question,
+              answer: question.isSecret
+                ? "（私密回答已隐藏）"
+                : answers[question.id].answers.join("\n"),
+            })),
+          },
+        ],
+      });
+    }
+    return sent;
   }
   reject(id: RpcId, message = "Declined by user"): boolean {
     return this.reply(id, () =>

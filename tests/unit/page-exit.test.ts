@@ -11,7 +11,7 @@ it("protects a hidden file draft and releases the listener after discarding it",
     url: "ws://files",
   });
   vi.spyOn(runtime.connection.client, "request").mockImplementation(
-    async (method) =>
+    async (...[method]) =>
       method === "fs/readFile"
         ? { dataBase64: btoa("original") }
         : ({} as never),
@@ -107,4 +107,24 @@ it("keeps the confirmation during submission even when the editor is cleared", a
   await pending;
   expect(hasTransientData([runtime])).toBe(false);
   send.mockRestore();
+});
+
+it("protects failed delivery content after the editor has been cleared", async () => {
+  const runtime = createRuntime();
+  vi.spyOn(runtime.sessions, "send").mockRejectedValue(new Error("offline"));
+  const target = { addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  const dispose = protectPageExit(
+    () => [runtime],
+    () => () => {},
+    target,
+  );
+  runtime.drafts.setText("thread", "recover me");
+  await expect(runtime.sendDraft("thread")).rejects.toThrow("offline");
+  expect(runtime.drafts.hasContent()).toBe(false);
+  expect(hasTransientData([runtime])).toBe(true);
+  runtime.submissions.messages.clear();
+  expect(hasTransientData([runtime])).toBe(false);
+  expect(target.removeEventListener).toHaveBeenCalled();
+  dispose();
+  vi.restoreAllMocks();
 });

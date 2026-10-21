@@ -63,6 +63,8 @@ const connection = new ConnectionStore({
 let unsubscribe = () => {};
 try {
   await connection.connect("ws://127.0.0.1:1");
+  // Exercise an actual no-params endpoint; do not print configuration contents.
+  await connection.client.request("configRequirements/read");
   const { thread } = await connection.client.request<{ thread: Thread }>(
     "thread/start",
     {
@@ -112,6 +114,7 @@ try {
     }).trim(),
     checks: {
       initialization: true,
+      parameterlessRequest: true,
       ephemeralMetadata: true,
       productionHistoryReader: true,
       productionObserver: true,

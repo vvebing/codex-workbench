@@ -1,4 +1,4 @@
-import { pinnedOf } from "../sessions/management";
+import { settingsInputClass } from "../settings/settings-ui";
 import { ContextMenu } from "radix-ui";
 import { useEffect, useState, type ReactNode } from "react";
 import {
@@ -10,9 +10,11 @@ import {
   FileText,
   Download,
   X,
-  Pin,
   FolderInput,
   Trash2,
+  Pin,
+  PinOff,
+  RotateCcw,
 } from "lucide-react";
 import {
   Button,
@@ -20,30 +22,72 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  ErrorNotice,
   MenuSeparator,
   Modal,
 } from "../../components/ui";
-import { titleOf, useStore } from "../../components/hooks";
+import { titleOf, useStore, useStoreSelector } from "../../components/hooks";
 import { useRuntime } from "../../lib/runtime-context";
 import type { Thread } from "../../generated/v2/Thread";
 import {
   conversationMarkdown,
   copyFinalSummary,
   exportFilename,
+  exportText,
 } from "../conversation/export";
+import { environments } from "../connection/environments";
+import { navigationEnvironmentKey } from "./navigation-state";
+import { navigationPersonalization } from "./navigation-personalization";
+import { draftHasContent, sessionActions } from "./session-actions";
 export function ThreadMenu({
   thread,
   children,
+  trigger,
+  environmentKey,
 }: {
   thread: Thread;
   children?: ReactNode;
+  trigger?: ReactNode;
+  environmentKey?: string;
 }) {
-  const Entry = children ? ContextMenu.Item : MenuItem;
-  const Separator = children ? ContextMenu.Separator : MenuSeparator;
+  const contextMenu = !!children && !trigger;
+  const Entry = contextMenu ? ContextMenu.Item : MenuItem;
+  const Separator = contextMenu ? ContextMenu.Separator : MenuSeparator;
   const runtime = useRuntime();
   const connection = useStore(runtime.connection);
-  const sessions = useStore(runtime.sessions);
-  const localDraft = !!sessions.localDrafts[thread.id];
+  useStore(navigationPersonalization);
+  const environment = environments
+    .getSnapshot()
+    .entries.find((entry) => entry.runtime === runtime);
+  const preferenceScope =
+    environmentKey ??
+    navigationEnvironmentKey(
+      environment ?? {
+        id: "local",
+        url: connection.url,
+      },
+    );
+  const pinned = navigationPersonalization.isThreadPinned(
+    preferenceScope,
+    thread.id,
+  );
+  const sessions = useStoreSelector(
+    runtime.sessions,
+    (state) => ({
+      loading: state.loading,
+      archived: !!state.archivedIds[thread.id],
+      localDraft: !!state.localDrafts[thread.id],
+      sections: state.sections,
+      sectionsError: state.sectionsError,
+    }),
+    (a, b) =>
+      a.loading === b.loading &&
+      a.archived === b.archived &&
+      a.localDraft === b.localDraft &&
+      a.sections === b.sections &&
+      a.sectionsError === b.sectionsError,
+  );
+  const localDraft = sessions.localDraft;
   const [dialog, setDialog] = useState<
     "rename" | "archive" | "delete" | "section" | null
   >(null);
@@ -59,7 +103,9 @@ export function ThreadMenu({
     return () => clearTimeout(timer);
   }, [feedback]);
   const disabled =
-    connection.status !== "connected" || sessions.loading || busy;
+    (!localDraft && connection.status !== "connected") ||
+    sessions.loading ||
+    busy;
   async function act(action: () => Promise<unknown>) {
     try {
       setError("");
@@ -86,23 +132,29 @@ export function ThreadMenu({
   }
   async function downloadConversation() {
     const history = await runtime.sessions.readForExport(thread.id);
-    const url = URL.createObjectURL(
-      new Blob([conversationMarkdown(history)], {
-        type: "text/markdown;charset=utf-8",
-      }),
+    exportText(
+      conversationMarkdown(history),
+      exportFilename(history),
+      "text/markdown;charset=utf-8",
     );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = exportFilename(history);
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
     setFeedback("已导出会话");
   }
   return (
     <>
-      <ThreadMenuSurface childrenTrigger={children} thread={thread}>
+      <ThreadMenuSurface
+        childrenTrigger={contextMenu ? children : undefined}
+        trigger={trigger}
+        thread={thread}
+      >
+        <Entry
+          disabled={busy}
+          onSelect={() =>
+            navigationPersonalization.toggleThread(preferenceScope, thread.id)
+          }
+        >
+          {pinned ? <PinOff size={15} /> : <Pin size={15} />}
+          {pinned ? "取消收藏" : "收藏会话"}
+        </Entry>
         <Entry
           disabled={disabled}
           onSelect={() => {
@@ -119,17 +171,6 @@ export function ThreadMenu({
         >
           <GitBranch size={15} />
           分叉会话
-        </Entry>
-        <Entry
-          disabled={disabled || localDraft}
-          onSelect={() =>
-            void act(() =>
-              runtime.sessions.setPinned(thread.id, !pinnedOf(thread)),
-            )
-          }
-        >
-          <Pin size={15} />
-          {pinnedOf(thread) ? "取消置顶" : "置顶会话"}
         </Entry>
         <Entry
           disabled={disabled || localDraft}
@@ -176,9 +217,29 @@ export function ThreadMenu({
           导出会话
         </Entry>
         <Separator className="m-[5px] h-px bg-border" />
-        <Entry disabled={disabled} onSelect={() => setDialog("archive")}>
-          <Archive size={15} />
-          {localDraft ? "删除草稿" : "归档"}
+        <Entry
+          disabled={disabled}
+          onSelect={() => {
+            if (sessions.archived) {
+              void act(async () => {
+                await runtime.sessions.unarchive(thread.id);
+                setFeedback("已恢复会话");
+              });
+            } else if (localDraft) {
+              if (draftHasContent(runtime.drafts.get(thread.id)))
+                setDialog("archive");
+              else
+                void act(() =>
+                  Promise.resolve(runtime.discardDraft(thread.id)),
+                );
+            } else
+              void act(() =>
+                sessionActions.archive(runtime, thread.id, titleOf(thread)),
+              );
+          }}
+        >
+          {sessions.archived ? <RotateCcw size={15} /> : <Archive size={15} />}
+          {sessions.archived ? "恢复会话" : localDraft ? "删除草稿" : "归档"}
         </Entry>
         {!localDraft && (
           <Entry
@@ -233,7 +294,7 @@ export function ThreadMenu({
               ? "选择保存在当前环境服务端的分区。"
               : dialog === "archive"
                 ? localDraft
-                  ? "删除这份尚未发送的本地草稿。"
+                  ? "草稿中有尚未发送的文字、附件或技能。删除后无法恢复。"
                   : "归档后会话将从当前列表移除，可从该环境的历史会话入口恢复。"
                 : "使用一个容易找到的标题。"
         }
@@ -250,7 +311,11 @@ export function ThreadMenu({
                     ? runtime.sessions.rename(thread.id, name.trim())
                     : localDraft
                       ? Promise.resolve(runtime.discardDraft(thread.id))
-                      : runtime.sessions.archive(thread.id),
+                      : sessionActions.archive(
+                          runtime,
+                          thread.id,
+                          titleOf(thread),
+                        ),
             );
           }}
         >
@@ -267,7 +332,7 @@ export function ThreadMenu({
           )}
           {dialog === "section" && (
             <>
-              <label className="block text-[13px] font-medium">
+              <label className="block text-control font-medium">
                 目标分区
                 <SelectField
                   label="目标分区"
@@ -286,15 +351,15 @@ export function ThreadMenu({
                 />
               </label>
               {sessions.sectionsError && (
-                <p role="alert">{sessions.sectionsError}</p>
+                <ErrorNotice>{sessions.sectionsError}</ErrorNotice>
               )}
             </>
           )}
           {dialog === "rename" && (
-            <label className="block text-[13px] font-medium">
+            <label className="block text-control font-medium">
               会话标题
               <input
-                className="mt-2 block w-full rounded-lg border border-border bg-elevated px-3 py-[11px] outline-accent"
+                className={`${settingsInputClass} mt-2 block w-full`}
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -303,11 +368,7 @@ export function ThreadMenu({
               />
             </label>
           )}
-          {error && (
-            <p className="text-danger" role="alert">
-              {error}
-            </p>
-          )}
+          {error && <ErrorNotice>{error}</ErrorNotice>}
           <div className="mt-5 flex justify-end gap-2">
             <Button
               type="button"
@@ -337,10 +398,12 @@ export function ThreadMenu({
 
 function ThreadMenuSurface({
   childrenTrigger,
+  trigger,
   thread,
   children,
 }: {
   childrenTrigger?: ReactNode;
+  trigger?: ReactNode;
   thread: Thread;
   children: ReactNode;
 }) {
@@ -363,9 +426,11 @@ function ThreadMenuSurface({
     <Menu
       label="会话操作"
       trigger={
-        <IconButton label={`会话操作：${titleOf(thread)}`}>
-          <MoreHorizontal size={18} />
-        </IconButton>
+        trigger ?? (
+          <IconButton label={`会话操作：${titleOf(thread)}`}>
+            <MoreHorizontal size={18} />
+          </IconButton>
+        )
       }
     >
       {children}

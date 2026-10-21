@@ -22,7 +22,7 @@ function client(
 ) {
   const reads: string[] = [];
   const rpc: FileSearchClient = {
-    async request<T>(method: string, params: unknown): Promise<T> {
+    async request<T>(method: string, params?: unknown): Promise<T> {
       if (method === "fuzzyFileSearch") return { files } as T;
       const { path } = params as { path: string };
       reads.push(path);

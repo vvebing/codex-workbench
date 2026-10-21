@@ -73,7 +73,8 @@ export function MessageEditor(props: Props) {
         "aria-label": "消息输入框",
         "aria-multiline": "true",
         "aria-autocomplete": "list",
-        class: "composer-editor",
+        class:
+          "composer-editor px-4 pt-4 pb-2 @max-[550px]/conversation:px-3 @max-[550px]/conversation:pt-3",
         "aria-disabled": String(props.disabled),
         ...(props.hasCompletions
           ? { "aria-controls": "composer-completions" }
@@ -140,7 +141,7 @@ export function MessageEditor(props: Props) {
     props.ref,
     () => ({
       replaceCompletion(length, value, reference) {
-        if (!editor || !editor.isEditable) return;
+        if (!editor || editor.isDestroyed || !editor.isEditable) return;
         const { from, to } = editor.state.selection;
         editor
           .chain()
@@ -165,7 +166,8 @@ export function MessageEditor(props: Props) {
   );
 
   useEffect(() => {
-    if (!editor) return;
+    // Suspense can reconnect effects after Tiptap has disposed the captured editor.
+    if (!editor || editor.isDestroyed) return;
     editor.setEditable(!props.disabled, false);
   }, [
     editor,
@@ -176,7 +178,8 @@ export function MessageEditor(props: Props) {
   ]);
 
   useEffect(() => {
-    if (!editor) return;
+    // Suspense can reconnect effects after Tiptap has disposed the captured editor.
+    if (!editor || editor.isDestroyed) return;
     const document = props.draft.document || textDocument(props.draft.text);
     if (JSON.stringify(document) === JSON.stringify(editor.getJSON())) return;
     editor.commands.setContent(document, { emitUpdate: false });
@@ -193,7 +196,12 @@ export function MessageEditor(props: Props) {
   }, [editor, props.draft.document, props.draft.text]);
 
   useEffect(() => {
-    if (props.draft.restored?.id && editor?.isEditable)
+    if (
+      props.draft.restored?.id &&
+      editor &&
+      !editor.isDestroyed &&
+      editor.isEditable
+    )
       editor.commands.focus("end");
   }, [editor, props.draft.restored?.id]);
 

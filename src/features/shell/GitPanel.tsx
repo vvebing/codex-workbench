@@ -1,3 +1,5 @@
+import { GitTools } from "./GitTools";
+import { gitUiState, type GitUiState } from "./git-ui-state";
 import { useState } from "react";
 import { GitFileList } from "./GitFileList";
 import {
@@ -25,48 +27,82 @@ const groups: [GitGroup, string][] = [
   ["unstaged", "未暂存"],
   ["untracked", "未跟踪"],
 ];
-export function GitPanel({ cwd }: { cwd: string }) {
+export function GitPanel({
+  cwd,
+  onSelectWorktree,
+}: {
+  cwd: string;
+  onSelectWorktree?: (path: string) => void;
+}) {
   const { connection } = useRuntime();
-  const { epoch, scope } = useStore(connection);
+  const { scope, epoch } = useStore(connection);
+  const state = useWorkspaceGitStatus(cwd);
+  const root = state.value?.repoRoot;
   return (
-    <GitPanelContents key={JSON.stringify([cwd, epoch, scope])} cwd={cwd} />
+    <GitPanelContents
+      key={JSON.stringify([
+        scope,
+        epoch,
+        root ? ["root", root] : ["pending", cwd],
+      ])}
+      cwd={cwd}
+      state={state}
+      root={root}
+      onSelectWorktree={onSelectWorktree}
+    />
   );
 }
-function GitPanelContents({ cwd }: { cwd: string }) {
-  const state = useWorkspaceGitStatus(cwd);
-  const [treeView, setTreeView] = useState(true);
+function GitPanelContents({
+  cwd,
+  root,
+  state,
+  onSelectWorktree,
+}: {
+  cwd: string;
+  onSelectWorktree?: (path: string) => void;
+  root?: string;
+  state: ReturnType<typeof useWorkspaceGitStatus>;
+}) {
   const { connection, files: fileWorkspace, sessions } = useRuntime();
-  const { epoch, scope } = useStore(connection);
-  const [selected, select] = useState<{
-    file: GitFile;
-    group: GitGroup;
-    cwd: string;
-    epoch: number;
-    scope: number;
-  }>();
+  const { scope } = useStore(connection);
+  const [cache] = useState(() =>
+    root ? gitUiState(connection, scope, root) : undefined,
+  );
+  const [ui, setUi] = useState<GitUiState>(
+    () => cache ?? { treeView: true, groups: {}, directories: {} },
+  );
+  const update = (next: Partial<GitUiState>) => {
+    if (next.directories && Object.keys(next.directories).length > 1000)
+      next.directories = Object.fromEntries(
+        Object.entries(next.directories).slice(-1000),
+      );
+    const value = { ...ui, ...next };
+    if (cache) Object.assign(cache, value);
+    setUi(value);
+  };
+  const { treeView, selected } = ui;
+  const select = (file: GitFile, group: GitGroup) =>
+    update({ selected: { path: file.path, group } });
   const selection =
-    selected?.cwd === cwd &&
-    selected.epoch === epoch &&
-    selected.scope === scope &&
+    selected &&
     state.connected &&
     state.value?.files.some(
       (file) =>
-        file.path === selected.file.path &&
-        file.groups.includes(selected.group),
+        file.path === selected.path && file.groups.includes(selected.group),
     )
       ? selected
       : undefined;
   const openCurrentFile = (file: GitFile, group: GitGroup) => {
-    select({ file, group, cwd, epoch, scope });
+    select(file, group);
     void fileWorkspace.open({
-      path: joinDirectory(state.value?.repoRoot ?? cwd, file.path),
-      cwd,
+      path: joinDirectory(root ?? cwd, file.path),
+      cwd: root ?? cwd,
       threadId: sessions.getSnapshot().selectedId ?? undefined,
     });
   };
   return (
-    <div className="git-panel" aria-label="源代码管理">
-      <div className="git-repository">
+    <div className="min-w-0 pb-3 text-caption" aria-label="源代码管理">
+      <div className="flex items-center gap-2 border-b border-border p-3">
         <div
           className="git-branch-label"
           title={state.connected ? state.value?.branch : undefined}
@@ -78,19 +114,14 @@ function GitPanelContents({ cwd }: { cwd: string }) {
               : "Git 工作区"}
           </span>
         </div>
-        <button
-          type="button"
-          className="git-file-action"
-          title={treeView ? "切换为列表视图" : "切换为树状视图"}
-          aria-label={treeView ? "切换为列表视图" : "切换为树状视图"}
-          onClick={() => setTreeView((value) => !value)}
+        <IconButton
+          label={treeView ? "切换为列表视图" : "切换为树状视图"}
+          onClick={() => update({ treeView: !treeView })}
         >
           {treeView ? <List size={15} /> : <ListTree size={15} />}
-        </button>
-        <button
-          type="button"
-          className="rounded p-1 text-muted hover:bg-surface"
-          aria-label="刷新 Git 工作区"
+        </IconButton>
+        <IconButton
+          label="刷新 Git 工作区"
           disabled={!state.connected || state.loading}
           onClick={() => void state.refresh()}
         >
@@ -98,26 +129,34 @@ function GitPanelContents({ cwd }: { cwd: string }) {
             size={14}
             className={state.loading && state.connected ? "animate-spin" : ""}
           />
-        </button>
+        </IconButton>
       </div>
       <p
-        className="git-caption"
+        className="flex justify-between gap-2 px-3 pt-3 pb-2 text-meta text-muted max-[900px]:flex-wrap max-[900px]:[overflow-wrap:anywhere]"
         title="点击文件查看差异，点击行尾图标打开当前文件。"
       >
-        源代码管理 · 只读{" "}
+        源代码管理{" "}
         <span>
           {state.connected && state.value
             ? `${state.value.changedFiles} 个更改`
             : "工作区"}
         </span>
       </p>
+      {state.connected && root && state.value && (
+        <GitTools root={root} onSelectWorktree={onSelectWorktree} />
+      )}
+      {state.failed && state.value && (
+        <p role="status" className="px-3 text-muted">
+          刷新失败，正在显示上次读取的内容。
+        </p>
+      )}
       {!state.connected ? (
         <div className="git-empty">
           <Unplug size={24} />
           <strong>环境未连接</strong>
           <p>连接环境后查看仓库更改。</p>
         </div>
-      ) : state.failed ? (
+      ) : state.failed && !state.value ? (
         <div className="git-empty" role="status">
           <strong>无法读取仓库</strong>
           <p>请确认当前目录是 Git 仓库，然后点击刷新重试。</p>
@@ -140,8 +179,18 @@ function GitPanelContents({ cwd }: { cwd: string }) {
           if (!files.length) return null;
           return (
             <div key={group} className="git-group-container">
-              <details className="git-group" open>
-                <summary>
+              <details className="git-group" open={ui.groups[group] ?? true}>
+                <summary
+                  onClick={(event) => {
+                    event.preventDefault();
+                    update({
+                      groups: {
+                        ...ui.groups,
+                        [group]: !(ui.groups[group] ?? true),
+                      },
+                    });
+                  }}
+                >
                   <ChevronRight size={13} />
                   <h3>
                     {label} · {files.length}
@@ -150,6 +199,11 @@ function GitPanelContents({ cwd }: { cwd: string }) {
                 <GitFileList
                   files={files}
                   treeView={treeView}
+                  directoryOpen={ui.directories}
+                  directoryKey={group}
+                  onDirectoryChange={(key, open) =>
+                    update({ directories: { ...ui.directories, [key]: open } })
+                  }
                   renderFile={(file) => {
                     const deleted =
                       group === "conflict"
@@ -158,23 +212,26 @@ function GitPanelContents({ cwd }: { cwd: string }) {
                         : file.indexStatus === "D" ||
                           file.worktreeStatus === "D";
                     return (
-                      <li key={file.path} className="git-file-row">
+                      <li
+                        key={file.path}
+                        className="flex items-center pr-2 hover:bg-surface focus-within:bg-surface"
+                      >
                         <button
                           type="button"
                           title={`${group === "conflict" ? "打开当前文件" : "查看差异"}：${file.originalPath ? `${file.originalPath} → ${file.path}` : file.path}`}
                           aria-label={file.path}
                           aria-pressed={
-                            selection?.file.path === file.path &&
+                            selection?.path === file.path &&
                             selection.group === group
                           }
-                          className={`git-file ${selection?.file.path === file.path && selection.group === group ? "is-selected" : ""}`}
+                          className={`git-file ${selection?.path === file.path && selection.group === group ? "is-selected" : ""}`}
                           onClick={() => {
-                            select({ file, group, cwd, epoch, scope });
+                            select(file, group);
                             if (group === "conflict") {
                               openCurrentFile(file, group);
                             } else {
                               void fileWorkspace.openGitDiff({
-                                cwd,
+                                cwd: root ?? cwd,
                                 path: file.path,
                                 group,
                                 threadId:
@@ -185,10 +242,10 @@ function GitPanelContents({ cwd }: { cwd: string }) {
                           }}
                         >
                           <File size={14} className="text-muted" />
-                          <span className="git-filename">
+                          <span className="min-w-0 truncate">
                             {file.path.split("/").at(-1)}
                           </span>
-                          <span className="git-directory">
+                          <span className="min-w-0 flex-1 truncate text-meta text-subtle">
                             {!treeView && file.path.includes("/")
                               ? file.path.slice(0, file.path.lastIndexOf("/"))
                               : ""}

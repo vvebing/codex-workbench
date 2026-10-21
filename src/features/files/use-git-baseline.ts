@@ -3,6 +3,7 @@ import { useRuntime } from "../../lib/runtime-context";
 import { useStore } from "../../components/hooks";
 import { useWorkspaceGitStatus } from "../shell/workspace-git";
 import type { CommandExecResponse } from "../../generated/v2/CommandExecResponse";
+import { gitWorkspacePath } from "../shell/git-workspace-path";
 import type { FileDocument } from "./store";
 
 /** Read index objects only on Git refresh, never on keystrokes. */
@@ -10,7 +11,9 @@ export function useGitBaseline(document: FileDocument | undefined) {
   const { connection } = useRuntime();
   const { epoch, scope } = useStore(connection);
   const git = useWorkspaceGitStatus(
-    document?.gitComparison ? "" : (document?.cwd ?? ""),
+    !document || document.gitComparison || document.readonly
+      ? ""
+      : (document.cwd ?? ""),
   );
   const [result, setResult] = useState<{
     key: string;
@@ -22,6 +25,16 @@ export function useGitBaseline(document: FileDocument | undefined) {
   const key = JSON.stringify([epoch, scope, document?.id]);
   const root = git.value?.repoRoot;
   const enabled = !!document && !document.gitComparison && !document.readonly;
+  const relativePath = gitWorkspacePath(
+    root,
+    document?.cwd,
+    git.workspacePrefix,
+    path,
+  );
+  const indexSignature = relativePath
+    ? (git.indexSignatures?.[relativePath] ?? "tracked")
+    : undefined;
+  const untracked = indexSignature === "untracked";
   useEffect(() => {
     let stopped = false;
     const valid = () =>
@@ -29,15 +42,8 @@ export function useGitBaseline(document: FileDocument | undefined) {
       connection.getSnapshot().epoch === epoch &&
       connection.getSnapshot().scope === scope &&
       connection.getSnapshot().status === "connected";
-    if (
-      !enabled ||
-      !git.connected ||
-      !root ||
-      !path ||
-      !path.startsWith(`${root.replace(/\/$/, "")}/`)
-    )
-      return;
-    const relative = path.slice(root.replace(/\/$/, "").length + 1);
+    if (!enabled || !git.connected || !root || !relativePath) return;
+    const relative = relativePath;
     const exec = async (args: string[]) => {
       if (!valid()) throw new Error("连接已变化");
       const response = await connection.client.request<CommandExecResponse>(
@@ -62,9 +68,6 @@ export function useGitBaseline(document: FileDocument | undefined) {
     void (async () => {
       const listing = await exec(["ls-files", "--stage", "-z", "--", relative]);
       if (!listing) {
-        const untracked = git.value?.files.some(
-          (file) => file.path === relative && file.groups.includes("untracked"),
-        );
         if (valid()) setResult({ key, text: untracked ? "" : undefined });
         return;
       }
@@ -102,12 +105,15 @@ export function useGitBaseline(document: FileDocument | undefined) {
     epoch,
     scope,
     git.connected,
-    git.value,
+    indexSignature,
+    git.head,
+    untracked,
     root,
+    relativePath,
     path,
     key,
   ]);
-  return enabled && git.connected && !git.failed && root && result?.key === key
+  return enabled && git.connected && root && result?.key === key
     ? result
     : undefined;
 }

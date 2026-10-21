@@ -7,8 +7,8 @@ import {
   Minus,
   Plus,
 } from "lucide-react";
-import { Modal, ScrollArea } from "../../components/ui";
-import { useTheme } from "../settings/theme";
+import { Button, IconButton, Modal, ScrollArea } from "../../components/ui";
+import { observeAppearance, readAppearance } from "../../lib/appearance";
 import { renderMermaid } from "./mermaid-renderer";
 
 export function MermaidDiagram({
@@ -18,26 +18,20 @@ export function MermaidDiagram({
   source: string;
   pending?: boolean;
 }) {
-  const { theme } = useTheme();
-  const [systemDark, setSystemDark] = useState(
-    () => window.matchMedia("(prefers-color-scheme: dark)").matches,
-  );
+  const [appearance, setAppearance] = useState(readAppearance);
   useEffect(() => {
-    const query = window.matchMedia("(prefers-color-scheme: dark)");
-    const update = () => setSystemDark(query.matches);
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
+    setAppearance(readAppearance());
+    return observeAppearance(setAppearance);
   }, []);
-  const dark = theme === "dark" || (theme === "system" && systemDark);
   const [view, setView] = useState<"diagram" | "source">("diagram");
   const [rendered, setRendered] = useState<{
     source: string;
-    dark: boolean;
+    appearance: typeof appearance;
     svg: string;
   }>();
   const [error, setError] = useState<{
     source: string;
-    dark: boolean;
+    appearance: typeof appearance;
     message: string;
   }>();
   const [expanded, setExpanded] = useState(false);
@@ -65,10 +59,10 @@ export function MermaidDiagram({
     if (!visible || pending) return;
     let cancelled = false;
     const timer = setTimeout(() => {
-      void renderMermaid(source, dark).then(
+      void renderMermaid(source, appearance).then(
         (svg) => {
           if (!cancelled) {
-            setRendered({ source, dark, svg });
+            setRendered({ source, appearance, svg });
             setError(undefined);
           }
         },
@@ -76,7 +70,7 @@ export function MermaidDiagram({
           if (!cancelled)
             setError({
               source,
-              dark,
+              appearance,
               message:
                 cause instanceof Error
                   ? cause.message
@@ -89,18 +83,18 @@ export function MermaidDiagram({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [source, dark, pending, visible, retry]);
+  }, [source, appearance, pending, visible, retry]);
   useEffect(() => {
     if (!copied) return;
     const timer = setTimeout(() => setCopied(""), 2500);
     return () => clearTimeout(timer);
   }, [copied]);
   const currentSvg =
-    rendered?.source === source && rendered.dark === dark
+    rendered?.source === source && rendered.appearance === appearance
       ? rendered.svg
       : undefined;
   const currentError =
-    !pending && error?.source === source && error.dark === dark
+    !pending && error?.source === source && error.appearance === appearance
       ? error.message
       : undefined;
   const expandedSvg = useMemo(() => {
@@ -114,8 +108,6 @@ export function MermaidDiagram({
     svg.setAttribute("width", "100%");
     return new XMLSerializer().serializeToString(svg);
   }, [currentSvg]);
-  const buttonClass =
-    "inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-xs text-muted hover:bg-hover focus-visible:outline-accent";
   const diagram = (large = false) => (
     <ScrollArea
       orientation="both"
@@ -140,27 +132,27 @@ export function MermaidDiagram({
       className="my-4 overflow-hidden rounded-lg border border-border bg-surface first:mt-0 last:mb-0"
     >
       <div className="flex flex-wrap items-center gap-1 border-b border-border px-2 py-1.5">
-        <span className="mr-2 text-[11px] font-medium text-muted">Mermaid</span>
-        <button
-          type="button"
-          className={buttonClass}
+        <span className="mr-2 text-meta font-medium text-muted">Mermaid</span>
+        <Button
+          size="sm"
+          variant="quiet"
           aria-pressed={view === "diagram"}
           onClick={() => setView("diagram")}
         >
           图表
-        </button>
-        <button
-          type="button"
-          className={buttonClass}
+        </Button>
+        <Button
+          size="sm"
+          variant="quiet"
           aria-pressed={view === "source"}
           onClick={() => setView("source")}
         >
           源码
-        </button>
+        </Button>
         <span className="flex-1" />
-        <button
-          type="button"
-          className={buttonClass}
+        <Button
+          size="sm"
+          variant="quiet"
           aria-label="复制 Mermaid 源码"
           onClick={() => {
             void navigator.clipboard.writeText(source).then(
@@ -171,11 +163,9 @@ export function MermaidDiagram({
         >
           {copied === "已复制" ? <Check size={14} /> : <Copy size={14} />}
           <span role="status">{copied || "复制"}</span>
-        </button>
-        <button
-          type="button"
-          className={buttonClass}
-          aria-label="放大图表"
+        </Button>
+        <IconButton
+          label="放大图表"
           disabled={!currentSvg}
           onClick={() => {
             setZoom(100);
@@ -183,7 +173,7 @@ export function MermaidDiagram({
           }}
         >
           <Maximize2 size={14} />
-        </button>
+        </IconButton>
       </div>
       {view === "source" ? (
         <ScrollArea orientation="both" className="max-h-[420px]">
@@ -202,13 +192,13 @@ export function MermaidDiagram({
               {currentError}
             </pre>
           </details>
-          <button
-            type="button"
-            className={buttonClass}
+          <Button
+            size="sm"
+            variant="quiet"
             onClick={() => setRetry((value) => value + 1)}
           >
             重试
-          </button>
+          </Button>
           <ScrollArea orientation="both" className="max-h-[420px]">
             <pre className="m-0 pt-3 text-xs leading-relaxed">
               <code>{source}</code>
@@ -238,32 +228,24 @@ export function MermaidDiagram({
         description="放大查看图表，超出区域时可滚动浏览。"
       >
         <div className="mb-3 flex items-center gap-2">
-          <button
-            type="button"
-            className={buttonClass}
-            aria-label="缩小图表"
+          <IconButton
+            label="缩小图表"
             disabled={zoom <= 50}
             onClick={() => setZoom((value) => Math.max(50, value - 25))}
           >
             <Minus size={15} />
-          </button>
+          </IconButton>
           <span className="text-xs text-muted">{zoom}%</span>
-          <button
-            type="button"
-            className={buttonClass}
-            aria-label="放大一级"
+          <IconButton
+            label="放大一级"
             disabled={zoom >= 300}
             onClick={() => setZoom((value) => Math.min(300, value + 25))}
           >
             <Plus size={15} />
-          </button>
-          <button
-            type="button"
-            className={buttonClass}
-            onClick={() => setZoom(100)}
-          >
+          </IconButton>
+          <Button size="sm" variant="quiet" onClick={() => setZoom(100)}>
             适应宽度
-          </button>
+          </Button>
         </div>
         {diagram(true)}
       </Modal>

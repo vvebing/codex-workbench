@@ -183,6 +183,75 @@ it("locks local draft creation and pagination and preserves the draft on disconn
   expect(runtime.sessions.getSnapshot().listIds).toEqual(["a", "b"]);
 });
 
+it("skips empty and duplicate-only pages until pagination adds a conversation", async () => {
+  const runtime = createRuntime();
+  const request = vi
+    .spyOn(runtime.connection.client, "request")
+    .mockResolvedValueOnce({ data: [thread("a")], nextCursor: "one" })
+    .mockResolvedValueOnce({ data: [], nextCursor: "two" })
+    .mockResolvedValueOnce({ data: [thread("a")], nextCursor: "three" })
+    .mockResolvedValueOnce({ data: [thread("b")], nextCursor: null });
+  await runtime.sessions.refresh();
+  await runtime.sessions.loadMore();
+  expect(
+    request.mock.calls
+      .slice(1)
+      .map(([, params]) => (params as { cursor: string }).cursor),
+  ).toEqual(["one", "two", "three"]);
+  expect(runtime.sessions.getSnapshot().listIds).toEqual(["a", "b"]);
+  expect(runtime.sessions.getSnapshot().nextCursor).toBeNull();
+});
+
+it("stops repeated cursors without losing fetched rows", async () => {
+  const runtime = createRuntime();
+  vi.spyOn(runtime.connection.client, "request")
+    .mockResolvedValueOnce({ data: [thread("a")], nextCursor: "same" })
+    .mockResolvedValueOnce({ data: [thread("b")], nextCursor: "same" });
+  await runtime.sessions.refresh();
+  await expect(runtime.sessions.loadMore()).rejects.toThrow("游标重复");
+  expect(runtime.sessions.getSnapshot().listIds).toEqual(["a", "b"]);
+  expect(runtime.sessions.getSnapshot()).toMatchObject({
+    nextCursor: null,
+    loading: false,
+  });
+});
+
+it("retains the advanced cursor after a later page fails so retry resumes there", async () => {
+  const runtime = createRuntime();
+  const request = vi
+    .spyOn(runtime.connection.client, "request")
+    .mockResolvedValueOnce({ data: [thread("a")], nextCursor: "one" })
+    .mockResolvedValueOnce({ data: [], nextCursor: "two" })
+    .mockRejectedValueOnce(new Error("offline"));
+  await runtime.sessions.refresh();
+  await expect(runtime.sessions.loadMore()).rejects.toThrow("offline");
+  expect(runtime.sessions.getSnapshot().nextCursor).toBe("two");
+  request.mockResolvedValueOnce({ data: [thread("b")], nextCursor: null });
+  await runtime.sessions.loadMore();
+  expect(request).toHaveBeenLastCalledWith(
+    "thread/list",
+    expect.objectContaining({ cursor: "two" }),
+  );
+});
+
+it("bounds empty-page scanning and preserves a continuation for retry", async () => {
+  const runtime = createRuntime();
+  let page = 0;
+  const request = vi
+    .spyOn(runtime.connection.client, "request")
+    .mockImplementation(async () => ({ data: [], nextCursor: String(++page) }));
+  await runtime.sessions.refresh();
+  await expect(runtime.sessions.loadMore()).rejects.toThrow("连续多页");
+  expect(request).toHaveBeenCalledTimes(11);
+  expect(runtime.sessions.getSnapshot()).toMatchObject({
+    nextCursor: "11",
+    loading: false,
+  });
+  request.mockResolvedValueOnce({ data: [], nextCursor: null });
+  await runtime.sessions.loadMore();
+  expect(runtime.sessions.getSnapshot().nextCursor).toBeNull();
+});
+
 it("keeps endpoint draft namespaces and restores prior edits", () => {
   const runtime = createRuntime();
   runtime.drafts.activateScope("ws://a");
@@ -198,7 +267,7 @@ it("paginates model catalog and treats discovery failures as nonfatal", async ()
   vi.spyOn(connection.client, "connect").mockResolvedValue();
   const request = vi
     .spyOn(connection.client, "request")
-    .mockImplementation((method, params) => {
+    .mockImplementation((...[method, params]) => {
       if (method === "account/read")
         return Promise.resolve({ account: { type: "apiKey" } });
       return Promise.resolve({
@@ -344,7 +413,7 @@ it("waits for pending resume and reuses it before deciding to steer", async () =
   const response = deferred<{ thread: Thread }>();
   const request = vi
     .spyOn(runtime.connection.client, "request")
-    .mockImplementation((method) =>
+    .mockImplementation((...[method]) =>
       method === "thread/resume" ? response.promise : Promise.resolve({}),
     );
   const first = runtime.sessions.activate("a");
@@ -396,6 +465,7 @@ it("deduplicates the entire draft send before capturing a newly edited revision"
   await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
   expect(request).toHaveBeenCalledWith("turn/start", {
     threadId: "a",
+    clientUserMessageId: expect.any(String),
     input: [{ type: "text", text: "first draft", text_elements: [] }],
   });
   response.resolve({
@@ -891,6 +961,9 @@ it("blocks revert for running and legacy threads", async () => {
     status: "connected",
   });
   await runtime.sessions.open("source");
+  // Reopening a hydrated writer displays its cache; explicitly reconcile the
+  // simulated external change before asserting the legacy guard.
+  await runtime.sessions.restoreSelected();
   request.mockClear();
   await expect(runtime.sessions.revert("source", "a")).rejects.toThrow(
     "旧格式",

@@ -1,13 +1,20 @@
+import { Button } from "../../components/ui";
 import {
   createContext,
   useContext,
+  useMemo,
   useState,
   type ReactNode,
   type ComponentPropsWithoutRef,
 } from "react";
 import { defaultUrlTransform, type ExtraProps } from "react-markdown";
 import { useRuntime } from "../../lib/runtime-context";
-import { parseFileLink, type FileLinkOrigin } from "./file-links";
+import {
+  parseFileLink,
+  parseImageFileLink,
+  type FileLinkOrigin,
+} from "./file-links";
+import { ImageFileAnchor } from "./ImageFileAnchor";
 
 const FileLinkContext = createContext<FileLinkOrigin | null>(null);
 
@@ -20,8 +27,9 @@ export function FileLinkProvider({
   threadId,
   children,
 }: FileLinkOrigin & { children: ReactNode }) {
+  const origin = useMemo(() => ({ cwd, threadId }), [cwd, threadId]);
   return (
-    <FileLinkContext.Provider value={{ cwd, threadId }}>
+    <FileLinkContext.Provider value={origin}>
       {children}
     </FileLinkContext.Provider>
   );
@@ -37,6 +45,20 @@ export function FileAnchor({
   const runtime = useRuntime();
   const [error, setError] = useState("");
   void _node;
+  const image =
+    href && origin
+      ? parseImageFileLink(
+          href,
+          origin,
+          typeof window === "undefined" ? undefined : window.location.origin,
+        )
+      : null;
+  if (image)
+    return (
+      <ImageFileAnchor {...props} href={href} fileTarget={image}>
+        {children}
+      </ImageFileAnchor>
+    );
   const target = href && origin ? parseFileLink(href, origin) : null;
   if (!target)
     return (
@@ -70,9 +92,9 @@ export function OpenCurrentFile({ path }: { path: string }) {
   const [error, setError] = useState("");
   if (!origin) return null;
   return (
-    <button
-      type="button"
-      className="rounded px-2 py-1 text-xs text-accent hover:bg-hover"
+    <Button
+      size="sm"
+      variant="quiet"
       title={error || path}
       onClick={() =>
         void runtime.files
@@ -83,6 +105,6 @@ export function OpenCurrentFile({ path }: { path: string }) {
       }
     >
       {error || "打开当前文件"}
-    </button>
+    </Button>
   );
 }

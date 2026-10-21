@@ -1,48 +1,48 @@
-.composer-editor {
-  min-height: 56px;
-  max-height: min(190px, calc(var(--viewport-height, 100dvh) * 0.25));
-  overscroll-behavior: contain;
-  overflow-y: auto;
-  padding: 16px 17px 5px;
-  font-size: 14px;
-  line-height: 1.65;
-  outline: none;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.composer-editor p {
-  margin: 0;
-}
-.composer-editor p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  float: left;
-  height: 0;
-  color: var(--subtle);
-  pointer-events: none;
-}
-.composer-editor[aria-disabled="true"] {
-  cursor: not-allowed;
-}
-.composer-reference {
-  display: inline-block;
-  max-width: 100%;
-  padding: 0 6px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--hover);
-  color: var(--accent);
-  vertical-align: bottom;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  user-select: all;
-}
-.composer-reference.ProseMirror-selectednode {
-  outline: 2px solid var(--accent);
-}
-@media (max-width: 550px) {
+@layer components {
   .composer-editor {
-    font-size: 16px;
-    padding: 12px 12px 5px;
+    min-height: 56px;
+    max-height: min(190px, calc(var(--viewport-height, 100dvh) * 0.25));
+    overscroll-behavior: contain;
+    overflow-y: auto;
+    font-size: var(--text-body);
+    line-height: var(--leading-code);
+    outline: none;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .composer-editor :where(p) {
+    margin: 0;
+  }
+  .composer-editor :where(p.is-editor-empty:first-child)::before {
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    color: var(--subtle);
+    pointer-events: none;
+  }
+  .composer-editor[aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+  .composer-reference {
+    display: inline-block;
+    max-width: 100%;
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--hover);
+    color: var(--accent);
+    vertical-align: bottom;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: all;
+  }
+  .composer-reference.ProseMirror-selectednode {
+    outline: 2px solid var(--accent);
+  }
+  @media (max-width: 550px) {
+    .composer-editor {
+      font-size: var(--text-base);
+    }
   }
 }

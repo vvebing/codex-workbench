@@ -1,11 +1,21 @@
+import type { LocalMessage } from "../composer/local-messages";
+import { useRuntime } from "../../lib/runtime-context";
+import { conversationReadingCache } from "./reading-state";
+import { PromptDirectory } from "./PromptDirectory";
 import { AsyncQuestionPanel } from "./AsyncQuestions";
 import { LocalMessageImage } from "./MessageImage";
 import { ConversationImage } from "../../components/ImagePreview";
 import { FileLinkProvider } from "../files/FileLinkContext";
 import { useAutoCollapseProcess } from "../settings/conversation-preferences";
-import { Button, ErrorNotice, ScrollArea } from "../../components/ui";
+import { Button, ErrorNotice, Modal, ScrollArea } from "../../components/ui";
 import {
   Fragment,
+  useSyncExternalStore,
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  memo,
   useCallback,
   useId,
   useEffect,
@@ -33,7 +43,6 @@ import type { Thread } from "../../generated/v2/Thread";
 import type { Turn } from "../../generated/v2/Turn";
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
 import { TurnResults } from "./TurnResults";
-import type { TurnPlanStep } from "../../generated/v2/TurnPlanStep";
 import { Markdown } from "./Markdown";
 import {
   executionSegments,
@@ -62,10 +71,13 @@ import {
   formatCompletionTime,
 } from "./activity";
 export interface TimelineProps {
+  cacheScope?: string;
+  hasOlder?: boolean;
+  loadingOlder?: boolean;
+  onLoadOlder?: () => void;
   thread?: Thread;
   loading?: boolean;
   turnDiffs?: Record<string, string>;
-  turnPlans?: Record<string, TurnPlanStep[]>;
   fileOutputs?: Record<string, string>;
   finishedTurns?: Record<string, true>;
   completedItems?: Record<string, boolean>;
@@ -75,7 +87,30 @@ export interface TimelineProps {
   waitingItems?: string[];
   onRollback?: (turnId: string, messageId?: string) => Promise<unknown>;
 }
-function ToolItem({
+const ReadingChoices = createContext<Map<string, unknown> | undefined>(
+  undefined,
+);
+function useReadingChoice<T>(key: string, initial: T) {
+  const cache = useContext(ReadingChoices);
+  const [value, setValue] = useState<T>(() =>
+    cache?.has(key) ? (cache.get(key) as T) : initial,
+  );
+  const update = useCallback(
+    (next: T | ((old: T) => T)) => {
+      setValue((old) => {
+        const value =
+          typeof next === "function" ? (next as (old: T) => T)(old) : next;
+        cache?.set(key, value);
+        if (cache && cache.size > 2000)
+          cache.delete(cache.keys().next().value!);
+        return value;
+      });
+    },
+    [cache, key],
+  );
+  return [value, update] as const;
+}
+const ToolItem = memo(function ToolItem({
   item,
   output,
   lifecycle,
@@ -253,13 +288,14 @@ function ToolItem({
     return (
       <div
         data-slot="conversation-tool"
+        data-reading-id={item.id}
         data-status={status}
         data-item-type={item.type}
         data-expandable="false"
         title={
           active ? "摘要到达后可展开查看" : "该操作记录没有可展示的思考摘要"
         }
-        className={`my-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] ${active ? "text-muted" : "text-subtle"}`}
+        className={`my-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-caption ${active ? "text-muted" : "text-subtle"}`}
       >
         {active ? (
           <LoaderCircle
@@ -288,7 +324,7 @@ function ToolItem({
           setManual(!open);
           onManualChange?.(item.id, !open);
         }}
-        className="flex cursor-pointer list-none items-center gap-2 py-1.5 max-[550px]:min-h-10 text-[12px] text-muted [&::-webkit-details-marker]:hidden"
+        className="flex cursor-pointer list-none items-center gap-2 py-1.5 max-[550px]:min-h-10 text-caption text-muted [&::-webkit-details-marker]:hidden"
       >
         {active ? (
           <LoaderCircle
@@ -316,12 +352,12 @@ function ToolItem({
             </small>
           )}
         {"durationMs" in item && item.durationMs !== null && (
-          <small className="shrink-0 whitespace-nowrap text-[11px] text-muted">
+          <small className="shrink-0 whitespace-nowrap text-meta text-muted">
             {(item.durationMs / 1000).toFixed(1)} 秒
           </small>
         )}
         {status && !["completed", "inProgress", "failed"].includes(status) && (
-          <small className="shrink-0 whitespace-nowrap text-[11px]">
+          <small className="shrink-0 whitespace-nowrap text-meta">
             {status === "waiting" ? "等待确认" : executionStatusLabel(status)}
           </small>
         )}
@@ -376,7 +412,7 @@ function ToolItem({
       )}
     </details>
   );
-}
+});
 function ExecutionSummary({
   segment,
   render,
@@ -432,16 +468,25 @@ export function OperationGroup({
   fileOutputs?: Record<string, string>;
   onInspectAgent?: (id: string) => void;
 }) {
-  const [showEarlier, setShowEarlier] = useState(false);
-  const [manualItems, setManualItems] = useState<Record<string, boolean>>({});
-  const [summaryChoices, setSummaryChoices] = useState<
+  const choiceKey = `operations:${context.turnId}:${items[0]?.id}`;
+  const [showEarlier, setShowEarlier] = useReadingChoice(
+    `${choiceKey}:earlier`,
+    false,
+  );
+  const [manualItems, setManualItems] = useReadingChoice<
+    Record<string, boolean>
+  >(`${choiceKey}:items`, {});
+  const [summaryChoices, setSummaryChoices] = useReadingChoice<
     Record<string, OperationExpansion>
-  >({});
+  >(`${choiceKey}:summaries`, {});
+  const lastStatus = useRef(context.turnStatus);
   useEffect(() => {
+    if (lastStatus.current === context.turnStatus) return;
+    lastStatus.current = context.turnStatus;
     setShowEarlier(false);
     setManualItems({});
     setSummaryChoices({});
-  }, [context.turnStatus]);
+  }, [context.turnStatus, setShowEarlier, setManualItems, setSummaryChoices]);
   const resolve = useCallback(
     (item: ThreadItem) =>
       operationStatus(
@@ -474,7 +519,7 @@ export function OperationGroup({
         for (const item of ended) delete next[item.id];
         return next;
       });
-  }, [items, resolve]);
+  }, [items, resolve, setManualItems]);
   const signature = items
     .map((item) => `${item.id}:${resolve(item)}`)
     .join("|");
@@ -504,6 +549,12 @@ export function OperationGroup({
     expandedItems,
   });
   const displayed = showEarlier ? items : visible;
+  const changeManualItem = useCallback(
+    (id: string, open: boolean) => {
+      setManualItems((old) => ({ ...old, [id]: open }));
+    },
+    [setManualItems],
+  );
   const render = (item: ThreadItem) => (
     <ToolItem
       key={operationKey(context.threadId, context.turnId, item.id)}
@@ -516,9 +567,7 @@ export function OperationGroup({
       manualOpen={manualItems[item.id]}
       finished={context.turnStatus !== "inProgress"}
       onInspectAgent={onInspectAgent}
-      onManualChange={(id, open) =>
-        setManualItems((old) => ({ ...old, [id]: open }))
-      }
+      onManualChange={changeManualItem}
     />
   );
   const segments = executionSegments(displayed, resolve).flatMap(
@@ -593,13 +642,21 @@ function TurnContent({
 }) {
   const autoCollapse = useAutoCollapseProcess();
   const finished = status !== "inProgress";
-  const [collapsed, setCollapsed] = useState(autoCollapse && finished);
+  const [collapsed, setCollapsed] = useReadingChoice(
+    `process:${items[0]?.id}`,
+    autoCollapse && finished,
+  );
+  const wasFinished = useRef(finished);
   useEffect(() => {
-    if (autoCollapse && finished) setCollapsed(true);
-  }, [autoCollapse, finished]);
+    if (autoCollapse && finished && !wasFinished.current) setCollapsed(true);
+    wasFinished.current = finished;
+  }, [autoCollapse, finished, setCollapsed]);
   const id = useId();
-  const groups = groupTimelineItems(items);
-  const progress = groups.map((group) => isTimelineProgress(group[0], items));
+  const groups = useMemo(() => groupTimelineItems(items), [items]);
+  const progress = useMemo(
+    () => groups.map((group) => isTimelineProgress(group[0], items)),
+    [groups, items],
+  );
   const hasProgress = progress.some(Boolean);
   const summaryIndex = groups.findIndex(
     (group, index) => group[0].type === "agentMessage" && !progress[index],
@@ -633,7 +690,8 @@ function TurnContent({
             id={progress[index] ? `${id}-${index}` : undefined}
             hidden={collapsed && progress[index]}
           >
-            {children(group, hasProgress && index === summaryIndex)}
+            {!(collapsed && progress[index]) &&
+              children(group, hasProgress && index === summaryIndex)}
           </div>
         </Fragment>
       ))}
@@ -641,7 +699,7 @@ function TurnContent({
     </>
   );
 }
-export function Item({
+export const Item = memo(function Item({
   item,
   action,
   streaming = false,
@@ -654,7 +712,7 @@ export function Item({
 }) {
   if (item.type === "agentMessage")
     return (
-      <article className="mb-6">
+      <article data-reading-id={item.id} className="mb-6">
         {!hideDivider && (item.phase === "final_answer" || action) && (
           <hr className="mb-5 border-0 border-t border-border" />
         )}
@@ -665,6 +723,8 @@ export function Item({
   if (item.type === "userMessage")
     return (
       <article
+        data-prompt-id={item.id}
+        data-reading-id={item.id}
         className={`relative mb-6 ml-auto w-fit min-w-0 max-w-full rounded-xl border border-border bg-surface p-3 sm:px-5 sm:py-4 ${action ? "pr-12 sm:pr-12" : ""}`}
       >
         {action}
@@ -685,7 +745,7 @@ export function Item({
             />
           ) : (
             <div
-              className="text-[13px] text-muted [overflow-wrap:anywhere]"
+              className="text-control text-muted [overflow-wrap:anywhere]"
               key={index}
             >
               {part.type === "skill" || part.type === "mention"
@@ -699,20 +759,32 @@ export function Item({
       </article>
     );
   return <ToolItem item={item} />;
-}
+});
 export function Timeline(props: TimelineProps) {
   return (
     <FileLinkProvider cwd={props.thread?.cwd} threadId={props.thread?.id}>
-      <TimelineContent {...props} />
+      <ReadingChoices.Provider
+        value={
+          props.cacheScope && props.thread
+            ? conversationReadingCache.entry(props.cacheScope, props.thread.id)
+                .choices
+            : undefined
+        }
+      >
+        <TimelineContent {...props} />
+      </ReadingChoices.Provider>
     </FileLinkProvider>
   );
 }
 
 function TimelineContent({
+  cacheScope,
+  hasOlder,
+  loadingOlder,
+  onLoadOlder,
   thread,
   loading = false,
   turnDiffs,
-  turnPlans,
   fileOutputs,
   finishedTurns,
   completedItems,
@@ -722,10 +794,18 @@ function TimelineContent({
   waitingItems,
   onRollback,
 }: TimelineProps) {
+  const { submissions } = useRuntime();
+  useSyncExternalStore(
+    submissions.messages.subscribe,
+    submissions.messages.getSnapshot,
+  );
+  const localMessages = thread ? submissions.messages.forThread(thread.id) : [];
   const viewport = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const lastScrollTop = useRef(0);
-  const scrollIntentUntil = useRef(0);
+  const synchronizedScroll = useRef<number | null>(null);
+  const synchronizedHeight = useRef(0);
+  const readingIntentUntil = useRef(0);
   const anchor = useRef<{ element: Element; offset: number }[]>([]);
   const [away, setAway] = useState(false);
   const rollbackLock = useRef(false);
@@ -735,21 +815,9 @@ function TimelineContent({
     setRollbackError(null);
   }, [thread?.id]);
   const running = conversationExecuting(thread);
-  const [now, setNow] = useState(Date.now);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
   const [copying, setCopying] = useState(false);
-  useEffect(() => {
-    if (!thread?.id) return;
-    const refresh = () => setNow(Date.now());
-    refresh();
-    const timer = setInterval(refresh, running ? 1000 : 60_000);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, [running, thread?.id]);
   useEffect(() => {
     setCopied(false);
     setCopyError("");
@@ -807,25 +875,112 @@ function TimelineContent({
       setRollingBack(null);
     }
   };
-  useEffect(() => {
-    following.current = true;
-    anchor.current = [];
-    scrollIntentUntil.current = 0;
-    setAway(false);
+  useLayoutEffect(() => {
     const el = viewport.current;
+    const entry =
+      cacheScope && thread?.id
+        ? conversationReadingCache.entry(cacheScope, thread.id)
+        : undefined;
+    const saved = entry?.reading;
+    following.current = saved?.following ?? true;
+    anchor.current = [];
+    setAway(!following.current);
     if (el) {
-      el.scrollTop = el.scrollHeight;
+      if (following.current) el.scrollTop = el.scrollHeight;
+      else {
+        const turn = Array.from(
+          el.querySelectorAll<HTMLElement>("[data-turn-id]"),
+        ).find((node) => node.dataset.turnId === saved?.turnId);
+        el.scrollTop = saved?.scrollTop ?? 0;
+        const target =
+          saved?.anchorId && turn
+            ? (Array.from(
+                turn.querySelectorAll<HTMLElement>("[data-reading-id]"),
+              ).find((node) => node.dataset.readingId === saved.anchorId) ??
+              turn)
+            : turn;
+        if (target)
+          el.scrollTop +=
+            target.getBoundingClientRect().top -
+            el.getBoundingClientRect().top -
+            (saved?.offset ?? 0);
+        captureAnchor(el);
+      }
       lastScrollTop.current = el.scrollTop;
     }
-  }, [thread?.id]);
+    return () => {
+      if (!el || !entry) return;
+      const savedAnchor = anchor.current.find(
+        ({ element }) => element.isConnected,
+      );
+      entry.reading = {
+        following: following.current,
+        turnId: (
+          savedAnchor?.element.closest("[data-turn-id]") as
+            HTMLElement | undefined
+        )?.dataset.turnId,
+        anchorId: (savedAnchor?.element as HTMLElement | undefined)?.dataset
+          .readingId,
+        offset: savedAnchor?.element.hasAttribute("data-reading-id")
+          ? savedAnchor.offset
+          : (savedAnchor?.element
+              .closest("[data-turn-id]")
+              ?.getBoundingClientRect().top ?? el.getBoundingClientRect().top) -
+            el.getBoundingClientRect().top,
+        scrollTop: el.scrollTop,
+      };
+    };
+  }, [cacheScope, thread?.id]);
+  function captureAnchor(el: HTMLDivElement) {
+    const turns = el.querySelectorAll<HTMLElement>("[data-turn-id]");
+    const top = el.getBoundingClientRect().top;
+    let low = 0,
+      high = turns.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (turns[mid].getBoundingClientRect().bottom <= top) low = mid + 1;
+      else high = mid;
+    }
+    const nearby = Array.from(
+      { length: Math.min(2, turns.length - low) },
+      (_, index) => turns[low + index],
+    );
+    const candidates = nearby.flatMap((turn) =>
+      Array.from(
+        turn.querySelectorAll<HTMLElement>(
+          "article, [data-slot=conversation-tool], [data-slot=turn-process-divider]",
+        ),
+      ),
+    );
+    low = 0;
+    high = candidates.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (candidates[mid].getBoundingClientRect().bottom <= top) low = mid + 1;
+      else high = mid;
+    }
+    anchor.current = candidates.slice(low, low + 3).map((element) => ({
+      element,
+      offset: element.getBoundingClientRect().top - top,
+    }));
+  }
+  const scrollFrame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(scrollFrame.current), []);
   useEffect(() => {
     const el = viewport.current;
     if (!el) return;
     const synchronize = () => {
       if (!el.getClientRects().length || !el.clientWidth || !el.clientHeight)
         return;
+      synchronizedHeight.current = el.scrollHeight;
+      if (scrollFrame.current) {
+        cancelAnimationFrame(scrollFrame.current);
+        scrollFrame.current = 0;
+        if (!following.current) captureAnchor(el);
+      }
       if (following.current) {
         el.scrollTop = el.scrollHeight;
+        synchronizedScroll.current = el.scrollTop;
         lastScrollTop.current = el.scrollTop;
       } else {
         // A folded task may disappear; fall back to the next surviving content.
@@ -838,6 +993,7 @@ function TimelineContent({
             saved.element.getBoundingClientRect().top -
             el.getBoundingClientRect().top;
           el.scrollTop += offset - saved.offset;
+          synchronizedScroll.current = el.scrollTop;
           lastScrollTop.current = el.scrollTop;
         }
       }
@@ -875,6 +1031,18 @@ function TimelineContent({
       data-slot="conversation-timeline-shell"
       className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col text-foreground"
     >
+      {thread && !loading && (
+        <PromptDirectory
+          key={thread.id}
+          turns={thread.turns}
+          viewport={viewport}
+          onNavigate={() => {
+            following.current = false;
+            anchor.current = [];
+            setAway(true);
+          }}
+        />
+      )}
       {rollbackError && (
         <ErrorNotice className="mx-5 mt-2">{rollbackError}</ErrorNotice>
       )}
@@ -883,14 +1051,14 @@ function TimelineContent({
         viewportRef={viewport}
         onPointerDownCapture={(event) => {
           if ((event.target as Element).closest("[data-orientation=vertical]"))
-            scrollIntentUntil.current = Date.now() + 2000;
+            readingIntentUntil.current = Date.now() + 2000;
         }}
         viewportProps={{
           onWheelCapture: () => {
-            scrollIntentUntil.current = Date.now() + 1500;
+            readingIntentUntil.current = Date.now() + 1500;
           },
           onTouchMove: () => {
-            scrollIntentUntil.current = Date.now() + 1500;
+            readingIntentUntil.current = Date.now() + 1500;
           },
           onKeyDown: (event) => {
             if (
@@ -907,35 +1075,32 @@ function TimelineContent({
                 "input, textarea, [contenteditable=true]",
               )
             )
-              scrollIntentUntil.current = Date.now() + 1500;
+              readingIntentUntil.current = Date.now() + 1500;
           },
           onScroll: (event) => {
             const el = event.currentTarget;
             const atBottom =
               el.scrollHeight - el.scrollTop - el.clientHeight < 5;
             const movedUp = el.scrollTop < lastScrollTop.current - 1;
-            // Content growth changes the bottom distance without user scrolling.
-            // Only an actual upward scroll pauses an existing bottom follow.
+            // Content growth alone keeps following. External upward scrolling,
+            // including programmatic reading navigation, pauses it.
             if (atBottom) following.current = true;
-            else if (movedUp && Date.now() < scrollIntentUntil.current)
+            else if (
+              movedUp &&
+              (Date.now() < readingIntentUntil.current ||
+                el.scrollHeight === synchronizedHeight.current) &&
+              (synchronizedScroll.current === null ||
+                Math.abs(el.scrollTop - synchronizedScroll.current) > 1)
+            )
               following.current = false;
+            synchronizedScroll.current = null;
             lastScrollTop.current = el.scrollTop;
             if (!following.current) {
-              const top = el.getBoundingClientRect().top;
-              anchor.current = Array.from(
-                el.querySelectorAll(
-                  "article, [data-slot=conversation-tool], [data-slot=turn-process-divider]",
-                ),
-              )
-                .filter(
-                  (node) =>
-                    node.getClientRects().length &&
-                    node.getBoundingClientRect().bottom > top,
-                )
-                .map((element) => ({
-                  element,
-                  offset: element.getBoundingClientRect().top - top,
-                }));
+              if (!scrollFrame.current)
+                scrollFrame.current = requestAnimationFrame(() => {
+                  scrollFrame.current = 0;
+                  captureAnchor(el);
+                });
             } else anchor.current = [];
             setAway(!following.current);
           },
@@ -943,7 +1108,17 @@ function TimelineContent({
         data-slot="conversation-timeline"
       >
         <div className="overscroll-contain">
-          <div className="mx-auto max-w-[840px] px-4 pt-4 pb-12 sm:px-7">
+          <div
+            data-slot="conversation-content"
+            className="conversation-content pt-4 pb-12"
+          >
+            {hasOlder && (
+              <div className="mb-4 flex justify-center">
+                <Button disabled={loadingOlder} onClick={onLoadOlder}>
+                  {loadingOlder ? "正在加载更早对话…" : "加载更早对话"}
+                </Button>
+              </div>
+            )}
             {loading ? (
               <div
                 data-slot="conversation-loading"
@@ -956,14 +1131,14 @@ function TimelineContent({
             ) : !thread ? (
               <div
                 data-slot="conversation-empty"
-                className="py-3 text-[13px] leading-[1.7] text-muted"
+                className="py-3 text-control leading-copy text-muted"
               >
                 选择一个会话，或开始新的对话。
               </div>
-            ) : !thread.turns.length ? (
+            ) : !thread.turns.length && !localMessages.length ? (
               <div
                 data-slot="conversation-empty"
-                className="py-3 text-[13px] leading-[1.7] text-muted"
+                className="py-3 text-control leading-copy text-muted"
               >
                 写下你的任务，开始这个会话。
               </div>
@@ -971,6 +1146,7 @@ function TimelineContent({
               thread.turns.map((turn, index) => (
                 <section
                   data-slot="conversation-turn"
+                  data-turn-id={turn.id}
                   className={`pt-3 pb-6 ${index > 0 ? "border-t border-border" : ""}`}
                   key={JSON.stringify([thread.id, turn.id])}
                   aria-label={`第 ${index + 1} 轮对话`}
@@ -1067,24 +1243,30 @@ function TimelineContent({
                     turn={turn}
                     cwd={thread.cwd}
                     diff={turnDiffs?.[turn.id]}
-                    plan={turnPlans?.[turn.id]}
                   />
                   <TurnFooter
                     thread={thread}
                     turn={turn}
                     confirmed={finishedTurns?.[turn.id]}
-                    now={now}
                   />
                 </section>
               ))
             )}
+            {localMessages.map((message) => (
+              <LocalDeliveryMessage
+                key={message.id}
+                message={message}
+                onRestore={() => submissions.restoreMessage(message.id)}
+                onDismiss={() => submissions.messages.remove(message.id)}
+              />
+            ))}
           </div>
         </div>
       </ScrollArea>
       {!loading && thread && <AsyncQuestionPanel thread={thread} />}
       {away && (
-        <button
-          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-elevated px-[13px] py-2 text-[13px] font-medium hover:bg-hover absolute bottom-4 left-1/2 -translate-x-1/2 shadow-md"
+        <Button
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 shadow-md"
           onClick={() => {
             following.current = true;
             anchor.current = [];
@@ -1098,9 +1280,94 @@ function TimelineContent({
         >
           <ArrowDown size={14} />
           回到底部
-        </button>
+        </Button>
       )}
     </div>
+  );
+}
+
+export function LocalDeliveryMessage({
+  message,
+  onDismiss,
+  onRestore,
+}: {
+  message: LocalMessage;
+  onRestore?: () => void;
+  onDismiss: () => void;
+}) {
+  const [discarding, setDiscarding] = useState(false);
+  const needsReview =
+    message.status === "failed" || message.status === "uncertain";
+  return (
+    <section
+      data-slot="local-message"
+      data-delivery-status={message.status}
+      className="py-3"
+    >
+      <Item
+        item={{
+          type: "userMessage",
+          id: message.id,
+          clientId: message.id,
+          content: message.input,
+        }}
+      />
+      <p role="status" className="text-xs text-muted">
+        {message.status === "creating"
+          ? "正在创建会话…"
+          : message.status === "sending"
+            ? "正在发送…"
+            : message.status === "accepted"
+              ? "服务器已接收，等待消息记录同步…"
+              : message.status === "failed"
+                ? `发送失败：${message.error ?? "服务器拒绝了此消息"}`
+                : `发送结果待核实：${message.error ?? "连接中断"}`}
+      </p>
+      {needsReview && (
+        <div className="mt-2 text-xs text-muted">
+          <p>
+            {message.status === "uncertain"
+              ? "不会自动重发。请先核实会话记录，确认未送达后再恢复编辑并手动发送。"
+              : "消息内容已保留，可恢复到输入框修改后发送。"}
+          </p>
+          {onRestore && (
+            <Button
+              variant="quiet"
+              size="sm"
+              className="mt-1 mr-2"
+              onClick={onRestore}
+            >
+              恢复到输入框
+            </Button>
+          )}
+          <Button
+            variant="quiet"
+            size="sm"
+            className="mt-1"
+            onClick={() => setDiscarding(true)}
+          >
+            丢弃消息
+          </Button>
+          <Modal
+            open={discarding}
+            onOpenChange={setDiscarding}
+            title="丢弃消息？"
+          >
+            <p className="text-sm text-muted">
+              将删除此消息在当前页面保留的内容，无法恢复。此操作不会撤回服务器可能已接收的消息。
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="quiet" onClick={() => setDiscarding(false)}>
+                取消
+              </Button>
+              <Button variant="danger" onClick={onDismiss}>
+                确认丢弃
+              </Button>
+            </div>
+          </Modal>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1108,21 +1375,29 @@ function TurnFooter({
   thread,
   turn,
   confirmed,
-  now,
 }: {
   thread: Thread;
   turn: Turn;
   confirmed?: boolean;
-  now: number;
 }) {
   const status = turnStatusLabel(thread, turn, confirmed);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const refresh = () => setNow(Date.now());
+    const timer = setInterval(refresh, status === "正在执行…" ? 1000 : 60_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [status]);
   const timing = turnTiming(turn, status === "正在执行…", now);
   const completed =
     turn.completedAt == null ? null : new Date(turn.completedAt * 1000);
   return (
     <footer
       data-slot="conversation-turn-footer"
-      className="mt-4 flex items-center justify-between text-[11px] text-muted"
+      className="mt-4 flex items-center justify-between text-meta text-muted"
     >
       <span>
         {status.replace("…", "")}

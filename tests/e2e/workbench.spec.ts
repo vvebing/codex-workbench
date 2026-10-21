@@ -6,12 +6,23 @@ import { createMockServer } from "../fixtures/app-server";
 let fixtureServer: ReturnType<typeof createMockServer>;
 let fixtureUrl: string;
 let resumeMermaidStream: () => void;
+let resumeBackgroundStream: (() => void) | undefined;
 test.beforeEach(async ({ page }) => {
+  await page.route("**/codex-release", (route) =>
+    route.fulfill({ json: { version: "0.160.0" } }),
+  );
+  resumeBackgroundStream = undefined;
   const streamGate = test.info().title.startsWith("mermaid rendering")
     ? new Promise<void>((resolve) => {
         resumeMermaidStream = resolve;
       })
-    : undefined;
+    : test.info().title.startsWith("background completion")
+      ? new Promise<void>((resolve) => {
+          resumeBackgroundStream = resolve;
+        })
+      : test.info().title.startsWith("running work accepts steering")
+        ? new Promise<void>(() => {})
+        : undefined;
   await page.addInitScript(() => {
     if (!localStorage.getItem("codex-environments"))
       localStorage.setItem(
@@ -189,7 +200,10 @@ async function openFirst(page: Page) {
   await page.keyboard.press("Control+k");
   const searchDialog = page.getByRole("dialog", { name: "搜索会话" });
   await searchDialog.getByPlaceholder("搜索标题、摘要或工作区…").fill(target);
-  await page.keyboard.press("Enter");
+  await searchDialog
+    .getByRole("option")
+    .filter({ has: page.getByText(target, { exact: true }) })
+    .click();
   await expect(searchDialog).toBeHidden();
   await expect(input(page)).toBeVisible();
   await expect(
@@ -242,6 +256,142 @@ test("connect form validates endpoint and keeps token out of persistent browser 
   expect(stored).not.toContain("fictional-test-token");
 });
 
+test("connection automatically announces newer releases and restores the notice after reconnect", async ({
+  page,
+}) => {
+  await page.route("**/codex-release", (route) =>
+    route.fulfill({ json: { version: "0.161.0" } }),
+  );
+  await openFirst(page);
+  const notice = page.locator("[data-slot=app-server-update]");
+  await expect(notice).toContainText("0.160.0 → 0.161.0");
+  await notice.getByRole("button", { name: "关闭更新提示" }).click();
+  await expect(notice).toHaveCount(0);
+  await page.locator("[data-slot=connection-entry]").click();
+  const dialog = page.getByRole("dialog", { name: "连接与设置" });
+  await dialog.getByRole("tab", { name: "工作环境", exact: true }).click();
+  await dialog.getByRole("button", { name: "断开连接", exact: true }).click();
+  await dialog.getByRole("button", { name: "连接", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(notice).toBeVisible();
+});
+
+test("old web backend HTML falls back to public releases while the connection stays usable", async ({
+  page,
+}) => {
+  await page.route("**/codex-release", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><html></html>",
+    }),
+  );
+  await page.route(
+    "https://api.github.com/repos/openai/codex/releases/latest",
+    (route) =>
+      route.fulfill({
+        json: { tag_name: "rust-v0.161.0", prerelease: false, draft: false },
+      }),
+  );
+  await openFirst(page);
+  await expect(page.locator("[data-slot=app-server-update]")).toContainText(
+    "0.161.0",
+  );
+  await expect(input(page)).toBeEditable();
+});
+
+test("connection version checks stable releases and recovers from failure without disconnecting", async ({
+  page,
+}) => {
+  await openFirst(page);
+  await expect(page.locator("[data-slot=app-server-update]")).toHaveCount(0);
+  await page.locator("[data-slot=connection-entry]").click();
+  const dialog = page.getByRole("dialog", { name: "连接与设置" });
+  await dialog.getByRole("tab", { name: "工作环境", exact: true }).click();
+  const version = dialog.locator("[data-slot=app-server-version]");
+  await expect(version).toContainText("0.160.0");
+  await page.route("**/codex-release", (route) =>
+    route.fulfill({ status: 503, json: { error: "unavailable" } }),
+  );
+  await version.getByRole("button", { name: "检查更新", exact: true }).click();
+  await expect(version).toContainText("检查更新失败");
+  await expect(page.locator("[data-slot=app-server-update]")).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: "断开连接", exact: true }),
+  ).toBeVisible();
+  await page.route("**/codex-release", (route) =>
+    route.fulfill({ json: { version: "0.161.0" } }),
+  );
+  await version.getByRole("button", { name: "检查更新", exact: true }).click();
+  await expect(version).toContainText("发现新版本 0.161.0");
+  await expect(
+    version.getByRole("link", { name: "查看发布说明" }),
+  ).toHaveAttribute(
+    "href",
+    "https://github.com/openai/codex/releases/tag/rust-v0.161.0",
+  );
+  await page.route("**/codex-release", (route) =>
+    route.fulfill({ json: { version: "0.160.0" } }),
+  );
+  await version.getByRole("button", { name: "检查更新", exact: true }).click();
+  await expect(version).toContainText("未发现更新的稳定版本");
+  await dialog.getByRole("button", { name: "断开连接", exact: true }).click();
+  await expect(version).toHaveCount(0);
+});
+
+test("conversation defaults to comfortable prose and width preference persists", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await openFirst(page);
+  const content = page.locator("[data-slot=conversation-content]");
+  const composer = page.locator("[data-slot=conversation-composer]");
+  expect((await content.boundingBox())!.width).toBeCloseTo(
+    (await composer.boundingBox())!.width,
+    0,
+  );
+  await expect(content).toHaveCSS("width", "928px");
+  const prose = content
+    .locator("article:not([data-prompt-id]) > .markdown-content > p")
+    .first();
+  expect((await prose.boundingBox())!.width).toBeCloseTo(
+    (await content.boundingBox())!.width - 48,
+    0,
+  );
+  await input(page).fill("width preference draft");
+  const chooseWidth = async (name: string) => {
+    await page.locator("[data-slot=connection-entry]").click();
+    const dialog = page.getByRole("dialog", { name: "连接与设置" });
+    await dialog.getByRole("tab", { name: "通用", exact: true }).click();
+    await dialog
+      .getByRole("combobox", { name: "会话宽度", exact: true })
+      .click();
+    await page.getByRole("option", { name, exact: true }).click();
+    await page.keyboard.press("Escape");
+  };
+  await chooseWidth("宽");
+  await expect(content).toHaveCSS("width", "1128px");
+  await expect(composer).toHaveCSS("width", "1128px");
+  expect((await prose.boundingBox())!.width).toBeCloseTo(
+    (await content.boundingBox())!.width - 48,
+    0,
+  );
+  await expect(input(page)).toHaveText("width preference draft");
+  await page.reload();
+  await expect(content).toHaveCSS("width", "1128px");
+  await chooseWidth("铺满");
+  await expect
+    .poll(async () => (await content.boundingBox())!.width)
+    .toBeGreaterThan(1128);
+  await page.setViewportSize({ width: 375, height: 900 });
+  await expect(content).toHaveCSS("padding-left", "12px");
+  await expect(composer).toHaveCSS("padding-left", "12px");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
 test("connection settings reuse a connected environment and retain its selected history", async ({
   page,
 }) => {
@@ -268,20 +418,27 @@ test("connection settings reuse a connected environment and retain its selected 
   ).toHaveLength(initializations);
 });
 
-test("pages all 90 conversations and keyboard search opens hydrated history", async ({
+test("automatically loads all 90 summaries and keyboard search opens hydrated history", async ({
   page,
 }) => {
   await connect(page);
-  while (await page.getByRole("button", { name: "加载下一页会话" }).count()) {
-    await page.getByRole("button", { name: "加载下一页会话" }).click();
-    await expect(page.getByRole("button", { name: "正在加载…" })).toHaveCount(
-      0,
-    );
-  }
+  await expect(page.locator("[data-slot=thread-row]")).toHaveCount(15);
+  await page.getByRole("button", { name: "折叠全部项目", exact: true }).click();
+  await expect(page.locator("[data-slot=thread-row]")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "加载下一页会话" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "展开全部项目", exact: true }).click();
+  await expect(page.locator("[data-slot=thread-row]")).toHaveCount(15);
+  for (const more of await page
+    .locator('[data-slot="project-history-toggle"]')
+    .all())
+    await more.click();
+  await expect(page.locator("[data-slot=thread-row]")).toHaveCount(90);
   await page.keyboard.press("Control+k");
   const dialog = page.getByRole("dialog", { name: "搜索会话" });
-  await expect(dialog).toContainText("搜索所有已连接环境的历史标题");
-  await expect(dialog.getByRole("option")).toHaveCount(90);
+  await expect(dialog).toContainText("在当前范围查找会话");
+  await expect(dialog.getByRole("listbox").getByRole("option")).toHaveCount(8);
   const search = dialog.getByPlaceholder("搜索标题、摘要或工作区…");
   await expect(search).toBeFocused();
   await search.fill("工作区导航与搜索 · 1");
@@ -328,12 +485,10 @@ test("creates, renames, forks a session and archives its branch", async ({
   );
   await expect(page.locator("[data-slot=conversation-turn]")).toHaveCount(2);
   await menu(page, "归档");
-  dialog = page.getByRole("dialog", { name: "归档会话" });
-  await expect(dialog).toContainText("当前列表移除");
-  await dialog.getByRole("button", { name: "确认" }).click();
-  await expect(
-    page.getByRole("heading", { name: "把想法，变成下一步。" }),
-  ).toBeVisible();
+  await expect(page.locator("[data-slot=archived-conversation]")).toContainText(
+    "此会话已归档",
+  );
+  await expect(input(page)).toHaveCount(0);
   await expect(
     page
       .locator("[data-slot=thread-link]")
@@ -628,6 +783,10 @@ test("questions support custom choices and secret input then resume execution", 
   await expect(
     page.getByRole("heading", { name: "需要你的回答" }),
   ).toBeVisible();
+  await input(page).fill("暂存的普通消息");
+  await page.locator("[data-slot=composer-action]").click();
+  await expect(page.locator("[data-question-request-id]")).toBeFocused();
+  await expect(input(page)).toHaveText("暂存的普通消息");
   await page.getByRole("radio", { name: "自定义回答" }).check();
   await page
     .getByRole("textbox", { name: "请选择导航布局，或输入自定义方案。" })
@@ -643,6 +802,13 @@ test("questions support custom choices and secret input then resume execution", 
   await expect(
     page.locator("[data-slot=conversation-timeline]"),
   ).not.toContainText("fictional-only");
+  await expect(
+    page.getByRole("heading", { name: "你的回答", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("待处理请求")).toContainText("分组侧栏");
+  await expect(page.getByLabel("待处理请求")).not.toContainText(
+    "fictional-only",
+  );
 });
 
 for (const running of [false, true]) {
@@ -798,7 +964,7 @@ test("external writer async question restores a saved answer and requires confir
   await form.getByRole("button", { name: "提交回答" }).click();
   await expect(form.getByRole("status")).toContainText("回答已保存");
   await page.reload();
-  await expect(form.getByRole("status")).toContainText("待确认后继续发送");
+  await expect(form.getByRole("status")).toContainText("请检查后继续队列");
   await expect(form).toContainText("顶部");
   expect(
     fixtureServer.requestLog.filter((entry) =>
@@ -850,15 +1016,37 @@ test("async questions can be ignored without sending and remain ignored after re
     ).length;
   const before = writes();
   await panel.getByRole("button", { name: "忽略", exact: true }).click();
-  await expect(panel).toHaveCount(0);
+  await expect(panel.getByRole("form")).toHaveCount(0);
+  await expect(
+    panel.getByRole("button", { name: /恢复已忽略问题/ }),
+  ).toBeVisible();
   await expect(page.locator("[data-slot=action-notification]")).toHaveCount(0);
   expect(writes()).toBe(before);
   await page.reload();
   await expect(page.getByRole("textbox", { name: "消息输入框" })).toBeVisible();
-  await expect(panel).toHaveCount(0);
+  await expect(panel.getByRole("form")).toHaveCount(0);
   await expect(page.locator("[data-slot=action-notification]")).toHaveCount(0);
+  await panel.getByRole("button", { name: /恢复已忽略问题/ }).click();
+  await expect(panel.getByRole("form")).toBeVisible();
+  expect(writes()).toBe(before);
+});
+
+test("async question drafts survive reload and unrelated follow-ups keep the question open", async ({
+  page,
+}) => {
+  await openFirst(page);
   await send(page, "async-question");
-  await expect(panel).toBeVisible();
+  await completed(page);
+  const form = page.getByRole("form", { name: "回答异步问题" });
+  await form.getByRole("radio", { name: "自定义回答" }).check();
+  const answer = form.getByRole("textbox", { name: "选择导航布局" });
+  await answer.fill("第一行说明\n第二行说明");
+  await page.reload();
+  await expect(answer).toHaveValue("第一行说明\n第二行说明");
+  await send(page, "请先解释背景");
+  await completed(page);
+  await expect(form).toBeVisible();
+  await expect(answer).toHaveValue("第一行说明\n第二行说明");
 });
 
 test("running work accepts steering and can be interrupted", async ({
@@ -902,7 +1090,7 @@ test("failure and disconnect are visible; reconnect preserves the unsent draft",
   ).toBeVisible();
   await send(page, "断线");
   await expect(page.locator("[data-slot=connection-entry] strong")).toHaveText(
-    "连接工作环境",
+    "设置",
   );
   await input(page).fill("重连后的待发送草稿");
   await expect(page.locator("[data-slot=composer-action]")).toBeDisabled();
@@ -944,7 +1132,7 @@ test("failure and disconnect are visible; reconnect preserves the unsent draft",
   await expect(page.locator("[data-slot=global-error]")).toBeHidden();
 });
 
-test("turn results display plans and diffs independently of the project panel", async ({
+test("turn results display files and diffs independently of the project panel", async ({
   page,
 }) => {
   await openFirst(page);
@@ -953,8 +1141,8 @@ test("turn results display plans and diffs independently of the project panel", 
   const turn = page.locator("[data-slot=conversation-turn]").last();
   const results = turn.locator("[data-slot=turn-results]");
   await expect(results).toBeVisible();
-  await results.getByRole("button", { name: /执行计划/ }).click();
-  await expect(results).toContainText("检查现状");
+  await results.getByRole("button", { name: /本轮变更 ·/ }).click();
+  await expect(results).not.toContainText("检查现状");
   await expect(results).toContainText("src/navigation.ts");
   await results
     .getByRole("button", { name: "src/navigation.ts", exact: true })
@@ -976,7 +1164,7 @@ test("turn results display plans and diffs independently of the project panel", 
   await expect(turn).toContainText("24 tests passed");
 });
 
-test("turn results keep late plans and diffs attached to their owning turn", async ({
+test("turn results keep late diffs attached to their owning turn", async ({
   page,
 }) => {
   await openFirst(page);
@@ -1022,13 +1210,13 @@ test("turn results keep late plans and diffs attached to their owning turn", asy
   await expect(results).toHaveCount(2);
   await results
     .nth(0)
-    .getByRole("button", { name: /执行计划/ })
+    .getByRole("button", { name: /本轮变更 ·/ })
     .click();
   await results
     .nth(1)
-    .getByRole("button", { name: /本轮变更/ })
+    .getByRole("button", { name: /本轮变更 ·/ })
     .click();
-  await expect(results.nth(0)).toContainText("第一轮迟到计划");
+  await expect(results.nth(0)).not.toContainText("第一轮迟到计划");
   await expect(
     results.nth(0).getByRole("button", { name: "A.ts", exact: true }),
   ).toBeVisible();
@@ -1116,44 +1304,44 @@ test("new session updates sidebar and header titles after the first message", as
   await expect(page.locator("[data-slot=breadcrumb] strong")).toHaveText(title);
 });
 
-test("sidebar shows only a hover archive action and archives directly", async ({
+test("sidebar exposes a more menu on hover and supports archive undo", async ({
   page,
 }) => {
   await connect(page);
   const first = page.locator("[data-slot=thread-row]").first();
-  const title = await first
-    .locator("[data-slot=thread-link] > span")
-    .innerText();
+  const title = await first.locator("[data-slot=thread-title]").innerText();
   const row = page.locator("[data-slot=thread-row]").filter({
-    has: page.getByRole("button", {
-      name: `归档会话：${title}`,
-      exact: true,
-    }),
+    has: page.getByText(title, { exact: true }),
   });
-  const archive = row.locator('button[aria-label^="归档会话："]');
+  const more = row.getByRole("button", {
+    name: `会话操作：${title}`,
+    exact: true,
+  });
   await page.mouse.move(1000, 100);
-  await expect(archive).toHaveCSS("opacity", "0");
-  await expect(archive).toHaveCSS("position", "absolute");
+  await expect(more).toHaveCSS("opacity", "0");
   const linkPosition = await row
     .locator("[data-slot=thread-link]")
     .boundingBox();
   await expect(
-    page.locator('[data-slot=sidebar] button[aria-label^="会话操作："]'),
+    page.locator('[data-slot=sidebar] button[aria-label^="归档会话："]'),
   ).toHaveCount(0);
   await row.hover();
-  await expect(archive).toHaveCSS("opacity", "1");
-  await expect(row.locator("time")).toBeHidden();
+  await expect(more).toHaveCSS("opacity", "1");
+  await expect(row.locator("time")).toBeVisible();
   expect(await row.locator("[data-slot=thread-link]").boundingBox()).toEqual(
     linkPosition,
   );
   await page.mouse.move(1000, 100);
-  await expect(archive).toHaveCSS("opacity", "0");
-  await archive.focus();
-  await expect(archive).toHaveCSS("opacity", "1");
-  await archive.press("Enter");
+  await expect(more).toHaveCSS("opacity", "0");
+  await more.focus();
+  await expect(more).toHaveCSS("opacity", "1");
+  await more.press("Enter");
+  await page.getByRole("menuitem", { name: "归档", exact: true }).click();
   await expect(row).toHaveCount(0);
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "归档会话" })).toHaveCount(0);
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(row).toHaveCount(1);
 });
 
 test("top session menu copies conversation, summary and session ID and exports Markdown", async ({
@@ -1175,9 +1363,9 @@ test("top session menu copies conversation, summary and session ID and exports M
     .getByRole("button", { name: /会话操作：/ })
     .click();
   await expect(page.getByRole("menuitem")).toHaveText([
+    "收藏会话",
     "重命名",
     "分叉会话",
-    "置顶会话",
     "移动到分区",
     "复制全部对话为 Markdown",
     "仅复制最终总结",
@@ -1291,9 +1479,19 @@ test("project Git panel shares the header status and opens staged and untracked 
     exact: true,
   });
   await expect(directory).toBeVisible();
+  const folderChevron = directory.locator(".git-folder-chevron");
+  await expect(folderChevron).toHaveCSS(
+    "transform",
+    "matrix(0, 1, -1, 0, 0, 0)",
+  );
   await directory.click();
   await expect(changedFile).toBeHidden();
+  await expect(folderChevron).toHaveCSS("transform", "none");
   await directory.click();
+  await expect(folderChevron).toHaveCSS(
+    "transform",
+    "matrix(0, 1, -1, 0, 0, 0)",
+  );
   await changedFile.click();
   const workspace = page.getByRole("region", { name: "文件编辑工作区" });
   await expect(workspace.locator(".monaco-diff-editor")).toBeVisible();
@@ -1313,11 +1511,21 @@ test("project Git panel shares the header status and opens staged and untracked 
   const stagedGroup = panel
     .locator(".git-group")
     .filter({ hasText: "已暂存 · 1" });
+  const groupChevron = stagedGroup.locator(":scope > summary > svg");
+  await expect(groupChevron).toHaveCSS(
+    "transform",
+    "matrix(0, 1, -1, 0, 0, 0)",
+  );
   await stagedGroup.locator("summary").click();
   await expect(
     panel.getByRole("button", { name: "package.json", exact: true }),
   ).toBeHidden();
+  await expect(groupChevron).toHaveCSS("transform", "none");
   await stagedGroup.locator("summary").click();
+  await expect(groupChevron).toHaveCSS(
+    "transform",
+    "matrix(0, 1, -1, 0, 0, 0)",
+  );
   await panel
     .getByRole("button", { name: "package.json", exact: true })
     .click();
@@ -1389,7 +1597,8 @@ test("Git panel exposes read-only status and differences without write actions",
   await openFirst(page);
   await page.locator('[data-slot="header-branch"]').click();
   const panel = page.getByRole("complementary", { name: "项目面板" });
-  await expect(panel).toContainText("源代码管理 · 只读");
+  await expect(panel).toContainText("源代码管理");
+  await expect(panel).toContainText("查看差异与导出补丁");
   await expect(panel.locator(".git-branch-label")).toContainText(
     "demo/ui-polish",
   );
@@ -1605,6 +1814,7 @@ for (const permission of ["granted", "denied"] as const) {
       /\/icons\/favicon-running\.png$/,
     );
     await expect(page).toHaveTitle("Codex 工作台");
+    resumeBackgroundStream?.();
     const notice = page.locator("[data-slot=completion-notification]");
     await expect(notice).toContainText("会话已完成");
     await expect(notice).toContainText(title);
@@ -1616,9 +1826,7 @@ for (const permission of ["granted", "denied"] as const) {
     const row = page.locator("[data-slot=thread-row]").filter({
       has: page.locator("[data-slot=thread-link] > span", { hasText: title }),
     });
-    await expect(
-      row.getByRole("img", { name: "会话已完成，未读" }),
-    ).toBeVisible();
+    await expect(row.getByRole("img", { name: "有未读结果" })).toBeVisible();
     await expect(page.locator("[data-slot=breadcrumb] strong")).toHaveText(
       "新会话",
     );
@@ -1651,9 +1859,7 @@ for (const permission of ["granted", "denied"] as const) {
     await expect(page.locator("[data-slot=breadcrumb] strong")).toHaveText(
       title,
     );
-    await expect(
-      row.getByRole("img", { name: "会话已完成，未读" }),
-    ).toHaveCount(0);
+    await expect(row.getByRole("img", { name: "有未读结果" })).toHaveCount(0);
     await expect(notice).toHaveCount(0);
     await expect(page.locator("#product-favicon")).toHaveAttribute(
       "href",
@@ -1700,26 +1906,22 @@ test("local and remote environments keep independent drafts, background turns an
     await dialog.getByRole("button", { name: "连接", exact: true }).click();
     await expect(dialog).toBeHidden();
     const groups = page.locator("[data-slot=environment-projects]");
-    await expect(groups).toHaveCount(2);
+    await expect(groups).toHaveCount(1);
     await expect(groups.nth(0)).toHaveAttribute("data-connected", "true");
-    await expect(groups.nth(1)).toHaveAttribute("data-connected", "true");
     const filters = page.getByRole("tablist", { name: "按工作环境筛选会话" });
-    await expect(filters.getByRole("tab", { name: "全部" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    await expect(
+      filters.getByRole("tab", { name: "dev-box", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await filters.getByRole("tab", { name: "全部", exact: true }).click();
+    await expect(groups).toHaveCount(2);
     await filters.getByRole("tab", { name: "dev-box", exact: true }).click();
     await expect(groups).toHaveCount(1);
     await expect(
       page.locator("[data-slot=breadcrumb] [data-slot=environment-icon] svg"),
     ).toHaveClass(/lucide-server/);
     await expect(
-      groups
-        .locator(
-          "[data-slot=workspace-heading] [data-slot=environment-icon] svg",
-        )
-        .first(),
-    ).toHaveClass(/lucide-server/);
+      page.locator("[data-slot=workspace-toggle]").first(),
+    ).toHaveAttribute("title", /^dev-box · /);
     await page.keyboard.press("Control+Shift+o");
     const newDialog = page.getByRole("dialog", { name: "新建会话" });
     await expect(
@@ -1729,9 +1931,7 @@ test("local and remote environments keep independent drafts, background turns an
       (request) => request.method === "fs/readDirectory",
     ).length;
     await newDialog.getByLabel("工作目录", { exact: true }).fill("/demo");
-    await expect(
-      newDialog.getByRole("listbox", { name: "目录建议" }),
-    ).toBeVisible();
+    await expect(page.getByRole("listbox", { name: "目录建议" })).toBeVisible();
     await newDialog
       .getByRole("button", { name: "浏览目录", exact: true })
       .click();
@@ -1783,41 +1983,18 @@ test("local and remote environments keep independent drafts, background turns an
       page.locator("[data-slot=breadcrumb] [data-slot=environment-icon] svg"),
     ).toHaveClass(/lucide-server/);
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-    for (const index of [0, 1]) {
-      for (const project of [1, 2])
-        await groups
-          .nth(index)
-          .locator("[data-slot=workspace-toggle]")
-          .nth(project)
-          .click();
-    }
-    await groups
-      .nth(1)
-      .locator("[data-slot=workspace-heading] [data-slot=environment-icon]")
-      .first()
-      .focus();
-    await expect(page.getByRole("tooltip")).toContainText("dev-box");
     await expect(
-      groups
-        .nth(0)
-        .locator(
-          "[data-slot=workspace-heading] [data-slot=environment-icon] svg",
-        )
+      page
+        .locator('[data-slot=workspace-heading][data-environment-id="local"]')
         .first(),
-    ).toHaveClass(/lucide-monitor/);
-    await expect(
-      groups
-        .nth(1)
-        .locator(
-          "[data-slot=workspace-heading] [data-slot=environment-icon] svg",
-        )
-        .first(),
-    ).toHaveClass(/lucide-server/);
-    await expect(
-      groups.nth(1).locator("[data-slot=workspace-heading]").first(),
-    ).not.toContainText("dev-box");
-    await groups
-      .nth(1)
+    ).toContainText("本机");
+    // The combined list virtualizes offscreen projects. Choose the environment
+    // before operating on its rows rather than requiring every row in the DOM.
+    await filters.getByRole("tab", { name: "dev-box", exact: true }).click();
+    const remoteThread = page.locator(
+      '[data-slot=thread-row]:not([data-environment-id="local"])',
+    );
+    await remoteThread
       .locator("[data-slot=thread-link]")
       .filter({ hasText: "接口分页与错误处理 · 10" })
       .click();
@@ -1825,8 +2002,9 @@ test("local and remote environments keep independent drafts, background turns an
       "remote/main改动 1 个文件",
     );
     await input(page).fill("远端草稿");
-    await groups
-      .nth(0)
+    await filters.getByRole("tab", { name: "本机", exact: true }).click();
+    await page
+      .locator('[data-slot=thread-row][data-environment-id="local"]')
       .locator("[data-slot=thread-link]")
       .filter({ hasText: "接口分页与错误处理 · 10" })
       .click();
@@ -1835,8 +2013,8 @@ test("local and remote environments keep independent drafts, background turns an
       "demo/ui-polish改动 3 个文件",
     );
     await input(page).fill("本机草稿");
-    await groups
-      .nth(1)
+    await filters.getByRole("tab", { name: "dev-box", exact: true }).click();
+    await remoteThread
       .locator("[data-slot=thread-link]")
       .filter({ hasText: "接口分页与错误处理 · 10" })
       .click();
@@ -1859,12 +2037,20 @@ test("preferences session history restores an archived conversation", async ({
 }) => {
   await openFirst(page);
   await menu(page, "归档");
-  const archive = page.getByRole("dialog", { name: "归档会话" });
-  await archive.getByRole("button", { name: "确认", exact: true }).click();
+  await expect(page.locator("[data-slot=archived-conversation]")).toBeVisible();
   await page.locator("[data-slot=connection-entry]").click();
   await page.getByRole("tab", { name: "已归档的会话" }).click();
   const history = page.getByRole("dialog", { name: "连接与设置" });
   await expect(history.locator("[data-slot=archive-group]")).toHaveCount(1);
+  expect(
+    fixtureServer.requestLog.some(
+      (entry) =>
+        entry.method === "thread/list" &&
+        entry.params?.archived === true &&
+        Array.isArray(entry.params.sourceKinds) &&
+        entry.params.sourceKinds.includes("appServer"),
+    ),
+  ).toBe(true);
   await expect(history.locator("summary")).toContainText("/demo/atlas-web");
   await history
     .getByRole("button", { name: "恢复 接口分页与错误处理 · 10", exact: true })
@@ -2122,7 +2308,7 @@ test("current session completion sends a system notification without an unread i
   ).toContainText("会话已完成");
   await expect(
     page.locator(
-      '[data-slot=thread-row][data-selected=true] [role=img][aria-label="会话已完成，未读"]',
+      '[data-slot=thread-row][data-selected=true] [role=img][aria-label="有未读结果"]',
     ),
   ).toHaveCount(0);
   await expect
@@ -2155,6 +2341,47 @@ test("model menu keeps original model heading styling and applies it to reasonin
     await expect(label).toHaveCSS("padding", "9px 10px");
   }
 });
+
+for (const width of [375, 1440]) {
+  test(`style tokens at ${width}px scale utilities and editor CSS with an input size floor`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openFirst(page);
+    await expect(input(page)).toHaveCSS(
+      "font-size",
+      width < 900 ? "16px" : "14px",
+    );
+    // Keep the editor inset on the shared spacing scale in production too.
+    await expect(input(page)).toHaveCSS(
+      "padding",
+      width < 550 ? "12px 12px 8px" : "16px 16px 8px",
+    );
+    await expect(input(page)).toHaveCSS("min-height", "56px");
+    await page.evaluate(() => {
+      document.documentElement.style.setProperty("--font-scale", "1.25");
+    });
+    await expect(input(page)).toHaveCSS(
+      "font-size",
+      width < 900 ? "20px" : "17.5px",
+    );
+    await expect(page.locator("html")).toHaveCSS("font-size", "14px");
+    await page.locator("[data-slot=model-choice]").click();
+    const label = page
+      .locator('[data-slot="menu-label"]')
+      .filter({ hasText: /^模型$/ });
+    await expect(label).toHaveCSS("font-size", "12.5px");
+    await expect(label).toHaveCSS("padding", "9px 10px");
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => {
+      document.documentElement.style.setProperty("--font-scale", "0.75");
+    });
+    await expect(input(page)).toHaveCSS(
+      "font-size",
+      width < 900 ? "16px" : "10.5px",
+    );
+  });
+}
 
 test("external activity updates loading even when loaded history has only completed turns", async ({
   page,
@@ -3009,7 +3236,10 @@ test("local draft creation failure preserves text and retries creation on the ne
   ).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(1);
   await expect(page.locator("[data-slot=global-error]")).toHaveCount(0);
-  await expect(input(page)).toHaveText("创建重试仍保留");
+  await expect(input(page)).toHaveText("");
+  await expect(page.locator("[data-slot=local-message]")).toContainText(
+    "创建重试仍保留",
+  );
   expect(
     fixtureServer.requestLog.filter(
       (request) => request.method === "thread/start",
@@ -3029,7 +3259,9 @@ test("local draft creation failure preserves text and retries creation on the ne
     .locator("[data-slot=thread-link]")
     .filter({ hasText: "草稿" })
     .click();
-  await send(page, "创建重试仍保留");
+  await page.getByRole("button", { name: "恢复到输入框", exact: true }).click();
+  await expect(input(page)).toHaveText("创建重试仍保留");
+  await page.getByRole("button", { name: "发送消息", exact: true }).click();
   await completed(page);
   expect(
     fixtureServer.requestLog.filter(
@@ -3054,7 +3286,10 @@ test("local draft send failure reuses its created server ID without reading an u
   ).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(1);
   await expect(page.locator("[data-slot=global-error]")).toHaveCount(0);
-  await expect(input(page)).toHaveText("已创建等待发送");
+  await expect(input(page)).toHaveText("");
+  await expect(page.locator("[data-slot=local-message]")).toContainText(
+    "已创建等待发送",
+  );
   const firstId = fixtureServer.requestLog.find(
     (request) => request.method === "turn/start",
   )?.threadId;
@@ -3067,7 +3302,10 @@ test("local draft send failure reuses its created server ID without reading an u
     .locator("[data-slot=thread-link]")
     .filter({ hasText: "草稿" })
     .click();
-  await expect(input(page)).toHaveText("已创建等待发送");
+  await expect(input(page)).toHaveText("");
+  await expect(page.locator("[data-slot=local-message]")).toContainText(
+    "已创建等待发送",
+  );
   await expect(page.getByRole("alert")).toHaveCount(0);
   expect(
     fixtureServer.requestLog.filter(
@@ -3076,7 +3314,9 @@ test("local draft send failure reuses its created server ID without reading an u
         ["thread/read", "thread/resume"].includes(request.method),
     ),
   ).toHaveLength(0);
-  await send(page, "已创建等待发送");
+  await page.getByRole("button", { name: "恢复到输入框", exact: true }).click();
+  await expect(input(page)).toHaveText("已创建等待发送");
+  await page.getByRole("button", { name: "发送消息", exact: true }).click();
   await completed(page);
   expect(
     fixtureServer.requestLog.filter(
@@ -3096,12 +3336,24 @@ test("local draft slow creation preserves edits made while the first message is 
   await openFirst(page);
   await newLocalDraft(page);
   await send(page, "最初提交的内容");
+  await expect(page.locator("[data-slot=local-message]")).toContainText(
+    "最初提交的内容",
+  );
+  await expect(page.locator("[data-slot=local-message]")).toHaveAttribute(
+    "data-delivery-status",
+    "creating",
+  );
   await expect(page.locator("[data-slot=composer-status]")).toContainText(
     "正在确认",
+  );
+  await expect(input(page)).toHaveText("");
+  await expect(page.locator("[data-slot=local-message]")).toContainText(
+    "正在创建会话…",
   );
   await input(page).fill("创建期间的新草稿");
   await completed(page);
   await expect(input(page)).toHaveText("创建期间的新草稿");
+  await expect(page.locator("[data-slot=local-message]")).toHaveCount(0);
   await expect(
     page.locator("[data-slot=conversation-turn]").last(),
   ).toContainText("最初提交的内容");
@@ -3160,9 +3412,9 @@ test("workspace actions toggle individual groups, share context menus and copy s
   ).toContainText("耗时");
   await link.click({ button: "right" });
   await expect(page.getByRole("menuitem")).toHaveText([
+    "收藏会话",
     "重命名",
     "分叉会话",
-    "置顶会话",
     "移动到分区",
     "复制全部对话为 Markdown",
     "仅复制最终总结",
@@ -3336,7 +3588,15 @@ test("subagent completion, questions and approvals stay silent", async ({
     });
     Object.defineProperty(window, "testChildNotifications", { value: titles });
   });
-  await openFirst(page);
+  await connect(page);
+  await page.evaluate(() => {
+    history.pushState(null, "", "/?env=local&session=mock-thread-010");
+    dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(input(page)).toBeVisible();
+  await expect(
+    page.locator("[data-slot=conversation-turn]").first(),
+  ).toBeAttached();
   await send(page, "子代理完成测试");
   await completed(page);
   await expect(
@@ -3949,6 +4209,18 @@ test("mermaid rendering supports streaming, source copying, zoom and syntax fall
   await settings.getByRole("radio", { name: "深色", exact: true }).check();
   await settings.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(diagramNode).not.toHaveCSS("fill", lightFill);
+  await expect(diagramNode).toHaveCSS(
+    "fill",
+    await themeColor(page, "surface"),
+  );
+  await page.evaluate(() => {
+    const style = document.documentElement.style;
+    style.setProperty("--font-scale", "1.25");
+    style.setProperty("--font-sans", '"Arial", sans-serif');
+  });
+  const svg = block.locator('[data-slot="mermaid-svg"] > svg');
+  await expect(svg).toHaveCSS("font-size", "20px");
+  await expect(svg).toHaveCSS("font-family", "Arial, sans-serif");
   const turns = page.locator('[data-slot="conversation-turn"]');
   const turnCount = await turns.count();
   await send(page, "```mermaid\nthis is invalid diagram syntax\n```");
@@ -4349,10 +4621,12 @@ test("workspace picker browses host folders, handles errors and completes paths 
   await page.getByRole("button", { name: /^新建会话/ }).click();
   const dialog = page.getByRole("dialog", { name: "新建会话" });
   const path = dialog.getByLabel("工作目录", { exact: true });
+  const initialBounds = await dialog.boundingBox();
   await path.fill("/demo/at");
   await expect(
-    dialog.getByRole("option", { name: "atlas-web/", exact: true }),
+    page.getByRole("option", { name: "atlas-web/", exact: true }),
   ).toBeVisible();
+  expect((await dialog.boundingBox())?.height).toBe(initialBounds?.height);
   await path.press("ArrowDown");
   await path.press("Enter");
   await expect(path).toHaveValue("/demo/atlas-web/");
@@ -4560,7 +4834,7 @@ test("conversation switches replace the viewport without stacking previous sessi
   expect(firstIds.length).toBeGreaterThan(0);
 });
 
-test("server history search finds a title outside loaded pages", async ({
+test("server history search opens matching summaries without acquiring a writer", async ({
   page,
 }) => {
   await connect(page);
@@ -4577,11 +4851,13 @@ test("server history search finds a title outside loaded pages", async ({
   await expect(
     dialog.getByRole("option", { name: /失败恢复演示 · 90/ }),
   ).toBeVisible();
-  expect(
-    fixtureServer.requestLog.some(
-      (request) => request.searchTerm === "失败恢复演示 · 90",
-    ),
-  ).toBe(true);
+  await expect
+    .poll(() =>
+      fixtureServer.requestLog.some(
+        (request) => request.searchTerm === "失败恢复演示 · 90",
+      ),
+    )
+    .toBe(true);
   await dialog.getByRole("option", { name: /失败恢复演示 · 90/ }).click();
   await expect(dialog).toBeHidden();
   await expect(input(page)).toBeVisible();
@@ -4938,4 +5214,131 @@ test("user prompts preserve soft line breaks without changing submitted text", a
   expect(
     frames.find((frame) => frame.method === "turn/start")?.params?.input,
   ).toEqual([{ type: "text", text: prompt, text_elements: [] }]);
+});
+
+for (const width of [375, 1440]) {
+  test(`typography settings at ${width}px apply, persist and reset without changing the theme`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    const openSettings = async () => {
+      if (width < 900) {
+        await page.getByRole("button", { name: "打开导航" }).click();
+        await page.locator("[data-slot=connection-entry]").click();
+      } else {
+        await page
+          .getByRole("button", { name: "连接工作环境", exact: true })
+          .click();
+      }
+      return page.getByRole("dialog", { name: "连接与设置" });
+    };
+    let dialog = await openSettings();
+    await dialog.getByRole("radio", { name: "深色", exact: true }).check();
+    const choose = async (label: string, option: string) => {
+      await dialog.getByRole("combobox", { name: label, exact: true }).click();
+      await page.getByRole("option", { name: option, exact: true }).click();
+    };
+    await choose("代码字号", "16 px");
+    await choose("界面基准字号", "21 px");
+    await choose("界面字体", "系统字体");
+    await choose("等宽字体", "Courier New");
+    const preview = () => dialog.getByLabel("字体预览");
+    await expect(preview().locator("p").first()).toHaveCSS("font-size", "21px");
+    await expect(preview().locator("p").first()).toHaveCSS(
+      "font-family",
+      "system-ui, sans-serif",
+    );
+    await expect(preview().locator("p").last()).toHaveCSS("font-size", "16px");
+    await expect(preview().locator("p").last()).toHaveCSS(
+      "font-family",
+      /Courier New/,
+    );
+    expect(
+      await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth),
+    ).toBe(true);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.reload();
+    // Saved typography is applied before any settings controls are opened.
+    await expect(page.locator("body")).toHaveCSS("font-size", "21px");
+    dialog = await openSettings();
+    await expect(
+      dialog.getByRole("combobox", { name: "界面基准字号", exact: true }),
+    ).toHaveText("21 px");
+    await expect(
+      dialog.getByRole("combobox", { name: "代码字号", exact: true }),
+    ).toHaveText("16 px");
+    await expect(
+      dialog.getByRole("combobox", { name: "界面字体", exact: true }),
+    ).toHaveText("系统字体");
+    await expect(
+      dialog.getByRole("combobox", { name: "等宽字体", exact: true }),
+    ).toHaveText("Courier New");
+    await dialog
+      .getByRole("button", { name: "重置字体设置", exact: true })
+      .click();
+    await expect(preview().locator("p").first()).toHaveCSS("font-size", "14px");
+    await expect(preview().locator("p").last()).toHaveCSS("font-size", "13px");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(
+      dialog.getByRole("button", { name: "重置字体设置", exact: true }),
+    ).toBeDisabled();
+    await page.reload();
+    await expect(page.locator("body")).toHaveCSS("font-size", "14px");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  });
+}
+
+test("prompt directory searches, jumps and restores the reading position", async ({
+  page,
+}) => {
+  await openFirst(page);
+  await send(
+    page,
+    Array.from({ length: 65 }, (_, index) => `目录验证 ${index}`).join("\n"),
+  );
+  await completed(page);
+  const viewport = page.locator(
+    '[data-slot="conversation-timeline"] > [data-radix-scroll-area-viewport]',
+  );
+  const before = await viewport.evaluate((el) => el.scrollTop);
+  const firstText = await page.locator("[data-prompt-id]").first().innerText();
+  await page.getByRole("button", { name: /^会话目录，/ }).click();
+  await page
+    .getByRole("textbox", { name: "搜索用户问题" })
+    .fill("不存在的目录关键词xyz");
+  await expect(
+    page.getByRole("status").filter({ hasText: "没有匹配的用户问题" }),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "搜索用户问题" })
+    .fill(firstText.slice(0, 8));
+  await page
+    .getByRole("navigation", { name: "用户问题" })
+    .getByRole("button")
+    .first()
+    .click();
+  await expect
+    .poll(() => viewport.evaluate((el) => el.scrollTop))
+    .toBeLessThan(before);
+  await expect(page.locator("[data-prompt-id]").first()).toBeInViewport();
+  await page.getByRole("button", { name: "返回阅读位置", exact: true }).click();
+  await expect
+    .poll(async () =>
+      Math.abs((await viewport.evaluate((el) => el.scrollTop)) - before),
+    )
+    .toBeLessThan(5);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: /^会话目录，/ }).click();
+  await expect(
+    page.getByRole("textbox", { name: "搜索用户问题" }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("textbox", { name: "搜索用户问题" }),
+  ).toBeHidden();
 });

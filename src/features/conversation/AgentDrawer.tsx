@@ -1,3 +1,4 @@
+import { ErrorNotice, IconButton, ScrollArea } from "../../components/ui";
 import { useEffect, useRef, useState } from "react";
 import { X, RefreshCw, ChevronLeft } from "lucide-react";
 import { useRuntime } from "../../lib/runtime-context";
@@ -57,36 +58,32 @@ export function AgentDrawer({
     >
       <header className="flex min-h-[57px] shrink-0 items-center gap-2 border-b border-border px-4">
         {path.length > 1 && (
-          <button
-            type="button"
-            aria-label="返回上级代理"
+          <IconButton
+            label="返回上级代理"
             onClick={() => setPath(path.slice(0, -1))}
-            className="rounded p-1.5 text-muted hover:bg-hover"
           >
             <ChevronLeft size={16} />
-          </button>
+          </IconButton>
         )}
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-medium">
             子代理 · {thread?.agentNickname ?? selected.label}
           </h2>
-          <p className="text-[10px] text-muted">
+          <p className="text-fine text-muted">
             {thread?.agentRole ?? "只读会话"} ·{" "}
             {state.lastEventAt ? "已接收实时更新" : "只读同步"}
           </p>
         </div>
-        <button
-          type="button"
-          aria-label="刷新子代理详情"
-          title="刷新"
+        <IconButton
+          label="刷新子代理详情"
           disabled={state.loading}
           onClick={() => {
             void state.refresh();
           }}
-          className="rounded p-1.5 text-muted hover:bg-hover disabled:opacity-40"
+          className="disabled:opacity-40"
         >
           <RefreshCw size={15} />
-        </button>
+        </IconButton>
         <button
           ref={closeRef}
           type="button"
@@ -116,38 +113,40 @@ export function AgentDrawer({
         </nav>
       )}
       {state.historyUnavailable && (
-        <p role="status" className="shrink-0 px-4 py-2 text-[11px] text-muted">
+        <p role="status" className="shrink-0 px-4 py-2 text-meta text-muted">
           临时子会话没有持久化历史，仅显示当前连接已接收的活动。
         </p>
       )}
       {state.error && (
-        <p role="alert" className="shrink-0 px-4 py-2 text-xs text-danger">
+        <ErrorNotice className="mx-4 my-2 shrink-0">
           详情暂不可用：{state.error}
-        </p>
+        </ErrorNotice>
       )}
       {children.length > 0 && (
         <details className="shrink-0 border-b border-border px-4 py-2 text-xs">
           <summary className="cursor-pointer text-muted">
             下级代理 · {children.length}
           </summary>
-          <div aria-label="下级代理" className="max-h-40 overflow-auto py-2">
-            {children.map((child) => (
-              <button
-                type="button"
-                key={child.id}
-                className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left hover:bg-hover"
-                onClick={() => inspect(child.id)}
-              >
-                <span className="truncate">
-                  查看下级代理：
-                  {child.nickname ?? child.prompt ?? child.id.slice(0, 8)}
-                </span>
-                <span className="shrink-0 text-muted">
-                  {executionStatusLabel(child.status)}
-                </span>
-              </button>
-            ))}
-          </div>
+          <ScrollArea aria-label="下级代理" className="max-h-40">
+            <div className="py-2">
+              {children.map((child) => (
+                <button
+                  type="button"
+                  key={child.id}
+                  className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left hover:bg-hover"
+                  onClick={() => inspect(child.id)}
+                >
+                  <span className="truncate">
+                    查看下级代理：
+                    {child.nickname ?? child.prompt ?? child.id.slice(0, 8)}
+                  </span>
+                  <span className="shrink-0 text-muted">
+                    {executionStatusLabel(child.status)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
         </details>
       )}
       <div
@@ -157,7 +156,6 @@ export function AgentDrawer({
         <Timeline
           thread={thread}
           turnDiffs={state.conversation.diffs[selected.id]}
-          turnPlans={state.conversation.plans[selected.id]}
           loading={state.loading && !thread}
           completedItems={state.conversation.completedItems}
           startedItems={state.conversation.startedItems}
@@ -168,9 +166,9 @@ export function AgentDrawer({
           onInspectAgent={inspect}
         />
       </div>
-      <div className="max-h-[30vh] shrink-0 overflow-auto">
+      <ScrollArea className="max-h-[30vh] shrink-0">
         <ApprovalQueue threadId={selected.id} />
-      </div>
+      </ScrollArea>
     </aside>
   );
 }

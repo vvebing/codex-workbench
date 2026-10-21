@@ -1,4 +1,9 @@
 import {
+  projectPanelKey,
+  projectPanelState,
+  normalizeProjectTab,
+} from "../conversation/project-panel-state";
+import {
   ScrollArea,
   ErrorNotice,
   Button,
@@ -6,9 +11,11 @@ import {
   Modal,
   SelectField,
 } from "../../components/ui";
-import { lazy, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { projectsFor, normalizeProjectDirectory } from "../projects/store";
 import { LazyFeature } from "../../components/LazyFeature";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { ShellPanels } from "./ShellPanels";
+import { useViewportWidth } from "./sidebar-layout";
 import {
   PanelLeft,
   PanelRight,
@@ -22,6 +29,10 @@ import { RuntimeContext, useRuntime } from "../../lib/runtime-context";
 import { environments } from "../connection/environments";
 import { EnvironmentIcon } from "../connection/EnvironmentIcon";
 import { ConnectionBanner } from "../connection/ConnectionBanner";
+import {
+  AppServerReleaseChecks,
+  AppServerUpdateNotice,
+} from "../connection/AppServerUpdate";
 import { ConnectionNotices } from "../connection/AccountStatus";
 import {
   useStore,
@@ -34,8 +45,14 @@ import {
 import { WorkspacePicker } from "./WorkspacePicker";
 import { BranchChanges } from "./BranchChanges";
 import { ConversationWorkspace } from "../files/ConversationWorkspace";
+import { TaskCenter } from "../task-center/TaskCenter";
 import { Sidebar } from "../navigation/Sidebar";
 import { ThreadMenu } from "../navigation/ThreadMenu";
+import {
+  navigationState,
+  navigationEnvironmentKey,
+} from "../navigation/navigation-state";
+import { SessionActionNotifications } from "../navigation/SessionActionNotifications";
 const SearchDialog = lazy(() =>
   import("../navigation/SearchDialog").then((module) => ({
     default: module.SearchDialog,
@@ -131,13 +148,30 @@ function AppView() {
   const runtime = useRuntime();
   const environmentState = useStore(environments);
   const environment = environments.active();
-  const [sessionFilter, setSessionFilter] = useState("all");
+  const navigationPreferences = useStore(navigationState);
+  const sessionFilter =
+    navigationPreferences.scope === "current" ||
+    (!environmentState.entries.some(
+      (entry) => entry.id === navigationPreferences.scope,
+    ) &&
+      navigationPreferences.scope !== "all")
+      ? environment.id
+      : navigationPreferences.scope;
+  const setSessionFilter = useCallback(
+    (scope: string) => navigationState.setScope(scope),
+    [],
+  );
   const [newEnvironmentId, setNewEnvironmentId] = useState(environment.id);
   const newEnvironment =
     environmentState.entries.find((entry) => entry.id === newEnvironmentId) ||
     environment;
   const newSessions = useStore(newEnvironment.runtime.sessions);
   const newConnection = useStore(newEnvironment.runtime.connection);
+  const newProjects = useMemo(
+    () => projectsFor(newEnvironment.runtime.connection, newEnvironment.id),
+    [newEnvironment.runtime.connection, newEnvironment.id],
+  );
+  const projectSettings = useStore(newProjects);
   const recentWorkspaces = [
     ...new Set(
       Object.values(newSessions.threads)
@@ -153,28 +187,97 @@ function AppView() {
   const narrow = useNarrow();
   const [sidebar, setSidebar] = useState(true);
   const [details, setDetails] = useState(false);
-  const [projectTab, setProjectTab] = useState<ProjectTab>("files");
+  const viewportWidth = useViewportWidth();
+  const detailsDrawer =
+    narrow || viewportWidth < (sidebar ? 240 : 0) + 280 + 480 + 4;
+
   useEffect(() => {
-    if (files.visible && narrow) setDetails(false);
-  }, [files.visible, files.openRevision, narrow]);
+    if (files.visible && detailsDrawer) setDetails(false);
+  }, [files.visible, files.openRevision, detailsDrawer]);
   const [agentId, setAgentId] = useState<string>();
+  const [taskAgent, setTaskAgent] = useState<{
+    environmentId: string;
+    id: string;
+    hostThreadId?: string;
+  }>();
   useEffect(() => {
     if (files.visible) setAgentId(undefined);
   }, [files.visible, files.openRevision]);
-  useEffect(() => {
-    runtime.files.setVisible(false);
-  }, [runtime, sessions.selectedId]);
   const [mobileNav, setMobileNav] = useState(false);
   const [search, setSearch] = useState(false);
+  const [taskCenter, setTaskCenter] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<
+    "general" | "activity"
+  >("general");
   const [newOpen, setNewOpen] = useState(false);
   const [cwd, setCwd] = useState("");
+  const projectDefaults = projectSettings.projects.find(
+    (project) => project.cwd === normalizeProjectDirectory(cwd),
+  );
   const [newBusy, setNewBusy] = useState(false);
   const [newError, setNewError] = useState("");
   const createLock = useRef(false);
   const thread = sessions.selectedId
     ? sessions.threads[sessions.selectedId]
     : undefined;
+  const navigationKey = navigationEnvironmentKey(environment);
+  useEffect(() => {
+    if (sessions.selectedId)
+      navigationState.visit(navigationKey, sessions.selectedId);
+  }, [navigationKey, sessions.selectedId]);
+  const panelScope = JSON.stringify([environment.id, connection.scope]);
+  const panelKey = projectPanelKey(panelScope, thread);
+  const hasThread = !!thread;
+  const editorContext = useRef<
+    | {
+        runtime: typeof runtime;
+        scope: string;
+        project: string;
+        threadId: string | null;
+      }
+    | undefined
+  >(undefined);
+  useEffect(() => {
+    const previous = editorContext.current;
+    // A destination that is still loading has no reliable project identity yet.
+    // Keep the editor mounted while waiting for its metadata.
+    if (sessions.selectedId && !hasThread) {
+      if (previous?.runtime !== runtime || previous.scope !== panelScope)
+        runtime.files.setVisible(false);
+      return;
+    }
+    if (
+      !previous ||
+      previous.runtime !== runtime ||
+      previous.scope !== panelScope ||
+      !sessions.selectedId ||
+      (previous.threadId !== sessions.selectedId &&
+        previous.project !== panelKey)
+    )
+      runtime.files.setVisible(false);
+    editorContext.current = {
+      runtime,
+      scope: panelScope,
+      project: panelKey,
+      threadId: sessions.selectedId,
+    };
+  }, [runtime, panelScope, panelKey, sessions.selectedId, hasThread]);
+  const [panelChoice, setPanelChoice] = useState<{
+    key: string;
+    tab: ProjectTab;
+  }>();
+  const projectTab =
+    panelChoice?.key === panelKey
+      ? normalizeProjectTab(panelChoice.tab)
+      : projectPanelState.tab(panelKey);
+  const setProjectTab = useCallback(
+    (tab: ProjectTab) => {
+      projectPanelState.select(panelKey, tab);
+      setPanelChoice({ key: panelKey, tab });
+    },
+    [panelKey],
+  );
   const pageTitle = browserTitle({
     thread: route.status === "ready" ? thread : undefined,
     draft: !!(thread && sessions.localDrafts[thread.id]),
@@ -186,10 +289,18 @@ function AppView() {
   useEffect(() => {
     document.title = pageTitle;
   }, [pageTitle]);
-  const inspectAgent = useCallback((id: string) => {
-    setAgentId(id);
-  }, []);
+  const inspectAgent = useCallback(
+    (id: string) => {
+      setTaskAgent({
+        environmentId: environment.id,
+        id,
+        hostThreadId: thread?.id,
+      });
+    },
+    [environment.id, thread?.id],
+  );
   const closeAgent = useCallback(() => {
+    setTaskAgent(undefined);
     setAgentId(undefined);
     requestAnimationFrame(() =>
       document
@@ -198,8 +309,13 @@ function AppView() {
     );
   }, []);
   useEffect(() => {
-    setAgentId(undefined);
-  }, [thread?.id, environment.id]);
+    setAgentId(
+      taskAgent?.environmentId === environment.id &&
+        taskAgent.hostThreadId === thread?.id
+        ? taskAgent.id
+        : undefined,
+    );
+  }, [thread?.id, environment.id, taskAgent]);
   useEffect(() => {
     if (!agentId) return;
     const close = (event: KeyboardEvent) => {
@@ -227,15 +343,7 @@ function AppView() {
         environmentId ||
         (sessionFilter === "all" ? state.activeId : sessionFilter);
       const target =
-        state.entries.find(
-          (entry) =>
-            entry.id === targetId &&
-            entry.runtime.connection.getSnapshot().status === "connected",
-        ) ||
-        state.entries.find(
-          (entry) =>
-            entry.runtime.connection.getSnapshot().status === "connected",
-        ) ||
+        state.entries.find((entry) => entry.id === targetId) ||
         environments.active();
       const sessions = target.runtime.sessions.getSnapshot();
       setNewEnvironmentId(target.id);
@@ -279,11 +387,15 @@ function AppView() {
     setNewBusy(true);
     setNewError("");
     try {
-      await newEnvironment.runtime.sessions.create({
+      const created = await newEnvironment.runtime.sessions.create({
         ...(cwd.trim() ? { cwd: cwd.trim() } : {}),
-        sandbox: "workspace-write",
-        approvalPolicy: "on-request",
+        ...(projectDefaults?.model ? { model: projectDefaults.model } : {}),
       });
+      if (projectDefaults?.description)
+        newEnvironment.runtime.drafts.setText(
+          created.id,
+          `项目说明：\n${projectDefaults.description}\n\n任务：\n`,
+        );
       environments.select(newEnvironment.id);
       setNewOpen(false);
     } catch (e) {
@@ -293,26 +405,45 @@ function AppView() {
       setNewBusy(false);
     }
   }
+  const openSearch = useCallback(() => {
+    setSearch(true);
+    setMobileNav(false);
+  }, []);
+  const openSettings = useCallback(() => {
+    setSettingsSection("general");
+    setSettings(true);
+    setMobileNav(false);
+  }, []);
+  const collapseNavigation = useCallback(() => {
+    if (narrow) setMobileNav(false);
+    else setSidebar(false);
+  }, [narrow]);
+  const selectNavigation = useCallback(() => setMobileNav(false), []);
+  const openTasks = useCallback(() => {
+    setTaskCenter(true);
+    setMobileNav(false);
+  }, []);
+  const openArchived = useCallback(() => {
+    setSettingsSection("activity");
+    setSettings(true);
+    setMobileNav(false);
+  }, []);
   const navigation = (
     <Sidebar
       filter={sessionFilter}
       onFilterChange={setSessionFilter}
-      onSearch={() => {
-        setSearch(true);
-        setMobileNav(false);
-      }}
-      onSettings={() => {
-        setSettings(true);
-        setMobileNav(false);
-      }}
+      onTasks={openTasks}
+      onSearch={openSearch}
+      onSettings={openSettings}
+      onArchived={openArchived}
       onNew={newChat}
-      onCollapse={() => (narrow ? setMobileNav(false) : setSidebar(false))}
-      onSelect={() => setMobileNav(false)}
+      onCollapse={collapseNavigation}
+      onSelect={selectNavigation}
     />
   );
   const detailView = (
     <div data-slot="details-shell" className="flex h-full flex-col bg-surface">
-      <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-border px-[17px] text-[12px] font-medium">
+      <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-border px-[17px] text-caption font-medium">
         <span>项目面板</span>
         <IconButton label="关闭项目面板" onClick={() => setDetails(false)}>
           <X size={17} />
@@ -322,8 +453,12 @@ function AppView() {
         <Details
           key={`${environment.id}:${thread?.id}`}
           thread={thread}
+          cacheScope={panelScope}
           tab={projectTab}
           onTabChange={setProjectTab}
+          environmentId={environment.id}
+          onCreateProjectTask={(config) => newChat(config.cwd, environment.id)}
+          onSelectWorktree={(path) => newChat(path, environment.id)}
         />
       </LazyFeature>
     </div>
@@ -348,7 +483,7 @@ function AppView() {
         )}
         <div
           data-slot="breadcrumb"
-          className="flex min-w-0 items-center gap-[9px] text-[12px] text-muted max-[900px]:flex-1 max-[900px]:gap-1.5 max-[550px]:[&>span]:hidden"
+          className="flex min-w-0 items-center gap-[9px] text-caption text-muted max-[900px]:flex-1 max-[900px]:gap-1.5 max-[550px]:[&>span]:hidden"
         >
           <EnvironmentIcon environment={environment} cwd={thread?.cwd} />
           <span title={thread?.cwd}>
@@ -395,6 +530,7 @@ function AppView() {
         />
       )}
       <ConnectionNotices connection={runtime.connection} />
+      <AppServerUpdateNotice environment={environment} />
       {connected && (sessions.error || connection.error) && (
         <ErrorNotice
           data-slot="global-error"
@@ -405,12 +541,14 @@ function AppView() {
         >
           {sessions.error || connection.error}
           {!sessions.error && (
-            <button
-              className="mt-1 block underline"
+            <Button
+              size="sm"
+              variant="quiet"
+              className="mt-1"
               onClick={() => setSettings(true)}
             >
               连接设置
-            </button>
+            </Button>
           )}
         </ErrorNotice>
       )}
@@ -454,9 +592,15 @@ function AppView() {
           <>
             <LazyFeature>
               <Timeline
+                cacheScope={JSON.stringify([environment.id, connection.scope])}
+                hasOlder={Boolean(sessions.historyPages[thread.id]?.cursor)}
+                loadingOlder={sessions.historyPages[thread.id]?.loading}
+                onLoadOlder={() => {
+                  void runtime.sessions.loadOlder(thread.id);
+                }}
                 loading={sessions.openingId === thread.id}
                 onRollback={
-                  connected
+                  connected && !sessions.archivedIds[thread.id]
                     ? (turnId, messageId) =>
                         runtime.revert(thread.id, turnId, messageId)
                     : undefined
@@ -464,34 +608,51 @@ function AppView() {
                 key={`timeline:${environment.id}:${thread.id}`}
                 completedItems={sessions.completedItems}
                 startedItems={sessions.startedItems}
-                onInspectAgent={inspectAgent}
                 toolProgress={sessions.toolProgress}
-                waitingItems={requests.pending.flatMap((request) =>
-                  "threadId" in request.params &&
-                  request.params.threadId === thread.id &&
-                  "itemId" in request.params
-                    ? [String(request.params.itemId)]
-                    : [],
-                )}
                 fileOutputs={sessions.fileOutputs[thread.id]}
+                onInspectAgent={inspectAgent}
                 turnDiffs={sessions.diffs[thread.id]}
-                turnPlans={sessions.plans[thread.id]}
                 finishedTurns={sessions.finishedTurns[thread.id]}
                 thread={thread}
               />
             </LazyFeature>
-            <ScrollArea className="max-h-[38vh] shrink-0">
-              <div>
-                <ApprovalQueue threadId={thread.id} />
+            {sessions.archivedIds[thread.id] ? (
+              <div
+                data-slot="archived-conversation"
+                role="status"
+                className="flex shrink-0 items-center gap-3 border-t border-border bg-surface px-5 py-4 text-xs text-muted"
+              >
+                <span className="flex-1">
+                  此会话已归档，阅读位置和草稿已保留。恢复后可继续对话。
+                </span>
+                <Button
+                  size="sm"
+                  disabled={!connected || sessions.loading}
+                  onClick={() =>
+                    void runtime.sessions
+                      .unarchive(thread.id, true)
+                      .catch(() => {})
+                  }
+                >
+                  恢复会话
+                </Button>
               </div>
-            </ScrollArea>
-            <LazyFeature>
-              <Composer
-                key={`composer:${environment.id}:${sessions.draftOrigins[thread.id] || thread.id}`}
-                threadId={thread.id}
-                onInspectAgent={inspectAgent}
-              />
-            </LazyFeature>
+            ) : (
+              <>
+                <ScrollArea className="max-h-[38vh] shrink-0">
+                  <div>
+                    <ApprovalQueue threadId={thread.id} />
+                  </div>
+                </ScrollArea>
+                <LazyFeature>
+                  <Composer
+                    key={`composer:${environment.id}:${sessions.draftOrigins[thread.id] || thread.id}`}
+                    threadId={thread.id}
+                    onInspectAgent={inspectAgent}
+                  />
+                </LazyFeature>
+              </>
+            )}
           </>
         ) : (
           <div
@@ -499,13 +660,13 @@ function AppView() {
             className="m-auto max-h-full overflow-y-auto px-6 pt-[30px] pb-[90px] text-center max-[550px]:pb-[55px]"
           >
             <ProductIcon className="mx-auto mb-[25px] size-16" />
-            <span className="text-[10px] font-semibold tracking-[1.1px] text-muted">
+            <span className="text-fine font-semibold tracking-[1.1px] text-muted">
               CODEX WORKBENCH
             </span>
-            <h1 className="mt-[13px] mb-[17px] text-[32px] font-[550] tracking-[-1px] max-[550px]:text-[26px]">
+            <h1 className="mt-[13px] mb-[17px] text-display font-[550] tracking-[-1px] max-[550px]:text-title">
               把想法，变成下一步。
             </h1>
-            <p className="mb-[27px] text-[14px] leading-[1.9] text-muted">
+            <p className="mb-[27px] text-body leading-intro text-muted">
               在你的工作区里思考、编写与验证。
               <br />
               从一个清晰的任务开始。
@@ -519,7 +680,7 @@ function AppView() {
               <ArrowUpRight size={16} />
             </Button>
             {connected && (
-              <div className="mt-[22px] text-[11px] text-muted">
+              <div className="mt-[22px] text-meta text-muted">
                 从左侧选择历史会话，或按 <kbd>⌘ K</kbd> 搜索
               </div>
             )}
@@ -531,6 +692,25 @@ function AppView() {
   return (
     <>
       <CompletionNotifications />
+      <SessionActionNotifications />
+      {taskCenter && (
+        <TaskCenter
+          open
+          onOpenChange={setTaskCenter}
+          onInspectAgent={(environmentId, id) =>
+            setTaskAgent({
+              environmentId,
+              id,
+              hostThreadId:
+                environments
+                  .getSnapshot()
+                  .entries.find((entry) => entry.id === environmentId)
+                  ?.runtime.sessions.getSnapshot().selectedId ?? undefined,
+            })
+          }
+        />
+      )}
+      <AppServerReleaseChecks />
       <a
         href="#main"
         className="fixed top-[5px] left-[5px] z-[100] -translate-y-[150%] bg-elevated p-3 focus:translate-y-0"
@@ -541,48 +721,13 @@ function AppView() {
         {narrow ? (
           main
         ) : (
-          <PanelGroup
-            direction="horizontal"
-            autoSaveId="codex-workbench-panels"
+          <ShellPanels
+            width={viewportWidth}
+            navigation={sidebar ? navigation : undefined}
+            details={details && !detailsDrawer ? detailView : undefined}
           >
-            {sidebar && (
-              <>
-                <Panel
-                  id="navigation"
-                  order={1}
-                  defaultSize={21}
-                  minSize={16}
-                  maxSize={30}
-                >
-                  {navigation}
-                </Panel>
-                <PanelResizeHandle
-                  className="w-0.5 bg-border/60 transition-colors hover:bg-accent data-[resize-handle-active]:bg-accent"
-                  aria-label="调整导航宽度"
-                />
-              </>
-            )}
-            <Panel id="conversation" order={2} minSize={35}>
-              {main}
-            </Panel>
-            {details && (
-              <>
-                <PanelResizeHandle
-                  className="w-0.5 bg-border/60 transition-colors hover:bg-accent data-[resize-handle-active]:bg-accent"
-                  aria-label="调整详情宽度"
-                />
-                <Panel
-                  id="details"
-                  order={3}
-                  defaultSize={27}
-                  minSize={22}
-                  maxSize={40}
-                >
-                  {detailView}
-                </Panel>
-              </>
-            )}
-          </PanelGroup>
+            {main}
+          </ShellPanels>
         )}
       </div>
       {agentId && (
@@ -623,7 +768,7 @@ function AppView() {
         {navigation}
       </Modal>
       <Modal
-        open={narrow && details}
+        open={detailsDrawer && details}
         onOpenChange={setDetails}
         title="项目面板"
         variant="details"
@@ -634,6 +779,7 @@ function AppView() {
         <LazyFeature>
           <SettingsDialog
             open={settings}
+            initialSection={settingsSection}
             onOpenChange={setSettings}
             onRestored={(id) => {
               environments.select(id);
@@ -644,7 +790,12 @@ function AppView() {
       )}
       {search && (
         <LazyFeature>
-          <SearchDialog open={search} onOpenChange={setSearch} />
+          <SearchDialog
+            open={search}
+            onOpenChange={setSearch}
+            initialScope={sessionFilter}
+            onLocated={selectNavigation}
+          />
         </LazyFeature>
       )}
       <Modal
@@ -655,7 +806,7 @@ function AppView() {
       >
         <form onSubmit={(e) => void create(e)}>
           <div className="mb-5 flex flex-col gap-2">
-            <span className="text-[12px] text-muted">工作环境</span>
+            <span className="text-caption text-muted">工作环境</span>
             <SelectField
               label="新会话工作环境"
               value={newEnvironment.id}
@@ -666,18 +817,21 @@ function AppView() {
                 setCwd("");
                 setNewError("");
               }}
-              options={environmentState.entries
-                .filter(
-                  (entry) =>
-                    entry.runtime.connection.getSnapshot().status ===
-                    "connected",
-                )
-                .map((entry) => ({ value: entry.id, label: entry.name }))}
+              options={environmentState.entries.map((entry) => ({
+                value: entry.id,
+                label: `${entry.name}${entry.runtime.connection.getSnapshot().status === "connected" ? "" : " · 未连接"}`,
+              }))}
             />
           </div>
+          {newConnection.status !== "connected" && (
+            <p role="status" className="mb-4 text-xs text-warning">
+              「{newEnvironment.name}
+              」未连接。请先连接该环境，或明确选择其他环境。
+            </p>
+          )}
           <label
             htmlFor="new-workspace-path"
-            className="block text-[13px] font-medium"
+            className="block text-control font-medium"
           >
             工作目录
           </label>
@@ -697,7 +851,7 @@ function AppView() {
             />
           )}
           <div className="mt-3 flex items-center justify-between gap-2">
-            <span className="text-[12px] text-muted">
+            <span className="text-caption text-muted">
               {cwd.trim() ? "已指定项目目录" : "将使用环境默认目录"}
             </span>
             <Button
@@ -712,9 +866,22 @@ function AppView() {
               使用默认目录
             </Button>
           </div>
+          {projectDefaults && (
+            <div className="mt-3 rounded-lg border border-border p-3 text-xs text-muted">
+              <p>
+                项目默认模型：{projectDefaults.model || "使用新会话默认设置"}
+              </p>
+              {projectDefaults.description && (
+                <p className="mt-2 whitespace-pre-wrap">
+                  以下项目说明将填入输入草稿，不会自动发送：{"\n"}
+                  {projectDefaults.description}
+                </p>
+              )}
+            </div>
+          )}
           {recentWorkspaces.length > 0 && (
             <div className="mt-4">
-              <p className="mb-2 text-[12px] text-muted">最近使用的目录</p>
+              <p className="mb-2 text-caption text-muted">最近使用的目录</p>
               <div className="flex flex-col gap-1">
                 {recentWorkspaces.map((path) => (
                   <button
@@ -730,10 +897,10 @@ function AppView() {
                   >
                     <Folder size={16} className="shrink-0 text-muted" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12px]">
+                      <span className="block truncate text-caption">
                         {folderOf(path)}
                       </span>
-                      <span className="block break-all font-mono text-[11px] text-muted">
+                      <span className="block break-all font-mono text-meta text-muted">
                         {path}
                       </span>
                     </span>

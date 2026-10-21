@@ -92,19 +92,19 @@ function mergeItems(
   incoming: ThreadItem[],
   history = false,
 ): ThreadItem[] {
+  const currentById = new Map(current.map((item) => [item.id, item]));
+  const incomingIds = new Set(incoming.map((item) => item.id));
   const result = history
     ? [
-        ...incoming.map(
-          (item) => current.find((old) => old.id === item.id) ?? item,
-        ),
-        ...current.filter(
-          (item) => !incoming.some((next) => next.id === item.id),
-        ),
+        ...incoming.map((item) => currentById.get(item.id) ?? item),
+        ...current.filter((item) => !incomingIds.has(item.id)),
       ]
     : [...current];
+  const indices = new Map(result.map((item, index) => [item.id, index]));
   for (const item of incoming) {
-    const index = result.findIndex((old) => old.id === item.id);
-    if (index < 0) {
+    const index = indices.get(item.id);
+    if (index === undefined) {
+      indices.set(item.id, result.length);
       result.push(item);
       continue;
     }
@@ -179,6 +179,7 @@ function mergeTurns(
   incoming: Turn[],
   finished: Record<string, true> = {},
 ): Turn[] {
+  if (!incoming.length) return current;
   const cached = new Map(current.map((turn) => [turn.id, turn]));
   const incomingIds = new Set(incoming.map((turn) => turn.id));
   const anchor = incoming.find((turn) => cached.has(turn.id));
@@ -376,6 +377,18 @@ export function reduceNotification(
       return {
         ...state,
         threads: { ...state.threads, [threadId]: { ...thread, status } },
+      };
+    }
+    case "thread/project/updated": {
+      const { threadId, projectId } = event.params;
+      const thread = state.threads[threadId];
+      if (!thread || thread.projectId === projectId) return state;
+      return {
+        ...state,
+        threads: {
+          ...state.threads,
+          [threadId]: { ...thread, projectId },
+        },
       };
     }
     case "thread/name/updated": {

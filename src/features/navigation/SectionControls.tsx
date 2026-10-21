@@ -1,5 +1,6 @@
+import { settingsInputClass } from "../settings/settings-ui";
 import { useEffect, useState } from "react";
-import { Button, Modal, SelectField, ScrollArea } from "../../components/ui";
+import { Button, Modal, SelectField, ErrorNotice } from "../../components/ui";
 import { useStore } from "../../components/hooks";
 import type { Environment } from "../connection/environments";
 
@@ -93,10 +94,13 @@ export function SectionControls({
         open={open}
         onOpenChange={setOpen}
         title="管理分区"
-        description="分区按设备保存，所有客户端共享。删除分区会保留其中会话。"
+        description="用分区整理会话。分区按设备保存，并在客户端之间共享。"
       >
         {selected ? (
           <>
+            <label className="mb-2 block text-caption text-muted">
+              分区所属设备
+            </label>
             <SelectField
               label="分区所属设备"
               className="mb-4 w-full"
@@ -107,9 +111,7 @@ export function SectionControls({
                 label: entry.name,
               }))}
             />
-            <ScrollArea className="max-h-[55dvh]">
-              <SectionEditor key={selected.id} environment={selected} />
-            </ScrollArea>
+            <SectionEditor key={selected.id} environment={selected} />
           </>
         ) : (
           <p className="text-sm text-muted">连接设备后可管理分区。</p>
@@ -124,106 +126,235 @@ function SectionEditor({ environment }: { environment: Environment }) {
   const state = useStore(sessions);
   const status = useStore(connection);
   const [newName, setNewName] = useState("");
-  const [editing, setEditing] = useState<string | undefined>();
-  const [deleting, setDeleting] = useState<string | undefined>();
+  const [editName, setEditName] = useState("");
+  const [editing, setEditing] = useState<string>();
+  const [deleting, setDeleting] = useState<string>();
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const connected = status.status === "connected";
+  const busy = pending || state.loading || !connected;
   useEffect(() => {
     if (status.status === "connected") void sessions.loadSections();
   }, [sessions, status.epoch, status.status]);
-  const action = async (run: () => Promise<void>) => {
+  const action = async (run: () => Promise<void>, message: string) => {
+    if (pending) return;
+    setPending(true);
     setError("");
+    setNotice("");
     try {
       await run();
-      setNewName("");
       setEditing(undefined);
       setDeleting(undefined);
+      setNotice(message);
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPending(false);
     }
   };
   return (
-    <div className="mb-3 px-2 text-xs text-muted">
-      {state.sectionsError && (
-        <p role="alert" className="text-danger">
-          {state.sectionsError}
+    <div className="space-y-4">
+      {!connected && (
+        <p role="status" className="text-caption text-warning">
+          设备未连接，连接后可管理分区。
         </p>
-      )}
-      <Button
-        disabled={state.sectionsLoading}
-        onClick={() => void sessions.loadSections()}
-      >
-        刷新分区
-      </Button>
-      <div className="my-3 space-y-2">
-        {state.sections.map((section) => (
-          <div key={section.id} className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate">{section.name}</span>
-            <Button
-              disabled={state.loading}
-              onClick={() => {
-                setEditing(section.id);
-                setNewName(section.name);
-              }}
-            >
-              重命名
-            </Button>
-            <Button
-              disabled={state.loading}
-              onClick={() => setDeleting(section.id)}
-            >
-              删除
-            </Button>
-          </div>
-        ))}
-      </div>
-      {deleting && (
-        <div role="alert" className="my-3">
-          <p>确认删除此分区？其中的会话会保留并移至未分区。</p>
-          <Button
-            disabled={state.loading}
-            onClick={() => void action(() => sessions.deleteSection(deleting))}
-          >
-            确认删除分区
-          </Button>
-          <Button onClick={() => setDeleting(undefined)}>取消</Button>
-        </div>
       )}
       <form
+        className="rounded-xl border border-border bg-elevated p-3"
         onSubmit={(event) => {
           event.preventDefault();
-          void action(() => sessions.saveSection(newName, editing));
+          if (!busy && newName.trim())
+            void action(async () => {
+              await sessions.saveSection(newName);
+              setNewName("");
+            }, "分区已创建");
         }}
       >
-        <label className="block text-[13px] font-medium">
-          {editing ? "分区新名称" : "新分区名称"}
+        <label
+          htmlFor="section-new-name"
+          className="mb-2 block text-control font-medium"
+        >
+          新分区名称
+        </label>
+        <div className="flex gap-2">
           <input
-            className="my-2 block w-full rounded border border-border bg-elevated p-2"
+            id="section-new-name"
+            className={`${settingsInputClass} min-w-0 flex-1`}
+            placeholder="输入分区名称"
             value={newName}
-            required
             maxLength={100}
+            disabled={busy}
             onChange={(event) => setNewName(event.target.value)}
           />
-        </label>
-        <Button type="submit" disabled={state.loading || !newName.trim()}>
-          {editing ? "保存名称" : "新建分区"}
-        </Button>
-        {editing && (
           <Button
-            type="button"
-            onClick={() => {
-              setEditing(undefined);
-              setNewName("");
-            }}
+            type="submit"
+            variant="primary"
+            disabled={busy || !newName.trim()}
           >
-            取消重命名
+            新建分区
           </Button>
-        )}
+        </div>
       </form>
-      {error && (
-        <p role="alert" className="mt-3 text-danger">
-          {error}
-        </p>
-      )}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-control font-medium">
+            已有分区 <span className="text-muted">{state.sections.length}</span>
+          </h3>
+          <Button
+            size="sm"
+            variant="quiet"
+            disabled={busy || state.sectionsLoading}
+            onClick={() => void sessions.loadSections()}
+          >
+            {state.sectionsLoading ? "刷新中…" : "刷新"}
+          </Button>
+        </div>
+        {state.sectionsError && (
+          <ErrorNotice className="mb-2">{state.sectionsError}</ErrorNotice>
+        )}
+        <div
+          className="max-h-[36dvh] space-y-2 overflow-y-auto"
+          aria-busy={pending || state.sectionsLoading}
+        >
+          {state.sections.length === 0 && (
+            <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-caption text-muted">
+              {state.sectionsLoading
+                ? "正在加载分区…"
+                : state.sectionsError
+                  ? "暂时无法加载分区，请重试。"
+                  : "还没有分区，创建第一个分区来整理会话。"}
+            </div>
+          )}
+          {state.sections.map((section) => (
+            <div
+              key={section.id}
+              className="rounded-xl border border-border p-3"
+            >
+              {editing === section.id ? (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!busy && editName.trim())
+                      void action(
+                        () => sessions.saveSection(editName, section.id),
+                        "分区名称已更新",
+                      );
+                  }}
+                >
+                  <label
+                    className="mb-2 block text-caption text-muted"
+                    htmlFor="section-edit-name"
+                  >
+                    分区新名称
+                  </label>
+                  <input
+                    id="section-edit-name"
+                    autoFocus
+                    className={`${settingsInputClass} w-full`}
+                    value={editName}
+                    maxLength={100}
+                    disabled={busy}
+                    onChange={(event) => setEditName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape" && !pending) {
+                        event.stopPropagation();
+                        setEditing(undefined);
+                      }
+                    }}
+                  />
+                  <div className="mt-2 flex justify-end gap-2">
+                    <Button
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => setEditing(undefined)}
+                    >
+                      取消
+                    </Button>
+                    <Button
+                      size="sm"
+                      type="submit"
+                      variant="primary"
+                      disabled={busy || !editName.trim()}
+                    >
+                      保存名称
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 break-all text-control font-medium">
+                    {section.name}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="quiet"
+                    disabled={busy}
+                    onClick={() => {
+                      setEditing(section.id);
+                      setEditName(section.name);
+                      setDeleting(undefined);
+                      setError("");
+                      setNotice("");
+                    }}
+                  >
+                    重命名
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="quiet"
+                    disabled={busy}
+                    onClick={() => {
+                      setDeleting(section.id);
+                      setEditing(undefined);
+                      setError("");
+                      setNotice("");
+                    }}
+                  >
+                    删除
+                  </Button>
+                </div>
+              )}
+              {deleting === section.id && (
+                <div
+                  className="mt-3 rounded-lg bg-danger-soft p-3"
+                  role="alert"
+                >
+                  <p className="text-caption leading-relaxed">
+                    确认删除「{section.name}」？其中的会话会保留并移至未分区。
+                  </p>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <Button
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => setDeleting(undefined)}
+                    >
+                      取消
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      disabled={busy}
+                      onClick={() =>
+                        void action(
+                          () => sessions.deleteSection(section.id),
+                          "分区已删除，会话已保留",
+                        )
+                      }
+                    >
+                      确认删除分区
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      {error && <ErrorNotice>{error}</ErrorNotice>}
+      <p role="status" className="text-caption text-muted">
+        {pending ? "正在保存更改…" : notice || "删除分区不会删除其中的会话。"}
+      </p>
     </div>
   );
 }

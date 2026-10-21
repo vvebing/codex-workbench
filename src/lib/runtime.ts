@@ -1,7 +1,7 @@
 import { QuestionDismissalsStore } from "../features/conversation/question-dismissals";
 import { ConnectionStore, sameEndpoint } from "../features/connection/store";
 import { SessionsStore } from "../features/sessions/store";
-import { RequestsStore } from "../features/requests/store";
+import { RequestsStore, requestThreadId } from "../features/requests/store";
 import { DraftsStore } from "../features/composer/drafts";
 import type { CodexClientOptions } from "./rpc";
 import { DraftSubmissionStore } from "../features/composer/submission";
@@ -10,22 +10,37 @@ import { FileWorkspaceStore } from "../features/files/store";
 export function createRuntime(
   options: CodexClientOptions = {},
   draftScope?: string,
+  initialEndpoint?: string,
 ) {
   const connection = new ConnectionStore(options);
-  const files = new FileWorkspaceStore(connection);
-  const sessions = new SessionsStore(connection);
+  const files = new FileWorkspaceStore(connection, draftScope, initialEndpoint);
   const requests = new RequestsStore(connection);
   const drafts = new DraftsStore();
+  const sessions = new SessionsStore(
+    connection,
+    () =>
+      requests.getSnapshot().pending.flatMap((request) => {
+        const id = requestThreadId(request);
+        return id ? [id] : [];
+      }),
+    (ids) => ids.forEach((id) => drafts.remove(id)),
+  );
   const questionDismissals = new QuestionDismissalsStore(draftScope);
-  if (!draftScope)
-    connection.subscribe(() =>
-      questionDismissals.activateScope(connection.getSnapshot().url),
-    );
-  if (draftScope) drafts.activateScope(draftScope);
-  else
-    connection.subscribe(() =>
-      drafts.activateScope(connection.getSnapshot().url),
-    );
+  const activateDraftScope = (endpoint: string) => {
+    if (!endpoint) return;
+    let normalized = endpoint;
+    try {
+      normalized = new URL(endpoint).href;
+    } catch {
+      /* Preserve custom endpoints. */
+    }
+    const scope = JSON.stringify([draftScope ?? "", normalized]);
+    questionDismissals.activateScope(scope);
+    drafts.activateScope(scope);
+    sessions.activateDraftScope(scope);
+  };
+  if (initialEndpoint) activateDraftScope(initialEndpoint);
+  connection.subscribe(() => activateDraftScope(connection.getSnapshot().url));
   let reconnectToken: string | undefined;
   let connecting:
     | { url: string; token?: string; epoch: number; promise: Promise<void> }

@@ -26,6 +26,30 @@ const snapshot = {
 };
 
 describe("account and connection notices", () => {
+  it("coalesces rolling updates and discards a snapshot started before them", async () => {
+    const { connection, listener, notify } = setup();
+    let resolve!: (value: unknown) => void;
+    listener.mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const first = connection.loadRateLimits();
+    for (let index = 0; index < 3; index++)
+      notify({
+        method: "account/rateLimits/updated",
+        params: { rateLimits: {} },
+      } as RpcNotification);
+    expect(listener).toHaveBeenCalledTimes(1);
+    const fresh = { ...snapshot, ordinaryUsageAllowed: false };
+    listener.mockResolvedValueOnce(fresh);
+    resolve({ ...snapshot, ordinaryUsageAllowed: true });
+    await first;
+    await vi.waitFor(() =>
+      expect(connection.getSnapshot().rateLimits).toEqual(fresh),
+    );
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
   it("isolates unsupported rate limits from connection errors", async () => {
     const { connection, listener } = setup();
     listener.mockRejectedValue(new RpcError("Unknown method", -32601));
@@ -71,9 +95,9 @@ describe("account and connection notices", () => {
       rateLimitsStatus: "unknown",
     });
   });
-  it("ignores usage pushes but refreshes a changed account", async () => {
+  it("refreshes sparse usage pushes and changed accounts", async () => {
     const { connection, listener, notify } = setup();
-    listener.mockImplementation(async (method) =>
+    listener.mockImplementation(async (...[method]) =>
       method === "account/read" ? { account: { type: "apiKey" } } : snapshot,
     );
     notify({
@@ -81,8 +105,11 @@ describe("account and connection notices", () => {
       params: { rateLimits: {} },
     } as RpcNotification);
     await Promise.resolve();
-    expect(listener).not.toHaveBeenCalled();
-    expect(connection.getSnapshot().rateLimits).toBeNull();
+    expect(listener).toHaveBeenCalledWith("account/rateLimits/read", {});
+    await vi.waitFor(() =>
+      expect(connection.getSnapshot().rateLimitsStatus).toBe("ready"),
+    );
+    listener.mockClear();
     notify({
       method: "account/updated",
       params: { authMode: null, planType: null },
@@ -123,7 +150,7 @@ describe("account and connection notices", () => {
         }),
     );
     const pending = connection.loadRateLimits();
-    listener.mockImplementation(async (method) =>
+    listener.mockImplementation(async (...[method]) =>
       method === "account/read" ? { account: { type: "apiKey" } } : snapshot,
     );
     notify({
@@ -215,7 +242,7 @@ const creditSnapshot = {
 };
 async function readyReset() {
   const context = setup();
-  context.listener.mockImplementation(async (method) =>
+  context.listener.mockImplementation(async (...[method]) =>
     method === "account/read"
       ? {
           account: {

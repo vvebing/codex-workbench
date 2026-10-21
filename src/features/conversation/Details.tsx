@@ -1,26 +1,50 @@
 import { Tabs } from "radix-ui";
 import { ThreadTools } from "./ThreadTools";
-import { useStore } from "../../components/hooks";
+import { useStore, useStoreSelector } from "../../components/hooks";
 import { useRuntime } from "../../lib/runtime-context";
-import { ScrollArea } from "../../components/ui";
+import { ResourceScrollArea } from "./ResourceScrollArea";
+import { useWorkspaceGitStatus } from "../shell/workspace-git";
+import type { ProjectTab } from "./project-panel-state";
+export type { ProjectTab } from "./project-panel-state";
 import type { Thread } from "../../generated/v2/Thread";
 import { FilesPanel } from "../shell/FilesPanel";
 import { GitPanel } from "../shell/GitPanel";
+import { useMemo } from "react";
+import ProjectWorkspace from "../projects/ProjectWorkspace";
+import { projectsFor, type ProjectTaskConfig } from "../projects/store";
 
-export type ProjectTab = "files" | "git" | "session";
 export interface DetailsProps {
+  cacheScope: string;
   thread?: Thread;
   tab: ProjectTab;
   onTabChange: (tab: ProjectTab) => void;
+  environmentId: string;
+  onCreateProjectTask: (config: ProjectTaskConfig) => void;
+  onSelectWorktree: (path: string) => void;
 }
 
-export function Details({ thread, tab, onTabChange }: DetailsProps) {
+export function Details({
+  cacheScope,
+  thread,
+  tab,
+  onTabChange,
+  environmentId,
+  onCreateProjectTask,
+  onSelectWorktree,
+}: DetailsProps) {
   const { connection, sessions } = useRuntime();
-  const { epoch } = useStore(connection);
-  const sessionState = useStore(sessions);
+  const { epoch, status } = useStore(connection);
+  const projects = useMemo(
+    () => projectsFor(connection, environmentId),
+    [connection, environmentId],
+  );
+  const localDraft = useStoreSelector(
+    sessions,
+    (state) => !!(thread && state.localDrafts[thread.id]),
+  );
   return (
     <aside
-      className="flex min-h-0 flex-1 flex-col text-[13px] text-foreground"
+      className="flex min-h-0 flex-1 flex-col text-control text-foreground"
       aria-label="项目面板"
     >
       <Tabs.Root
@@ -36,7 +60,7 @@ export function Details({ thread, tab, onTabChange }: DetailsProps) {
             [
               ["files", "文件"],
               ["git", "Git"],
-              ["session", "会话"],
+              ["workspace", "工作区"],
             ] as const
           ).map(([value, label]) => (
             <Tabs.Trigger
@@ -48,32 +72,100 @@ export function Details({ thread, tab, onTabChange }: DetailsProps) {
             </Tabs.Trigger>
           ))}
         </Tabs.List>
-        <ScrollArea className="min-h-0 min-w-0 flex-1">
-          <div className="min-w-0 p-4">
-            <Tabs.Content value="files">
-              {thread ? (
-                <FilesPanel thread={thread} />
-              ) : (
-                <p className="text-muted">选择会话查看项目文件。</p>
-              )}
-            </Tabs.Content>
-            <Tabs.Content value="git">
-              {thread ? (
-                <GitPanel cwd={thread.cwd} />
-              ) : (
-                <p className="text-muted">选择会话查看 Git 工作区。</p>
-              )}
-            </Tabs.Content>
-            <Tabs.Content value="session">
-              {thread && !sessionState.localDrafts[thread.id] ? (
-                <ThreadTools key={`${thread.id}:${epoch}`} thread={thread} />
-              ) : (
-                <p className="text-muted">发送第一条消息后可使用会话工具。</p>
-              )}
-            </Tabs.Content>
-          </div>
-        </ScrollArea>
+        <Tabs.Content
+          value="files"
+          className="min-h-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col"
+        >
+          <ResourceScrollArea
+            key={JSON.stringify([cacheScope, "files", thread?.cwd])}
+            scope={cacheScope}
+            resource={JSON.stringify(["files", thread?.cwd])}
+          >
+            {thread ? (
+              <FilesPanel thread={thread} />
+            ) : (
+              <p className="text-muted">选择会话查看项目文件。</p>
+            )}
+          </ResourceScrollArea>
+        </Tabs.Content>
+        <Tabs.Content
+          value="git"
+          className="min-h-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col"
+        >
+          {thread ? (
+            <GitResource
+              scope={cacheScope}
+              cwd={thread.cwd}
+              onSelectWorktree={onSelectWorktree}
+            />
+          ) : (
+            <p className="p-4 text-muted">选择会话查看 Git 工作区。</p>
+          )}
+        </Tabs.Content>
+        <Tabs.Content
+          value="workspace"
+          className="min-h-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col"
+        >
+          <ResourceScrollArea
+            key={JSON.stringify([
+              cacheScope,
+              "workspace",
+              thread?.id,
+              thread?.cwd,
+            ])}
+            scope={cacheScope}
+            resource={JSON.stringify(["workspace", thread?.id, thread?.cwd])}
+          >
+            <ProjectWorkspace
+              key={JSON.stringify([cacheScope, epoch, thread?.id, thread?.cwd])}
+              store={projects}
+              connected={status === "connected"}
+              currentCwd={thread?.cwd ?? null}
+              onCreateTask={onCreateProjectTask}
+              sessionTools={
+                thread && !localDraft ? (
+                  <ThreadTools key={`${thread.id}:${epoch}`} thread={thread} />
+                ) : (
+                  <p className="text-xs text-muted">
+                    {thread
+                      ? "发送第一条消息后可使用会话工具。"
+                      : "选择会话后查看目标、参考资料和代码审查。"}
+                  </p>
+                )
+              }
+            />
+          </ResourceScrollArea>
+        </Tabs.Content>
       </Tabs.Root>
     </aside>
+  );
+}
+
+function GitResource({
+  scope,
+  cwd,
+  onSelectWorktree,
+}: {
+  scope: string;
+  cwd: string;
+  onSelectWorktree: (path: string) => void;
+}) {
+  const git = useWorkspaceGitStatus(cwd);
+  const root = git.value?.repoRoot;
+  // Wait for canonical identity before touching the shared scroll entry.
+  if (!root)
+    return (
+      <div className="min-w-0 overflow-auto p-4">
+        <GitPanel cwd={cwd} onSelectWorktree={onSelectWorktree} />
+      </div>
+    );
+  return (
+    <ResourceScrollArea
+      key={JSON.stringify([scope, root])}
+      scope={scope}
+      resource={JSON.stringify(["git", root])}
+    >
+      <GitPanel cwd={cwd} onSelectWorktree={onSelectWorktree} />
+    </ResourceScrollArea>
   );
 }

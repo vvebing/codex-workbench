@@ -3,8 +3,8 @@
 @layer components {
   .markdown-content {
     min-width: 0;
-    font-size: 15px;
-    line-height: 1.8;
+    font-size: var(--text-prose);
+    line-height: var(--leading-prose);
     overflow-wrap: anywhere;
   }
 
@@ -46,11 +46,11 @@
   }
 
   .markdown-content :where(h1) {
-    font-size: 25px;
+    font-size: var(--text-heading);
   }
 
   .markdown-content :where(h2) {
-    font-size: 21px;
+    font-size: var(--text-subheading);
   }
 
   .markdown-content :where(h3) {
@@ -121,7 +121,7 @@
 
   @media (width < 550px) {
     .markdown-content {
-      font-size: 14px;
+      font-size: var(--text-body);
     }
   }
 }

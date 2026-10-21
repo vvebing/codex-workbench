@@ -1,3 +1,4 @@
+import { settingsInputClass } from "../settings/settings-ui";
 import { useEffect, useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import {
@@ -9,6 +10,7 @@ import {
 } from "lucide-react";
 import {
   Button,
+  ErrorNotice,
   IconButton,
   Menu,
   Modal,
@@ -26,7 +28,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
   const state = useStore(runtime.queue);
   useStore(runtime.sessions);
   const connection = useStore(runtime.connection);
-  useStore(runtime.requests);
+  const requests = useStore(runtime.requests);
   const queue = runtime.queue.forThread(threadId);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,6 +39,24 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
     connection.status === "connected" &&
     runtime.sessions.getSnapshot().threadAccess[threadId] === "editable" &&
     !runtime.requests.forThread(threadId).length;
+  const waitingReason =
+    queue.paused ||
+    (connection.status !== "connected"
+      ? "工作环境未连接，等待连接后调度。"
+      : queue.items.some((item) => item.status === "uncertain")
+        ? "发送结果待核实，队列不会继续发送。"
+        : queue.editingId
+          ? "正在编辑排队消息，等待编辑结束。"
+          : requests.pending.some(
+                (request) =>
+                  "threadId" in request.params &&
+                  request.params.threadId === threadId,
+              )
+            ? "等待处理当前会话的审批或问题。"
+            : runtime.sessions.getSnapshot().threadAccess[threadId] !==
+                "editable"
+              ? "等待取得此会话的编辑权限。"
+              : null);
   const editingId = editing?.id;
   useEffect(
     () => () => {
@@ -96,11 +116,14 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
               {queue.paused ? "继续队列" : "暂停队列"}
             </Button>
           </div>
-          <p className="mb-1 text-[11px] text-muted" role="status">
-            {queue.paused ||
+          <p className="mb-1 text-meta text-muted" role="status">
+            {waitingReason ||
               (queue.items[0]?.question
-                ? "回答将在连接和写入权限恢复后发送"
+                ? "问题回答的内容与发送状态见上方问题面板"
                 : "当前轮次结束后，按顺序逐条发送")}
+          </p>
+          <p className="mb-1 text-meta text-muted">
+            由当前浏览器调度；关闭页面后不会发送。发送结果待核实时，先核对会话记录。
           </p>
           <ScrollArea className="max-h-[min(10rem,calc(var(--viewport-height,100dvh)*0.18))]">
             <ol className="m-0 list-none p-0">
@@ -114,9 +137,11 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                   <span className="w-4 shrink-0 text-subtle">{index + 1}</span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate" title={task.draft.text}>
-                      {task.draft.text || "图片任务"}
+                      {task.question
+                        ? "问题回答（详见问题面板）"
+                        : task.draft.text || "图片任务"}
                     </p>
-                    <p className="truncate text-[10px] text-muted">
+                    <p className="truncate text-fine text-muted">
                       {task.status === "sending"
                         ? "正在发送…"
                         : task.status === "uncertain"
@@ -206,9 +231,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
         </>
       )}
       {(error || state.error) && (
-        <p role="alert" className="mt-1 text-danger [overflow-wrap:anywhere]">
-          {error || state.error}
-        </p>
+        <ErrorNotice className="mt-1">{error || state.error}</ErrorNotice>
       )}
       <Modal
         open={!!editing}
@@ -229,7 +252,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
               autoFocus
               rows={7}
               disabled={busy}
-              className="w-full resize-y rounded-lg border border-border bg-background p-3 text-sm max-[550px]:text-base outline-none focus:border-accent"
+              className={`${settingsInputClass} resize-y`}
               value={editing.draft.text}
               onChange={(event) => {
                 const text = event.target.value;
@@ -280,11 +303,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                 ))}
               </div>
             )}
-            {error && (
-              <p role="alert" className="text-xs text-danger">
-                {error}
-              </p>
-            )}
+            {error && <ErrorNotice>{error}</ErrorNotice>}
             <div className="mt-3 flex justify-end gap-2">
               <Button onClick={() => void closeEditor()} disabled={busy}>
                 取消

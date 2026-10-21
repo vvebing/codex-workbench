@@ -1,3 +1,4 @@
+import { settingsInputClass } from "../settings/settings-ui";
 import {
   ArrowLeft,
   Columns2,
@@ -13,7 +14,7 @@ import {
   Save,
   X,
 } from "lucide-react";
-import { Button, IconButton } from "../../components/ui";
+import { Button, IconButton, ErrorNotice } from "../../components/ui";
 import { useGitBaseline } from "./use-git-baseline";
 import {
   Component,
@@ -29,6 +30,7 @@ import { useRuntime } from "../../lib/runtime-context";
 import { referenceProjectFile } from "../shell/project-files";
 import "./files.css";
 import { FileDialog } from "./FileDialog";
+import { FileImagePreview } from "./FileImagePreview";
 import { MarkdownPreview } from "./MarkdownPreview";
 
 const MonacoEditor = lazy(() => import("./MonacoEditor"));
@@ -45,9 +47,9 @@ class EditorBoundary extends Component<
     if (this.state.failed)
       return (
         <>
-          <p className="file-notice" role="alert">
+          <ErrorNotice className="m-3 shrink-0">
             编辑器加载失败。草稿仍保留在当前工作区；请先复制未保存的内容，再刷新页面重试。
-          </p>
+          </ErrorNotice>
           <pre className="file-readonly" tabIndex={0}>
             <code>{this.props.text}</code>
           </pre>
@@ -71,7 +73,8 @@ export function FileWorkspace({
   const state = useStore(files);
   const narrow = useNarrow();
   const document = state.documents.find((item) => item.id === state.activeId);
-  const gitBaseline = useGitBaseline(document);
+  const gitBaseline = useGitBaseline(state.visible ? document : undefined);
+  const image = document?.kind === "image";
   const [notice, setNotice] = useState("");
   const [compare, setCompare] = useState<"base" | "disk" | "git" | null>(null);
   const [view, setView] = useState<"edit" | "preview" | "split">("edit");
@@ -144,7 +147,7 @@ export function FileWorkspace({
   }, [state.activeId]);
   return (
     <section
-      className="file-workspace"
+      className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background text-inherit"
       style={state.visible ? undefined : { display: "none" }}
       aria-label="文件编辑工作区"
     >
@@ -152,7 +155,11 @@ export function FileWorkspace({
         <IconButton label="返回会话" onClick={() => files.setVisible(false)}>
           <ArrowLeft size={16} aria-hidden="true" />
         </IconButton>
-        <div className="file-tabs" role="tablist" aria-label="已打开文件">
+        <div
+          className="flex min-w-[120px] flex-1 self-stretch overflow-x-auto"
+          role="tablist"
+          aria-label="已打开文件"
+        >
           {state.documents.map((item) => (
             <div
               className={`file-tab ${item.id === state.activeId ? "is-active" : ""}`}
@@ -242,7 +249,9 @@ export function FileWorkspace({
         {document && (
           <>
             <div
-              className="file-toolbar-actions"
+              hidden={image}
+              style={image ? { display: "none" } : undefined}
+              className="flex items-center gap-1"
               role="group"
               aria-label="文件操作"
             >
@@ -299,6 +308,7 @@ export function FileWorkspace({
                     key={mode}
                     label={label}
                     aria-pressed={view === mode}
+                    className="aria-pressed:bg-selected aria-pressed:text-accent"
                     onClick={() => {
                       setView(mode);
                       setCompare(null);
@@ -348,6 +358,16 @@ export function FileWorkspace({
               </IconButton>
             )}
           </div>
+          {state.recoveryError && (
+            <ErrorNotice className="m-3 shrink-0">
+              {state.recoveryError}
+            </ErrorNotice>
+          )}
+          {document.recovered && (
+            <p className="file-notice" role="status">
+              已从浏览器恢复未保存的编辑内容，尚未写入文件。保存前会重新核对磁盘内容。
+            </p>
+          )}
           {document.conflict && (
             <div className="file-notice" role="alert">
               磁盘文件已改变。请比较内容，重新加载或另存为新文件。
@@ -378,13 +398,14 @@ export function FileWorkspace({
               )}
             </div>
           )}
-          {(document.error || notice) && (
-            <p
-              className="file-notice"
-              role={document.error ? "alert" : "status"}
-            >
-              {document.error || notice}
-            </p>
+          {document.error ? (
+            <ErrorNotice className="m-3 shrink-0">{document.error}</ErrorNotice>
+          ) : (
+            notice && (
+              <p className="file-notice" role="status">
+                {notice}
+              </p>
+            )
           )}
           {comparison && (
             <div className="file-comparison-labels">
@@ -425,14 +446,17 @@ export function FileWorkspace({
           )}
           {!connected && (
             <p className="file-notice" role="status">
-              连接已断开。可继续编辑草稿，重新连接后再保存。
+              {image
+                ? "连接已断开。当前图片仍可查看，重新连接后可刷新。"
+                : "连接已断开。可继续编辑草稿，重新连接后再保存。"}
             </p>
           )}
           {document.loading && <p className="file-notice">正在读取文件…</p>}
           <div
-            className={`file-content ${markdown && !comparison ? `file-view-${view}` : "file-view-edit"}`}
+            className={`relative flex min-h-0 min-w-0 flex-1 ${markdown && !comparison ? `file-view-${view}` : "file-view-edit"}`}
           >
             <div
+              style={image ? { display: "none" } : undefined}
               className={`file-editor-pane${comparison ? " file-comparison" : ""}`}
               aria-hidden={
                 markdown && view === "preview" && !comparison ? true : undefined
@@ -483,6 +507,13 @@ export function FileWorkspace({
                 </EditorBoundary>
               )}
             </div>
+            {image && (
+              <FileImagePreview
+                key={document.id}
+                url={document.imageUrl}
+                path={document.path}
+              />
+            )}
             {markdown && view !== "edit" && !comparison && (
               <MarkdownPreview
                 text={document.text}
@@ -502,11 +533,13 @@ export function FileWorkspace({
                       : "⌘ / Ctrl S 保存"
                 }
               >
-                {gitComparison
-                  ? "Git 快照"
-                  : document.dirty
-                    ? "未保存"
-                    : "已保存"}
+                {image
+                  ? "图片预览"
+                  : gitComparison
+                    ? "Git 快照"
+                    : document.dirty
+                      ? "未保存"
+                      : "已保存"}
               </span>
               {!gitComparison && gitBaseline?.text !== undefined && (
                 <span
@@ -523,9 +556,9 @@ export function FileWorkspace({
               )}
               {(document.readonly || narrow) && <span>只读</span>}
             </div>
-            <div className="file-status-group file-status-details">
-              <span>UTF-8</span>
-              {!narrow && (
+            <div className="file-status-group ml-auto">
+              {!image && <span>UTF-8</span>}
+              {!narrow && !image && (
                 <>
                   <span>{position.language}</span>
                   <span>
@@ -572,14 +605,15 @@ export function FileWorkspace({
             <label>
               新文件绝对路径
               <input
+                className={`${settingsInputClass} mt-1.5`}
                 autoFocus
                 required
                 value={saveAs}
                 onChange={(event) => setSaveAs(event.target.value)}
               />
             </label>
-            {notice && <p role="alert">{notice}</p>}
-            <div>
+            {notice && <ErrorNotice>{notice}</ErrorNotice>}
+            <div className="file-dialog-actions">
               <Button
                 type="button"
                 disabled={busy}

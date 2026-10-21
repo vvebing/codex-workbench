@@ -1,5 +1,6 @@
 import type { ComponentPropsWithoutRef } from "react";
 import type { ExtraProps } from "react-markdown";
+import { ScrollArea } from "../../components/ui";
 import { Markdown } from "../conversation/Markdown";
 import { FileLinkProvider } from "./FileLinkContext";
 
@@ -36,14 +37,19 @@ export function MarkdownPreview({
   const separator = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   const cwd = separator === 0 ? "/" : path.slice(0, separator + 1);
   return (
-    <section
+    <ScrollArea
       className="file-markdown-preview"
-      aria-label="Markdown 预览"
-      tabIndex={0}
+      orientation="both"
+      viewportProps={{ tabIndex: 0, "aria-label": "Markdown 预览" }}
     >
-      <FileLinkProvider cwd={cwd} threadId={threadId}>
-        <Markdown text={text} imageComponent={PreviewImage} />
-      </FileLinkProvider>
-    </section>
+      <section
+        className="file-markdown-preview-content"
+        aria-label="Markdown 预览"
+      >
+        <FileLinkProvider cwd={cwd} threadId={threadId}>
+          <Markdown text={text} imageComponent={PreviewImage} />
+        </FileLinkProvider>
+      </section>
+    </ScrollArea>
   );
 }

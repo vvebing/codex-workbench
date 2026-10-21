@@ -195,7 +195,9 @@ describe("thread tools scoped lifecycle", () => {
     await store.setGoal(params);
     expect(threadRequest).toHaveBeenCalledWith("t", "thread/goal/set", params);
     await store.clearGoal();
-    expect(threadRequest).toHaveBeenCalledWith("t", "thread/goal/clear", {});
+    expect(threadRequest).toHaveBeenCalledWith("t", "thread/goal/clear", {
+      origin: "user",
+    });
     await store.startReview({ type: "uncommittedChanges" });
     expect(startReview).toHaveBeenCalledWith("t", {
       type: "uncommittedChanges",

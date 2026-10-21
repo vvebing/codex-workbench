@@ -51,6 +51,34 @@ function setup(text = "original") {
   };
 }
 describe("file workspace", () => {
+  it("previews binary images without decoding text or permitting writes", async () => {
+    const { files, request } = setup();
+    const data = btoa("\x89PNG\r\n\x1a\n" + "a".repeat(300 * 1024));
+    request.mockImplementation(async () => ({ dataBase64: data }));
+    await files.open({ path: "/work/screenshot.PNG" });
+    const doc = files.getSnapshot().documents[0];
+    expect(doc).toMatchObject({
+      kind: "image",
+      readonly: true,
+      loading: false,
+      text: "",
+    });
+    expect(doc.imageUrl).toBe(`data:image/png;base64,${data}`);
+    expect(doc.error).toBeUndefined();
+    files.setText(doc.id, "overwrite");
+    await files.save(doc.id);
+    expect(files.getSnapshot().documents[0].dirty).toBe(false);
+    expect(
+      request.mock.calls.some(([method]) => method === "fs/writeFile"),
+    ).toBe(false);
+    request.mockImplementation(async () => ({ dataBase64: btoa("invalid") }));
+    await files.reload(doc.id);
+    expect(files.getSnapshot().documents[0]).toMatchObject({
+      readonly: true,
+      error: "图片格式无法识别。",
+      imageUrl: undefined,
+    });
+  });
   beforeEach(() =>
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] }),
   );
@@ -323,8 +351,12 @@ describe("file workspace", () => {
     );
     vi.advanceTimersByTime(5000);
     files.setText(id, "saved draft");
-    await files.save(id);
+    const saving = files.save(id);
+    expect(
+      request.mock.calls.filter(([method]) => method === "fs/readFile"),
+    ).toHaveLength(2);
     finish({ dataBase64: btoa("old disk text") });
+    await saving;
     await Promise.resolve();
     await Promise.resolve();
     expect(files.getSnapshot().documents[0]).toMatchObject({
@@ -332,6 +364,118 @@ describe("file workspace", () => {
       baseText: "saved draft",
       dirty: false,
       conflict: false,
+    });
+  });
+  it("merges invalidations during a slow read and publishes no unchanged buffers", async () => {
+    const { files, request } = setup();
+    await files.open({ path: "/work/a.txt" });
+    const listener = vi.fn();
+    files.subscribe(listener);
+    let finish!: (value: { dataBase64: string }) => void;
+    request.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    vi.advanceTimersByTime(5000);
+    files.validateActive();
+    files.validateActive();
+    vi.advanceTimersByTime(15000);
+    expect(
+      request.mock.calls.filter(([method]) => method === "fs/readFile"),
+    ).toHaveLength(2);
+    finish({ dataBase64: btoa("original") });
+    await vi.waitFor(() =>
+      expect(
+        request.mock.calls.filter(([method]) => method === "fs/readFile"),
+      ).toHaveLength(3),
+    );
+    expect(listener).not.toHaveBeenCalled();
+  });
+  it("reduces hidden panel polling and pauses hidden page reads until focus validation", async () => {
+    const { files, request } = setup();
+    await files.open({ path: "/work/a.txt" });
+    files.setVisible(false);
+    vi.advanceTimersByTime(55000);
+    expect(
+      request.mock.calls.filter(([method]) => method === "fs/readFile"),
+    ).toHaveLength(1);
+    vi.advanceTimersByTime(5000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(
+      request.mock.calls.filter(([method]) => method === "fs/readFile"),
+    ).toHaveLength(2);
+    files.setPageVisible(false);
+    vi.advanceTimersByTime(120000);
+    expect(
+      request.mock.calls.filter(([method]) => method === "fs/readFile"),
+    ).toHaveLength(2);
+    files.setVisible(true);
+    files.setPageVisible(true);
+    await vi.waitFor(() =>
+      expect(
+        request.mock.calls.filter(([method]) => method === "fs/readFile"),
+      ).toHaveLength(3),
+    );
+  });
+  it("slows background environments and validates when returning to the foreground", async () => {
+    const { files, request } = setup();
+    await files.open({ path: "/work/a.txt" });
+    files.setForeground(false);
+    vi.advanceTimersByTime(55000);
+    expect(
+      request.mock.calls.filter(([method]) => method === "fs/readFile"),
+    ).toHaveLength(1);
+    files.setForeground(true);
+    await vi.waitFor(() =>
+      expect(
+        request.mock.calls.filter(([method]) => method === "fs/readFile"),
+      ).toHaveLength(2),
+    );
+  });
+  it("recovers unchanged text and image snapshots after a failed refresh", async () => {
+    for (const image of [false, true]) {
+      const { files, request } = setup();
+      const data = image ? btoa("\x89PNG\r\n\x1a\nimage") : btoa("original");
+      request.mockImplementation(async () => ({ dataBase64: data }));
+      await files.open({ path: image ? "/work/image.png" : "/work/a.txt" });
+      request.mockRejectedValueOnce(new Error("temporary read failure"));
+      files.validateActive();
+      await vi.waitFor(() =>
+        expect(files.getSnapshot().documents[0].error).toBeDefined(),
+      );
+      files.validateActive();
+      await vi.waitFor(() =>
+        expect(files.getSnapshot().documents[0].error).toBeUndefined(),
+      );
+      const document = files.getSnapshot().documents[0];
+      expect(document.readonly).toBe(image);
+      if (image)
+        expect(document.imageUrl).toBe(`data:image/png;base64,${data}`);
+      else expect(document.text).toBe("original");
+    }
+  });
+  it("adopts changed disk text after a conflicted draft returns to its clean base", async () => {
+    const { files, disk } = setup();
+    await files.open({ path: "/work/a.txt" });
+    const id = files.getSnapshot().activeId!;
+    files.setText(id, "draft");
+    disk.set("ws://a:/work/a.txt", "external");
+    files.validateActive();
+    await vi.waitFor(() =>
+      expect(files.getSnapshot().documents[0].diskText).toBe("external"),
+    );
+    files.setText(id, "original");
+    files.validateActive();
+    await vi.waitFor(() =>
+      expect(files.getSnapshot().documents[0].text).toBe("external"),
+    );
+    expect(files.getSnapshot().documents[0]).toMatchObject({
+      dirty: false,
+      conflict: false,
+      diskText: undefined,
     });
   });
   it("treats symlink metadata as an existing destination and preserves native errors", async () => {

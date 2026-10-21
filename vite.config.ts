@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwind from "@tailwindcss/vite";
 import { attachBridge } from "./server/bridge";
 import { SECURITY_HEADERS } from "./server/security-headers";
+import { serveCodexRelease } from "./server/codex-release";
 export default defineConfig({
   plugins: [
     react(),
@@ -14,6 +15,12 @@ export default defineConfig({
         if (!(server.httpServer instanceof Server))
           throw new Error("Codex Workbench requires a local HTTP server.");
         attachBridge(server.httpServer);
+        const httpServer = server.httpServer;
+        server.middlewares.use((req, res, next) => {
+          if (req.url === "/codex-release")
+            void serveCodexRelease(httpServer, req, res);
+          else next();
+        });
       },
     },
   ],

@@ -1,7 +1,7 @@
 import type { Thread } from "../../generated/v2/Thread";
 import { RpcError } from "../../lib/rpc";
 
-/** Documented metadata fields newer than this generated protocol snapshot. */
+/** Read-only compatibility for cached metadata; the current protocol has no pin write API. */
 export type ManagedThread = Thread & { isPinned?: boolean };
 export const pinnedOf = (thread: Thread): boolean =>
   (thread as ManagedThread).isPinned === true;

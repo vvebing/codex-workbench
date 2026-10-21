@@ -24,6 +24,52 @@ function setup() {
   };
 }
 describe("environment tools", () => {
+  it("uses the refreshed version for consecutive writes and ignores a pre-write read", async () => {
+    const { store, request } = setup();
+    const config = (version: string) => ({
+      config: { model: "model-1" },
+      origins: {
+        model: { name: { type: "user", file: "/work/config.toml" }, version },
+      },
+      layers: null,
+    });
+    request.mockResolvedValueOnce(config("v1"));
+    await store.load("config");
+    let rejectOld!: (error: Error) => void;
+    request.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectOld = reject;
+      }),
+    );
+    const oldRead = store.load("config");
+    request.mockResolvedValueOnce({
+      status: "ok",
+      version: "v2",
+      filePath: "/work/config.toml",
+      overriddenMetadata: null,
+    });
+    request.mockResolvedValueOnce(config("v2"));
+    await store.writeConfig("model", "model-2");
+    rejectOld(Error("old read failed"));
+    await oldRead;
+    expect(store.getSnapshot().config.error).toBeNull();
+    request.mockResolvedValueOnce({
+      status: "ok",
+      version: "v3",
+      filePath: "/work/config.toml",
+      overriddenMetadata: null,
+    });
+    request.mockResolvedValueOnce(config("v3"));
+    await store.writeConfig("model", "model-3");
+    const writes = request.mock.calls.filter(
+      ([method]) => method === "config/value/write",
+    );
+    expect(writes.map((call) => call[1])).toEqual([
+      expect.objectContaining({ expectedVersion: "v1" }),
+      expect.objectContaining({ expectedVersion: "v2" }),
+    ]);
+    store.dispose();
+  });
   it("isolates optional feature failure and paginates MCP", async () => {
     const { store, request } = setup();
     request.mockRejectedValueOnce(Error("unsupported"));
@@ -131,7 +177,7 @@ describe("environment tools", () => {
       value: "model-1",
       mergeStrategy: "replace",
     });
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(2);
     store.dispose();
   });
   it("reads only the explicitly selected project directory", async () => {

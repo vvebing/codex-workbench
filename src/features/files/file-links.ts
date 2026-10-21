@@ -11,6 +11,41 @@ export interface FileLinkTarget extends FileLinkOrigin {
   endLine?: number;
 }
 
+/** Recover accidental same-origin URLs only inside the originating workspace. */
+export function parseImageFileLink(
+  href: string,
+  origin: FileLinkOrigin,
+  browserOrigin?: string,
+): FileLinkTarget | null {
+  let target = parseFileLink(href, origin);
+  if (!target && browserOrigin && origin.cwd) {
+    try {
+      const url = new URL(href);
+      const cwd = origin.cwd.replace(/\/$/, "");
+      if (
+        url.origin !== browserOrigin ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash
+      )
+        return null;
+      target = parseFileLink(url.pathname, origin);
+      if (
+        !target?.path.startsWith(`${cwd}/`) ||
+        target.path.includes("\\") ||
+        target.path.split("/").includes("..")
+      )
+        return null;
+    } catch {
+      return null;
+    }
+  }
+  return target && /\.(?:png|jpe?g|gif|webp)$/i.test(target.path)
+    ? target
+    : null;
+}
+
 const hasControlCharacters = (value: string) =>
   [...value].some(
     (char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127,

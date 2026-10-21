@@ -3,7 +3,7 @@ import { OpenCurrentFile } from "../files/FileLinkContext";
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
-import { ScrollArea } from "../../components/ui";
+import { IconButton, ScrollArea } from "../../components/ui";
 
 function mediaUrl(value: unknown, kind: "image" | "audio"): string | undefined {
   if (typeof value !== "string") return;
@@ -227,15 +227,9 @@ export function OperationDetails({
         <span role="status" className="text-xs text-muted">
           {copyState}
         </span>
-        <button
-          type="button"
-          aria-label="复制输出"
-          title="复制输出"
-          className="rounded p-1.5 text-muted hover:bg-surface hover:text-foreground"
-          onClick={copy}
-        >
+        <IconButton size="sm" label="复制输出" onClick={copy}>
           {copyState === "已复制" ? <Check size={14} /> : <Copy size={14} />}
-        </button>
+        </IconButton>
       </div>
       {progress?.length ? (
         <div
@@ -247,9 +241,11 @@ export function OperationDetails({
             <summary className="cursor-pointer">
               查看进度记录 ({progress.length})
             </summary>
-            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap">
-              {progress.join("\n")}
-            </pre>
+            <ScrollArea className="mt-2 max-h-40">
+              <pre className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                {progress.join("\n")}
+              </pre>
+            </ScrollArea>
           </details>
         </div>
       ) : null}
@@ -290,7 +286,7 @@ export function OperationDetails({
                 ? selected.diff.split("\n").map((line, index) => (
                     <span
                       key={index}
-                      className={`block whitespace-pre-wrap [overflow-wrap:anywhere] ${line.startsWith("+") && !line.startsWith("+++") ? "bg-green-500/10 text-green-700 dark:text-green-400" : line.startsWith("-") && !line.startsWith("---") ? "bg-red-500/10 text-red-700 dark:text-red-400" : line.startsWith("@@") ? "text-accent" : ""}`}
+                      className={`block whitespace-pre-wrap [overflow-wrap:anywhere] ${line.startsWith("+") && !line.startsWith("+++") ? "bg-diff-added-soft text-diff-added" : line.startsWith("-") && !line.startsWith("---") ? "bg-diff-deleted-soft text-diff-deleted" : line.startsWith("@@") ? "text-accent" : ""}`}
                     >
                       {line || " "}
                     </span>
@@ -310,7 +306,7 @@ export function OperationDetails({
             } as React.HTMLAttributes<HTMLDivElement>
           }
         >
-          <pre className="rounded-md bg-surface p-3 font-mono text-xs leading-[1.65] whitespace-pre-wrap [overflow-wrap:anywhere]">
+          <pre className="rounded-md bg-surface p-3 font-mono text-xs leading-code whitespace-pre-wrap [overflow-wrap:anywhere]">
             {inlineContent || "暂无内容"}
           </pre>
         </ScrollArea>

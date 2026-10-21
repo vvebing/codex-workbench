@@ -1,6 +1,8 @@
+import { CapabilityPanel, useCapabilities } from "./CapabilityPanel";
+import type { RpcMethod } from "../../lib/rpc";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useStore } from "../../components/hooks";
-import { Button, SelectField } from "../../components/ui";
+import { Button, ErrorNotice, SelectField } from "../../components/ui";
 import type { ConnectionStore } from "../connection/store";
 import {
   EnvironmentToolsStore,
@@ -26,6 +28,19 @@ export function EnvironmentTools({
   onInsertApp?: (app: { id: string; name: string }) => void;
 }) {
   const session = useStore(connection);
+  const capabilities = useCapabilities(connection);
+  const unsupported = (method: RpcMethod) =>
+    capabilities[method]?.state === "unsupported";
+  const methods: Record<ToolSection, RpcMethod> = {
+    mcp: "mcpServerStatus/list",
+    config: "config/read",
+    requirements: "configRequirements/read",
+    skills: "skills/list",
+    hooks: "hooks/list",
+    apps: "app/list",
+    installed: "app/installed",
+    app: "app/read",
+  };
   const store = useMemo(
     () => new EnvironmentToolsStore(connection, cwd, session.epoch),
     [connection, cwd, session.epoch],
@@ -46,18 +61,24 @@ export function EnvironmentTools({
           <Button
             size="sm"
             variant="secondary"
-            disabled={session.status !== "connected" || state[key].busy}
+            disabled={
+              session.status !== "connected" ||
+              state[key].busy ||
+              unsupported(methods[key])
+            }
             onClick={() => void store.load(key)}
           >
             {state[key].busy ? "加载中…" : "刷新"}
           </Button>
         }
       >
-        {state[key].error && (
-          <p role="alert" className="text-xs text-danger">
-            {state[key].error}
+        {unsupported(methods[key]) && (
+          <p role="status" className="text-xs text-muted">
+            服务端未提供 {methods[key]}
+            ；可在「服务端功能支持」清除该接口记录后重新验证。
           </p>
         )}
+        {state[key].error && <ErrorNotice>{state[key].error}</ErrorNotice>}
         {!state[key].data && !state[key].busy && !state[key].error && (
           <p className="text-xs text-muted">尚未加载</p>
         )}
@@ -67,12 +88,17 @@ export function EnvironmentTools({
   };
   return (
     <div className="space-y-6 text-xs">
+      {group === "integrations" && <CapabilityPanel connection={connection} />}
       {session.status !== "connected" && <p>连接环境后可管理服务。</p>}
-      {state.actionError && (
-        <p role="alert" className="text-danger">
-          {state.actionError}
-        </p>
-      )}
+      {Object.entries(capabilities)
+        .filter(([, value]) => value?.state === "unsupported")
+        .map(([method]) => (
+          <p key={method} role="status" className="text-muted">
+            服务端未提供 {method}；对应操作已禁用。可在「工具与集成 →
+            服务端功能支持」清除具体接口记录后重新验证。
+          </p>
+        ))}
+      {state.actionError && <ErrorNotice>{state.actionError}</ErrorNotice>}
       {state.message && <p role="status">{state.message}</p>}
       {panel(
         "mcp",
@@ -97,7 +123,7 @@ export function EnvironmentTools({
               <Button
                 size="sm"
                 variant="secondary"
-                disabled={disabled}
+                disabled={disabled || unsupported("mcpServer/oauth/login")}
                 onClick={() => void store.login(server.name)}
               >
                 OAuth 登录
@@ -107,7 +133,7 @@ export function EnvironmentTools({
           {state.mcp.data?.nextCursor && (
             <Button
               size="sm"
-              disabled={state.mcp.busy}
+              disabled={state.mcp.busy || unsupported("mcpServerStatus/list")}
               onClick={() => void store.load("mcp", true)}
             >
               更多服务
@@ -116,7 +142,7 @@ export function EnvironmentTools({
           <Button
             size="sm"
             variant="secondary"
-            disabled={disabled}
+            disabled={disabled || unsupported("config/mcpServer/reload")}
             onClick={() => void store.reloadMcp()}
           >
             重新加载 MCP 配置
@@ -162,7 +188,9 @@ export function EnvironmentTools({
             <Button
               size="sm"
               variant="secondary"
-              disabled={disabled || !model.trim()}
+              disabled={
+                disabled || !model.trim() || unsupported("config/value/write")
+              }
               onClick={() => void store.writeConfig("model", model)}
             >
               保存设备默认模型
@@ -187,7 +215,11 @@ export function EnvironmentTools({
             <Button
               size="sm"
               variant="secondary"
-              disabled={disabled || policy === "unset"}
+              disabled={
+                disabled ||
+                policy === "unset" ||
+                unsupported("config/value/write")
+              }
               onClick={() => void store.writeConfig("approval_policy", policy)}
             >
               保存设备默认审批策略
@@ -246,7 +278,7 @@ export function EnvironmentTools({
               {entry.skills.map((skill) => (
                 <div
                   key={skill.path}
-                  className="flex items-start justify-between gap-3"
+                  className="flex items-center justify-between gap-3"
                 >
                   <div className="min-w-0 flex-1">
                     <p>
@@ -259,7 +291,7 @@ export function EnvironmentTools({
                   <Button
                     size="sm"
                     variant="secondary"
-                    disabled={disabled}
+                    disabled={disabled || unsupported("skills/config/write")}
                     onClick={() =>
                       void store.setSkill(skill.path, !skill.enabled)
                     }
@@ -286,7 +318,7 @@ export function EnvironmentTools({
           <Button
             size="sm"
             variant="secondary"
-            disabled={disabled}
+            disabled={disabled || unsupported("skills/extraRoots/set")}
             onClick={() =>
               void store.setRoots(
                 roots
@@ -354,7 +386,7 @@ export function EnvironmentTools({
                 <Button
                   size="sm"
                   variant="secondary"
-                  disabled={state.app.busy}
+                  disabled={state.app.busy || unsupported("app/read")}
                   onClick={() => void store.load("app", false, app.id)}
                 >
                   查看工具
@@ -374,17 +406,13 @@ export function EnvironmentTools({
           {state.apps.data?.nextCursor && (
             <Button
               size="sm"
-              disabled={state.apps.busy}
+              disabled={state.apps.busy || unsupported("app/list")}
               onClick={() => void store.load("apps", true)}
             >
               更多应用
             </Button>
           )}
-          {state.app.error && (
-            <p role="alert" className="text-danger">
-              {state.app.error}
-            </p>
-          )}
+          {state.app.error && <ErrorNotice>{state.app.error}</ErrorNotice>}
           {state.app.data?.missingAppIds.map((id) => (
             <p key={id}>应用不可用：{id}</p>
           ))}

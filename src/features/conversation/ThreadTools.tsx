@@ -1,5 +1,9 @@
+import { settingsInputClass } from "../settings/settings-ui";
+import { useCapabilities } from "../settings/CapabilityPanel";
+import { insertReference } from "./insert-reference";
+import type { RpcMethod } from "../../lib/rpc";
 import { useEffect, useMemo, useState } from "react";
-import { Button, SelectField } from "../../components/ui";
+import { Button, ErrorNotice, SelectField } from "../../components/ui";
 import { useStore } from "../../components/hooks";
 import { useRuntime } from "../../lib/runtime-context";
 import { errorMessage } from "../../lib/store";
@@ -17,8 +21,7 @@ import {
   reviewTarget,
 } from "./thread-tools-model";
 
-const inputClass =
-  "my-1 block w-full rounded-md border border-border bg-elevated p-2 text-foreground";
+const inputClass = `${settingsInputClass} my-1`;
 const statusLabels: Record<ThreadGoalStatus, string> = {
   active: "进行中",
   paused: "已暂停",
@@ -31,10 +34,14 @@ function GoalEditor({
   goal,
   store,
   disabled,
+  setUnsupported,
+  clearUnsupported,
 }: {
   goal: ThreadGoal | null;
   store: ThreadToolsStore;
   disabled: boolean;
+  setUnsupported: boolean;
+  clearUnsupported: boolean;
 }) {
   const [objective, setObjective] = useState(goal?.objective ?? "");
   const [budget, setBudget] = useState(goal?.tokenBudget?.toString() ?? "");
@@ -55,7 +62,7 @@ function GoalEditor({
         }
       }}
     >
-      <label className="block text-[13px] font-medium">
+      <label className="block text-control font-medium">
         目标内容
         <textarea
           className={inputClass}
@@ -66,7 +73,7 @@ function GoalEditor({
           onChange={(event) => setObjective(event.target.value)}
         />
       </label>
-      <label className="block text-[13px] font-medium">
+      <label className="block text-control font-medium">
         目标状态
         <SelectField
           label="目标状态"
@@ -80,7 +87,7 @@ function GoalEditor({
           }))}
         />
       </label>
-      <label className="block text-[13px] font-medium">
+      <label className="block text-control font-medium">
         Token 预算（留空不限）
         <input
           className={inputClass}
@@ -95,17 +102,19 @@ function GoalEditor({
       <p className="my-2 text-xs text-muted">
         更换目标内容会重置用量记录。保存目标可能让会话继续执行。
       </p>
-      {error && (
-        <p role="alert" className="text-danger">
-          {error}
-        </p>
-      )}
+      {error && <ErrorNotice>{error}</ErrorNotice>}
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={disabled || !objective.trim()}>
+        <Button
+          type="submit"
+          disabled={disabled || setUnsupported || !objective.trim()}
+        >
           保存目标
         </Button>
         {goal && (
-          <Button disabled={disabled} onClick={() => void store.clearGoal()}>
+          <Button
+            disabled={disabled || clearUnsupported}
+            onClick={() => void store.clearGoal()}
+          >
             清除目标
           </Button>
         )}
@@ -116,6 +125,22 @@ function GoalEditor({
 export function ThreadTools({ thread }: { thread: Thread }) {
   const runtime = useRuntime();
   const connection = useStore(runtime.connection);
+  const capabilities = useCapabilities(runtime.connection);
+  const unsupported = (method: RpcMethod) =>
+    capabilities[method]?.state === "unsupported";
+  const unavailable = (
+    [
+      "thread/goal/get",
+      "thread/goal/set",
+      "thread/goal/clear",
+      "thread/attachment/list",
+      "thread/attachment/add",
+      "thread/attachment/remove",
+      "thread/attachmentOwner/list",
+      "review/start",
+    ] as const
+  ).filter(unsupported);
+  const [insertedReference, setInsertedReference] = useState(false);
   const sessions = useStore(runtime.sessions);
   const store = useMemo(
     () =>
@@ -154,24 +179,31 @@ export function ThreadTools({ thread }: { thread: Thread }) {
   };
   return (
     <div className="space-y-5" aria-label="会话工具">
+      {unavailable.length > 0 && (
+        <p role="status" className="text-xs text-muted">
+          服务端未提供：{unavailable.join("、")}
+          。对应操作已禁用；可在设置的「服务端功能支持」清除具体接口记录后重新验证，其他接口仍可使用。
+        </p>
+      )}
+      {insertedReference && (
+        <p role="status" className="text-xs text-muted">
+          参考资料已引用到输入框，请检查后发送。已关联不等于助手已阅读。
+        </p>
+      )}
       {running && (
         <p className="text-xs text-muted">
           会话执行期间可查看工具，结束后可修改。
         </p>
       )}
       {(state.error || formError) && (
-        <p className="text-danger" role="alert">
-          {state.error || formError}
-        </p>
+        <ErrorNotice>{state.error || formError}</ErrorNotice>
       )}
       {state.message && <p role="status">{state.message}</p>}
       <details>
         <summary className="cursor-pointer font-semibold">会话目标</summary>
         <div className="mt-3">
           {state.goalError && (
-            <p role="alert" className="text-danger">
-              无法读取目标：{state.goalError}
-            </p>
+            <ErrorNotice>无法读取目标：{state.goalError}</ErrorNotice>
           )}
           {state.goal && (
             <div className="mb-3 space-y-1 [overflow-wrap:anywhere]">
@@ -196,12 +228,18 @@ export function ThreadTools({ thread }: { thread: Thread }) {
               goal={state.goal}
               store={store}
               disabled={disabled}
+              setUnsupported={unsupported("thread/goal/set")}
+              clearUnsupported={unsupported("thread/goal/clear")}
             />
           )}
           <Button
             className="mt-2"
             size="sm"
-            disabled={connection.status !== "connected" || state.busy}
+            disabled={
+              connection.status !== "connected" ||
+              state.busy ||
+              unsupported("thread/goal/get")
+            }
             onClick={() => void store.loadGoal()}
           >
             刷新目标
@@ -220,7 +258,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
             );
           }}
         >
-          <label className="block text-[13px] font-medium">
+          <label className="block text-control font-medium">
             审查范围
             <SelectField
               label="审查范围"
@@ -240,7 +278,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
             />
           </label>
           {reviewType !== "uncommittedChanges" && (
-            <label className="block text-[13px] font-medium">
+            <label className="block text-control font-medium">
               {reviewType === "baseBranch"
                 ? "基准分支"
                 : reviewType === "commit"
@@ -255,7 +293,10 @@ export function ThreadTools({ thread }: { thread: Thread }) {
               />
             </label>
           )}
-          <Button type="submit" disabled={disabled}>
+          <Button
+            type="submit"
+            disabled={disabled || unsupported("review/start")}
+          >
             开始审查
           </Button>
           <p className="mt-2 text-xs text-muted">
@@ -267,12 +308,10 @@ export function ThreadTools({ thread }: { thread: Thread }) {
         <summary className="cursor-pointer font-semibold">参考资料</summary>
         <div className="mt-3">
           <p className="mb-2 text-xs text-muted">
-            保存链接或路径作为会话参考资料；不会上传文件内容。
+            保存链接或路径作为会话参考资料；不会上传文件内容。已关联不等于助手已阅读；可显式引用到输入框后发送。
           </p>
           {state.attachmentError && (
-            <p className="text-danger" role="alert">
-              无法读取参考资料：{state.attachmentError}
-            </p>
+            <ErrorNotice>无法读取参考资料：{state.attachmentError}</ErrorNotice>
           )}
           {state.attachments.map((attachment) => {
             const own = attachment.attachmentType === referenceAttachmentType;
@@ -305,7 +344,25 @@ export function ThreadTools({ thread }: { thread: Thread }) {
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button
                     size="sm"
-                    disabled={connection.status !== "connected" || state.busy}
+                    onClick={() => {
+                      insertReference(
+                        runtime.drafts,
+                        thread.id,
+                        attachmentLabel(attachment),
+                        attachment.identityKey,
+                      );
+                      setInsertedReference(true);
+                    }}
+                  >
+                    引用到输入框
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={
+                      connection.status !== "connected" ||
+                      state.busy ||
+                      unsupported("thread/attachmentOwner/list")
+                    }
                     onClick={() => void store.findOwners(attachment)}
                   >
                     查看所属会话
@@ -313,7 +370,9 @@ export function ThreadTools({ thread }: { thread: Thread }) {
                   {own && (
                     <Button
                       size="sm"
-                      disabled={disabled}
+                      disabled={
+                        disabled || unsupported("thread/attachment/remove")
+                      }
                       onClick={() => void store.removeAttachment(attachment)}
                     >
                       移除参考资料
@@ -325,7 +384,11 @@ export function ThreadTools({ thread }: { thread: Thread }) {
           })}
           {state.attachmentCursor && (
             <Button
-              disabled={connection.status !== "connected" || state.busy}
+              disabled={
+                connection.status !== "connected" ||
+                state.busy ||
+                unsupported("thread/attachment/list")
+              }
               onClick={() => void store.loadAttachments(true)}
             >
               加载更多参考资料
@@ -346,7 +409,11 @@ export function ThreadTools({ thread }: { thread: Thread }) {
               ))}
               {state.ownerCursor && state.ownerIdentity && (
                 <Button
-                  disabled={connection.status !== "connected" || state.busy}
+                  disabled={
+                    connection.status !== "connected" ||
+                    state.busy ||
+                    unsupported("thread/attachmentOwner/list")
+                  }
                   onClick={() =>
                     void store.findOwners(state.ownerIdentity!, true)
                   }
@@ -371,7 +438,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
               );
             }}
           >
-            <label className="block text-[13px] font-medium">
+            <label className="block text-control font-medium">
               资料名称
               <input
                 className={inputClass}
@@ -380,7 +447,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
                 onChange={(event) => setReferenceLabel(event.target.value)}
               />
             </label>
-            <label className="block text-[13px] font-medium">
+            <label className="block text-control font-medium">
               链接或文件路径
               <input
                 className={inputClass}
@@ -392,7 +459,11 @@ export function ThreadTools({ thread }: { thread: Thread }) {
             </label>
             <Button
               type="submit"
-              disabled={disabled || !referenceLocation.trim()}
+              disabled={
+                disabled ||
+                unsupported("thread/attachment/add") ||
+                !referenceLocation.trim()
+              }
             >
               保存参考资料
             </Button>
@@ -400,7 +471,11 @@ export function ThreadTools({ thread }: { thread: Thread }) {
           <Button
             className="mt-2"
             size="sm"
-            disabled={connection.status !== "connected" || state.busy}
+            disabled={
+              connection.status !== "connected" ||
+              state.busy ||
+              unsupported("thread/attachment/list")
+            }
             onClick={() => void store.loadAttachments()}
           >
             刷新参考资料

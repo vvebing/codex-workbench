@@ -10,6 +10,7 @@ import type { ThreadStartParams } from "../../generated/v2/ThreadStartParams";
 
 export type ThreadAccess = "viewing" | "activating" | "editable" | "occupied";
 export interface SessionsState extends ConversationState {
+  draftPersistenceWarning?: string;
   sections: import("../../generated/v2/ThreadSection").ThreadSection[];
   sectionsLoading: boolean;
   sectionsError: string | null;
@@ -19,6 +20,8 @@ export interface SessionsState extends ConversationState {
     import("../../generated/v2/ThreadSettings").ThreadSettings
   >;
   threadAccess: Record<string, ThreadAccess>;
+  /** Archived current conversations keep their loaded reading context, without write access. */
+  archivedIds: Record<string, true>;
   localDrafts: Record<
     string,
     { options: ThreadStartParams; serverId?: string }
@@ -27,6 +30,7 @@ export interface SessionsState extends ConversationState {
   selectedId: string | null;
   openingId?: string | null;
   historySyncError: string | null;
+  historyPages: Record<string, { cursor: string | null; loading: boolean }>;
   unreadCompleted: Record<string, string>;
   completionNotifications: { id: string; threadId: string }[];
   /** Child identity survives late or incomplete thread snapshots. */
@@ -35,6 +39,10 @@ export interface SessionsState extends ConversationState {
   notificationMetadataPending: Record<string, true>;
   listIds: string[];
   nextCursor: string | null;
+  /** Sidebar summary history; independent of the selected thread's turn history. */
+  historyLoading: boolean;
+  historyError: string | null;
+  historyComplete: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -47,17 +55,22 @@ export const initialState = (): SessionsState => ({
   sectionFilter: "all",
   threadSettings: {},
   threadAccess: {},
+  archivedIds: {},
   localDrafts: {},
   draftOrigins: {},
   selectedId: null,
   openingId: null,
   historySyncError: null,
+  historyPages: {},
   unreadCompleted: {},
   completionNotifications: [],
   subagentThreadIds: {},
   notificationMetadataPending: {},
   listIds: [],
   nextCursor: null,
+  historyLoading: false,
+  historyError: null,
+  historyComplete: false,
   loading: false,
   error: null,
 });
@@ -144,7 +157,9 @@ export function removeThread(state: SessionsState, id: string): SessionsState {
   return {
     ...clearCompletion(state, id),
     threads: omit(state.threads, id),
+    archivedIds: omit(state.archivedIds, id),
     threadSettings: omit(state.threadSettings, id),
+    historyPages: omit(state.historyPages, id),
     threadAccess: omit(state.threadAccess, id),
     diffs: omit(state.diffs, id),
     plans: omit(state.plans, id),
@@ -156,6 +171,38 @@ export function removeThread(state: SessionsState, id: string): SessionsState {
     finishedTurns: omit(state.finishedTurns, id),
     listIds: state.listIds.filter((entry) => entry !== id),
     selectedId: state.selectedId === id ? null : state.selectedId,
+  };
+}
+
+/** Keep only the currently viewed archive in memory, preserving its entire reading context. */
+export function archiveThread(state: SessionsState, id: string): SessionsState {
+  const selected = state.selectedId === id && !!state.threads[id];
+  const next = selected ? clearCompletion(state, id) : removeThread(state, id);
+  return {
+    ...next,
+    archivedIds: { ...next.archivedIds, [id]: true },
+    listIds: next.listIds.filter((entry) => entry !== id),
+    ...(selected
+      ? {
+          threadAccess: { ...next.threadAccess, [id]: "viewing" },
+          openingId: next.openingId === id ? null : next.openingId,
+          historySyncError: null,
+        }
+      : {}),
+  };
+}
+export function unarchiveThread(
+  state: SessionsState,
+  id: string,
+): SessionsState {
+  return {
+    ...state,
+    archivedIds: omit(state.archivedIds, id),
+    threadAccess: { ...state.threadAccess, [id]: "viewing" },
+    listIds:
+      state.threads[id] && !state.listIds.includes(id)
+        ? [id, ...state.listIds]
+        : state.listIds,
   };
 }
 
@@ -204,6 +251,7 @@ export function reconcileNotifications(
   previous: SessionsState,
   next: SessionsState,
 ): SessionsState {
+  if (previous === next) return next;
   let children = next.subagentThreadIds;
   const remember = (id: string) => {
     if (!children[id]) children = { ...children, [id]: true };
@@ -211,7 +259,11 @@ export function reconcileNotifications(
   for (const thread of Object.values(next.threads)) {
     if (thread === previous.threads[thread.id]) continue;
     if (isSubagentThread(thread)) remember(thread.id);
-    for (const turn of thread.turns)
+    const oldTurns = new Map(
+      previous.threads[thread.id]?.turns.map((turn) => [turn.id, turn]),
+    );
+    for (const turn of thread.turns) {
+      if (oldTurns.get(turn.id) === turn) continue;
       for (const item of turn.items) {
         if (item.type === "subAgentActivity") {
           if (item.agentThreadId !== thread.id) remember(item.agentThreadId);
@@ -227,18 +279,33 @@ export function reconcileNotifications(
             if (id !== thread.id) remember(id);
         }
       }
+    }
   }
   const silent = (id: string) =>
     !!children[id] || isSubagentThread(next.threads[id]);
+  const unreadCompleted = Object.entries(next.unreadCompleted).some(([id]) =>
+    silent(id),
+  )
+    ? Object.fromEntries(
+        Object.entries(next.unreadCompleted).filter(([id]) => !silent(id)),
+      )
+    : next.unreadCompleted;
+  const completionNotifications = next.completionNotifications.some((notice) =>
+    silent(notice.threadId),
+  )
+    ? next.completionNotifications.filter((notice) => !silent(notice.threadId))
+    : next.completionNotifications;
+  if (
+    children === next.subagentThreadIds &&
+    unreadCompleted === next.unreadCompleted &&
+    completionNotifications === next.completionNotifications
+  )
+    return next;
   return {
     ...next,
     subagentThreadIds: children,
-    unreadCompleted: Object.fromEntries(
-      Object.entries(next.unreadCompleted).filter(([id]) => !silent(id)),
-    ),
-    completionNotifications: next.completionNotifications.filter(
-      (notice) => !silent(notice.threadId),
-    ),
+    unreadCompleted,
+    completionNotifications,
   };
 }
 
@@ -248,6 +315,10 @@ export function sessionNotification(
   completed: Set<string>,
   foreground: boolean,
 ): SessionsState {
+  if (event.method === "thread/archived")
+    return archiveThread(state, event.params.threadId);
+  if (event.method === "thread/unarchived")
+    return unarchiveThread(state, event.params.threadId);
   if (
     event.method === "thread/status/changed" &&
     event.params.status.type === "active" &&
@@ -263,7 +334,8 @@ export function sessionNotification(
     )
       return state;
   }
-  let next = { ...state, ...reduceNotification(state, event) };
+  const reduced = reduceNotification(state, event);
+  let next = reduced === state ? state : { ...state, ...reduced };
   if (event.method === "thread/started") {
     next.notificationMetadataPending = omit(
       next.notificationMetadataPending,
@@ -305,8 +377,6 @@ export function sessionNotification(
       };
     }
   }
-  if (event.method === "thread/archived")
-    next = removeThread(state, event.params.threadId);
   if (event.method === "thread/deleted")
     next = descendantIds(state, event.params.threadId).reduce(
       removeThread,

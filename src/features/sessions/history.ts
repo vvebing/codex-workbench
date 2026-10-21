@@ -2,7 +2,7 @@ import type { Thread } from "../../generated/v2/Thread";
 import type { Turn } from "../../generated/v2/Turn";
 import type { ThreadItemEntry } from "../../generated/v2/ThreadItemEntry";
 import { operationKey } from "../../lib/state";
-import { type CodexClient } from "../../lib/rpc";
+import { type CodexClient, type RpcCall } from "../../lib/rpc";
 
 export type HydratedThread = Thread & {
   itemLifecycles?: Record<
@@ -19,6 +19,7 @@ export async function readHistory(
   current: () => boolean,
   incremental = false,
   metadata?: Thread,
+  window?: { cursor: string | null; next: (cursor: string | null) => void },
 ): Promise<HydratedThread> {
   const check = () => {
     if (!current()) throw new Error("连接已改变，请重新操作。");
@@ -50,18 +51,39 @@ export async function readHistory(
   }
 
   const anchor = incremental ? cached?.turns.at(-1)?.id : undefined;
-  const turns = await pages<Turn>(
-    client,
-    "thread/turns/list",
-    {
-      threadId: id,
-      limit: incremental ? 50 : 100,
-      sortDirection: incremental ? "desc" : "asc",
-      itemsView: "full",
-    },
-    check,
-    (data) => !!anchor && data.some((turn) => turn.id === anchor),
-  );
+  let nextCursor: string | null = null;
+  const turns = window
+    ? await (async () => {
+        const page = await client.request<{
+          data: Turn[];
+          nextCursor: string | null;
+        }>("thread/turns/list", {
+          threadId: id,
+          limit: 30,
+          sortDirection: "desc",
+          itemsView: "full",
+          cursor: window.cursor,
+        });
+        check();
+        if (page.nextCursor && page.nextCursor === window.cursor)
+          throw new Error("历史分页异常，请重试。");
+        nextCursor = page.nextCursor;
+        return page.data;
+      })()
+    : await pages<Turn>(
+        client,
+        [
+          "thread/turns/list",
+          {
+            threadId: id,
+            limit: incremental ? 50 : 100,
+            sortDirection: incremental ? "desc" : "asc",
+            itemsView: "full",
+          },
+        ],
+        check,
+        (data) => !!anchor && data.some((turn) => turn.id === anchor),
+      );
   const itemLifecycles: NonNullable<HydratedThread["itemLifecycles"]> = {};
   for (let index = 0; index < turns.length; index++) {
     const turn = turns[index];
@@ -76,13 +98,15 @@ export async function readHistory(
     if (turn.itemsView === "full" && !needsLifecycle) continue;
     const items = await pages<ThreadItemEntry>(
       client,
-      "thread/items/list",
-      {
-        threadId: id,
-        turnId: turn.id,
-        limit: 100,
-        sortDirection: "asc",
-      },
+      [
+        "thread/items/list",
+        {
+          threadId: id,
+          turnId: turn.id,
+          limit: 100,
+          sortDirection: "asc",
+        },
+      ],
       check,
     );
     for (const entry of items) {
@@ -109,17 +133,17 @@ export async function readHistory(
       itemsView: "full",
     };
   }
+  window?.next(nextCursor);
   return {
     ...thread,
-    turns: incremental ? turns.reverse() : turns,
+    turns: incremental || window ? turns.reverse() : turns,
     itemLifecycles,
   };
 }
 
 async function pages<T>(
   client: CodexClient,
-  method: string,
-  params: Record<string, unknown>,
+  [method, params]: RpcCall<"thread/turns/list" | "thread/items/list">,
   check: () => void,
   stop: (data: T[]) => boolean = () => false,
 ): Promise<T[]> {
@@ -128,8 +152,9 @@ async function pages<T>(
   let cursor: string | null = null;
   do {
     const page: { data: T[]; nextCursor: string | null } = await client.request(
-      method,
-      { ...params, cursor },
+      ...(method === "thread/turns/list"
+        ? ([method, { ...params, cursor }] as const)
+        : ([method, { ...params, cursor }] as const)),
     );
     check();
     result.push(...page.data);

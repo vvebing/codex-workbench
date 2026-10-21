@@ -364,7 +364,10 @@ export function ConnectionNotices({
       className="max-h-40 shrink-0 space-y-1 overflow-y-auto border-b border-border bg-surface px-4 py-2 text-xs"
     >
       {notices.map((notice) => (
-        <div key={notice.id} className="flex items-start justify-between gap-3">
+        <div
+          key={notice.id}
+          className="flex items-center justify-between gap-3"
+        >
           <p className="min-w-0 break-words">
             {notice.message}
             {notice.threadId && (

@@ -30,6 +30,18 @@ function savedRatio() {
 export function ConversationWorkspace({ children }: { children: ReactNode }) {
   const { files } = useRuntime();
   const state = useStore(files);
+  useEffect(() => {
+    const visibility = () =>
+      files.setPageVisible(document.visibilityState !== "hidden");
+    const focus = () => files.validateActive();
+    visibility();
+    document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("focus", focus);
+    return () => {
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("focus", focus);
+    };
+  }, [files]);
   const container = useRef<HTMLDivElement>(null);
   const group = useRef<ImperativePanelGroupHandle>(null);
   const ratio = useRef(savedRatio());
@@ -95,7 +107,7 @@ export function ConversationWorkspace({ children }: { children: ReactNode }) {
           maxSize={mode === "split" ? 55 : 100}
         >
           <section
-            className="conversation-pane"
+            className="@container/conversation flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
             data-slot="conversation-pane"
             aria-label="会话内容"
             aria-hidden={mode === "editor" ? true : undefined}

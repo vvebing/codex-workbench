@@ -58,7 +58,7 @@ async function details(page: Page) {
   });
   if (await button.isVisible()) await button.click();
   const panel = page.getByRole("complementary", { name: "项目面板" });
-  await panel.getByRole("tab", { name: "会话", exact: true }).click();
+  await panel.getByRole("tab", { name: "工作区", exact: true }).click();
   return panel;
 }
 async function environmentScope(page: Page, name: string) {
@@ -310,10 +310,17 @@ test("environment tools load effective configuration and complete MCP authorizat
   await expect(dialog.getByText("MCP 登录成功", { exact: true })).toBeVisible();
 });
 
-test("sidebar sections and thread menu persist move pin and explicit deletion", async ({
+test("sidebar sections persist moves and deletion without unsupported pin requests", async ({
   page,
 }) => {
   await openThread(page);
+  await expect(
+    page.getByRole("combobox", { name: "管理分区", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "导航选项", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "分区筛选与管理", exact: true })
+    .click();
   await page.getByRole("combobox", { name: "管理分区", exact: true }).click();
   await page.getByRole("option", { name: "管理分区…", exact: true }).click();
   const sections = page.getByRole("dialog", { name: "管理分区", exact: true });
@@ -335,16 +342,16 @@ test("sidebar sections and thread menu persist move pin and explicit deletion", 
   await page.getByRole("option", { name: "已规划", exact: true }).click();
   await move.getByRole("button", { name: "确认", exact: true }).click();
   await expect(move).toBeHidden();
-  await (
-    await menu(page)
-  )
-    .getByRole("menuitem", { name: "置顶会话", exact: true })
-    .click();
-  await (
-    await menu(page)
-  )
-    .getByRole("menuitem", { name: "取消置顶", exact: true })
-    .click();
+  const threadMenu = await menu(page);
+  await expect(threadMenu.getByRole("menuitem", { name: /置顶/ })).toHaveCount(
+    0,
+  );
+  expect(
+    server.requestLog.some(
+      (entry) => entry.method === "thread/metadata/update",
+    ),
+  ).toBe(false);
+  await page.keyboard.press("Escape");
   await (
     await menu(page)
   )
@@ -466,6 +473,10 @@ test("one section manager filters by device and clears edits on device changes",
       .fill(`ws://127.0.0.1:${address.port}`);
     await dialog.getByRole("button", { name: "连接", exact: true }).click();
     await expect(dialog).toBeHidden();
+    await page.getByRole("button", { name: "导航选项", exact: true }).click();
+    await page
+      .getByRole("menuitem", { name: "分区筛选与管理", exact: true })
+      .click();
     const manage = page.getByRole("combobox", {
       name: "管理分区",
       exact: true,
@@ -525,8 +536,8 @@ test("one section manager filters by device and clears edits on device changes",
     ).toHaveCount(0);
     await expect(manage).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "折叠所有工作区" }),
-    ).toHaveCount(0);
+      page.getByRole("button", { name: /^(折叠|展开)全部项目$/ }),
+    ).toHaveCount(1);
     await manage.click();
     await expect(
       page.getByRole("option", { name: "本机 · 本机计划", exact: true }),

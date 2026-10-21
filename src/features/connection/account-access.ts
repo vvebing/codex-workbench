@@ -106,7 +106,7 @@ export class AccountAccessStore extends Store<ReturnType<typeof empty>> {
   }
   logout(): Promise<void> {
     return this.action(async (current) => {
-      await this.connection.client.request("account/logout", {});
+      await this.connection.client.request("account/logout");
       if (!current()) return;
       this.update({ ...empty(), message: "已退出当前环境账户" });
       await this.connection.loadAccount();

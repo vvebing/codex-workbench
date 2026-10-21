@@ -7,6 +7,7 @@ import type { UserInput } from "../../generated/v2/UserInput";
 import { emptyDraft, type Draft } from "./drafts";
 import {
   asyncAnswerText,
+  asyncAnswerClientId,
   pendingAsyncQuestions,
   type QuestionMessage,
 } from "../conversation/async-questions";
@@ -26,6 +27,8 @@ export interface TaskQueue {
   items: QueuedTask[];
   paused: string | null;
   editingId?: string;
+  /** Confirmed answers remain visible until their user message arrives. */
+  sentAnswers?: Record<string, string[]>;
 }
 interface QueueState {
   threads: Record<string, TaskQueue>;
@@ -140,6 +143,15 @@ export class MessageQueueStore extends Store<QueueState> {
       };
       if (generation !== this.generation)
         throw new Error("工作环境已改变，操作未执行。");
+      for (const [id, queue] of Object.entries(queues)) {
+        const thread = this.sessions.getSnapshot().threads[id];
+        if (!thread || !queue.sentAnswers) continue;
+        const pending = new Set(
+          pendingAsyncQuestions(thread).map((item) => item.id),
+        );
+        for (const itemId of Object.keys(queue.sentAnswers))
+          if (!pending.has(itemId)) delete queue.sentAnswers[itemId];
+      }
       const result = await work(queues, publish);
       if (write) await publish();
       else if (generation === this.generation)
@@ -194,6 +206,11 @@ export class MessageQueueStore extends Store<QueueState> {
     answers: string[],
   ): Promise<void> {
     id = this.sessions.resolveId(id);
+    const assertAnswerable = () => {
+      if (this.sessions.getSnapshot().archivedIds[id])
+        throw new Error("此会话已归档，请先恢复会话再回答问题。");
+    };
+    assertAnswerable();
     if (
       !item.questions?.length ||
       item.questions.length !== answers.length ||
@@ -208,8 +225,14 @@ export class MessageQueueStore extends Store<QueueState> {
       throw new Error("此问题已有后续回复，请在会话中继续补充。");
     const text = asyncAnswerText(item, answers);
     await this.exclusive(async (queues) => {
+      // The page can archive the thread while this operation waits for storage or another tab.
+      assertAnswerable();
       const queue = (queues[id] ??= emptyQueue());
-      if (queue.items.some((task) => task.question?.itemId === item.id)) return;
+      if (
+        queue.sentAnswers?.[item.id] ||
+        queue.items.some((task) => task.question?.itemId === item.id)
+      )
+        return;
       if (queue.items.length >= 100)
         throw new Error("最多排队 100 条任务，请先处理已有任务。");
       const task: QueuedTask = {
@@ -445,18 +468,33 @@ export class MessageQueueStore extends Store<QueueState> {
           task.status = "queued";
           return;
         }
+        const clientUserMessageId = task.question
+          ? asyncAnswerClientId(task.question.itemId, task.id)
+          : undefined;
         if (expectedTurnId)
-          await this.sessions.steer(id, task.input, expectedTurnId);
+          await this.sessions.steer(
+            id,
+            task.input,
+            expectedTurnId,
+            clientUserMessageId,
+          );
         else
           await this.sessions.send(
             id,
             task.input,
-            task.options,
+            {
+              ...task.options,
+              ...(clientUserMessageId ? { clientUserMessageId } : {}),
+            },
             undefined,
             "start",
           );
         if (this.connection.getSnapshot().epoch !== epoch)
           throw new Error("连接已改变，请核实消息是否已发送。");
+        if (task.question)
+          (queue.sentAnswers ??= {})[task.question.itemId] = [
+            ...task.question.answers,
+          ];
         queue.items = queue.items.filter((item) => item !== task);
       } catch (error) {
         if (

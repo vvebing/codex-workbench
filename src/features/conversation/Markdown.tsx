@@ -1,8 +1,10 @@
 import { promptLineBreaks } from "./prompt-line-breaks";
 import { ConversationImage } from "../../components/ImagePreview";
-import { ScrollArea } from "../../components/ui";
+import { Button, ScrollArea } from "../../components/ui";
 import {
   createContext,
+  memo,
+  useMemo,
   useContext,
   useState,
   type ComponentPropsWithoutRef,
@@ -74,8 +76,10 @@ function CodeBlock({
   }
   return (
     <div className="group/code relative my-4 rounded-lg border border-border bg-surface first:mt-0 last:mb-0">
-      <button
-        className="absolute z-10 top-1.5 right-2 inline-flex min-h-8 min-w-8 items-center justify-center gap-1 rounded-[7px] border-0 bg-elevated px-1 text-[11px] text-muted opacity-0 [@media(hover:none)]:opacity-100 [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10 hover:bg-hover focus:opacity-100 group-hover/code:opacity-100 group-focus-within/code:opacity-100"
+      <Button
+        size="sm"
+        variant="quiet"
+        className="absolute z-10 top-1.5 right-2 min-w-8 gap-1 bg-elevated px-1 text-meta opacity-0 [@media(hover:none)]:opacity-100 [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10 focus:opacity-100 group-hover/code:opacity-100 group-focus-within/code:opacity-100"
         aria-label="复制代码"
         onClick={async (event) => {
           const code =
@@ -92,16 +96,33 @@ function CodeBlock({
       >
         {message === "已复制" ? <Check size={14} /> : <Copy size={14} />}
         <span aria-live="polite">{message}</span>
-      </button>
+      </Button>
       <ScrollArea scrollChaining orientation="both">
-        <pre {...props} className="m-0 p-4 pr-14 text-[13px] leading-[1.65]">
+        <pre {...props} className="m-0 p-4 pr-14 text-code leading-code">
           {children}
         </pre>
       </ScrollArea>
     </div>
   );
 }
-export function Markdown({
+function MarkdownTable({
+  children,
+  node,
+  ...props
+}: ComponentPropsWithoutRef<"table"> & ExtraProps) {
+  void node;
+  return (
+    <ScrollArea scrollChaining orientation="both">
+      <table {...props}>{children}</table>
+    </ScrollArea>
+  );
+}
+const standardPlugins = [remarkGfm];
+const promptPlugins = [remarkGfm, promptLineBreaks];
+const highlightPlugins: ComponentPropsWithoutRef<
+  typeof ReactMarkdown
+>["rehypePlugins"] = [[rehypeHighlight, { plainText: ["mermaid"] }]];
+export const Markdown = memo(function Markdown({
   text,
   streaming = false,
   preserveLineBreaks = false,
@@ -112,30 +133,28 @@ export function Markdown({
   preserveLineBreaks?: boolean;
   imageComponent?: ComponentType<ComponentPropsWithoutRef<"img"> & ExtraProps>;
 }) {
+  const value = useMemo(() => ({ text, streaming }), [text, streaming]);
+  const components = useMemo(
+    () => ({
+      pre: CodeBlock,
+      a: MarkdownAnchor,
+      img: imageComponent ?? MarkdownImage,
+      table: MarkdownTable,
+    }),
+    [imageComponent],
+  );
   return (
-    <MarkdownContext.Provider value={{ text, streaming }}>
+    <MarkdownContext.Provider value={value}>
       <div data-slot="markdown" className="markdown-content">
         <ReactMarkdown
           urlTransform={fileLinkUrlTransform}
-          remarkPlugins={[
-            remarkGfm,
-            ...(preserveLineBreaks ? [promptLineBreaks] : []),
-          ]}
-          rehypePlugins={[[rehypeHighlight, { plainText: ["mermaid"] }]]}
-          components={{
-            pre: CodeBlock,
-            a: MarkdownAnchor,
-            img: imageComponent ?? MarkdownImage,
-            table: ({ children, ...props }) => (
-              <ScrollArea scrollChaining orientation="both">
-                <table {...props}>{children}</table>
-              </ScrollArea>
-            ),
-          }}
+          remarkPlugins={preserveLineBreaks ? promptPlugins : standardPlugins}
+          rehypePlugins={highlightPlugins}
+          components={components}
         >
           {text}
         </ReactMarkdown>
       </div>
     </MarkdownContext.Provider>
   );
-}
+});

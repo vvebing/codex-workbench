@@ -1,9 +1,44 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 export function useStore<T>(store: {
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => T;
 }): T {
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
+}
+/** Cache an equivalent selection so external-store snapshots remain referentially stable. */
+export function createSnapshotSelector<T, S>(
+  getSnapshot: () => T,
+  select: (state: T) => S,
+  equal: (a: S, b: S) => boolean = Object.is,
+) {
+  let initialized = false;
+  let previousState: T;
+  let previousSelection: S;
+  return () => {
+    const state = getSnapshot();
+    if (initialized && Object.is(state, previousState))
+      return previousSelection;
+    const selection = select(state);
+    previousState = state;
+    if (!initialized || !equal(previousSelection, selection))
+      previousSelection = selection;
+    initialized = true;
+    return previousSelection;
+  };
+}
+export function useStoreSelector<T, S>(
+  store: {
+    subscribe: (listener: () => void) => () => void;
+    getSnapshot: () => T;
+  },
+  select: (state: T) => S,
+  equal: (a: S, b: S) => boolean = Object.is,
+): S {
+  const getSelection = useMemo(
+    () => createSnapshotSelector(store.getSnapshot, select, equal),
+    [store, select, equal],
+  );
+  return useSyncExternalStore(store.subscribe, getSelection);
 }
 export function useNarrow() {
   const [narrow, set] = useState(

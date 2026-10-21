@@ -1,6 +1,21 @@
 import type { InitializeParams } from "../generated/InitializeParams";
+import { appServerVersion } from "../../server/codex-version";
 import type { ServerNotification } from "../generated/ServerNotification";
 import type { ServerRequest } from "../generated/ServerRequest";
+import type { ClientRequest } from "../generated/ClientRequest";
+import { CapabilityStore } from "./capabilities";
+
+export type RpcMethod = Exclude<ClientRequest["method"], "initialize">;
+export type RpcParams<M extends RpcMethod> = Extract<
+  ClientRequest,
+  { method: M }
+>["params"];
+/** A union of tuples preserves the method/parameter relationship. */
+export type RpcCall<M extends RpcMethod = RpcMethod> = M extends RpcMethod
+  ? undefined extends RpcParams<M>
+    ? [method: M, params?: RpcParams<M>]
+    : [method: M, params: RpcParams<M>]
+  : never;
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 export type RpcNotification = ServerNotification;
@@ -37,7 +52,7 @@ export interface CodexClientOptions {
 type Pending = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer?: ReturnType<typeof setTimeout>;
 };
 type StatusListener = (status: ConnectionStatus, error?: Error) => void;
 
@@ -73,6 +88,7 @@ function emit<T extends unknown[]>(
 
 /** One initialized app-server session. Mutating requests are never replayed. */
 export class CodexClient {
+  readonly capabilities = new CapabilityStore();
   private socket?: SocketLike;
   private nextId = 1;
   private pending = new Map<RpcId, Pending>();
@@ -81,6 +97,11 @@ export class CodexClient {
   private statuses = new Set<StatusListener>();
   private cancelConnect?: (error: Error) => void;
   private currentStatus: ConnectionStatus = "disconnected";
+  private currentServerVersion: string | null = null;
+
+  get serverVersion(): string | null {
+    return this.currentServerVersion;
+  }
 
   constructor(private readonly options: CodexClientOptions = {}) {}
 
@@ -90,6 +111,7 @@ export class CodexClient {
 
   connect(url: string, token?: string): Promise<void> {
     this.disconnect();
+    this.capabilities.reset();
     let target: URL;
     try {
       target = new URL(url);
@@ -190,8 +212,11 @@ export class CodexClient {
             capabilities: { experimentalApi: true, requestAttestation: false },
           };
           void this.dispatch("initialize", params)
-            .then(() => {
+            .then((result) => {
               if (this.socket !== socket) return;
+              this.currentServerVersion = appServerVersion(
+                isRecord(result) ? result.userAgent : null,
+              );
               this.send({ method: "initialized", params: {} });
               clearTimeout(timer);
               this.cancelConnect = undefined;
@@ -212,10 +237,27 @@ export class CodexClient {
     this.terminate(new Error("Disconnected."));
   }
 
-  request<T>(method: string, params: unknown = {}): Promise<T> {
+  request<T>(...[method, params]: RpcCall): Promise<T> {
     if (this.status !== "connected")
       return Promise.reject(new Error("Not connected to app-server."));
-    return this.dispatch<T>(method, params);
+    if (this.capabilities.getSnapshot()[method]?.state === "unsupported")
+      return Promise.reject(
+        new RpcError(
+          "当前连接的服务端未提供此接口；可在接口能力面板清除记录后重试。",
+          -32601,
+        ),
+      );
+    const socket = this.socket;
+    return this.dispatch<T>(method, params).then(
+      (result) => {
+        if (this.socket === socket) this.capabilities.record(method);
+        return result;
+      },
+      (error: unknown) => {
+        if (this.socket === socket) this.capabilities.record(method, error);
+        throw error;
+      },
+    );
   }
 
   respond(id: RpcId, result: unknown): void {
@@ -252,14 +294,27 @@ export class CodexClient {
   private dispatch<T>(method: string, params: unknown): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const id = this.nextId++;
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(
-          new Error(
-            `${method} timed out. Its outcome is unknown; refresh before retrying.`,
-          ),
-        );
-      }, this.options.requestTimeoutMs ?? 60_000);
+      const command =
+        method === "command/exec" && isRecord(params) ? params : undefined;
+      const timeout =
+        command?.disableTimeout === true
+          ? undefined
+          : typeof command?.timeoutMs === "number" &&
+              Number.isFinite(command.timeoutMs) &&
+              command.timeoutMs >= 0
+            ? Math.min(command.timeoutMs + 5000, 2_147_483_647)
+            : (this.options.requestTimeoutMs ?? 60_000);
+      const timer =
+        timeout === undefined
+          ? undefined
+          : setTimeout(() => {
+              this.pending.delete(id);
+              reject(
+                new Error(
+                  `${method} timed out. Its outcome is unknown; refresh before retrying.`,
+                ),
+              );
+            }, timeout);
       this.pending.set(id, {
         resolve: (value) => resolve(value as T),
         reject,
@@ -318,6 +373,7 @@ export class CodexClient {
   }
 
   private terminate(error: Error): void {
+    this.currentServerVersion = null;
     const socket = this.socket;
     this.socket = undefined;
     if (socket) {

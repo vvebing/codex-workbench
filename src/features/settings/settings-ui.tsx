@@ -50,7 +50,7 @@ export function SettingsField({
 }) {
   return (
     <div className="grid min-w-0 gap-2">
-      <label htmlFor={id} className="block text-[13px] font-medium">
+      <label htmlFor={id} className="block text-control font-medium">
         {label}
       </label>
       {children}

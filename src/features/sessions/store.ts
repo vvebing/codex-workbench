@@ -1,4 +1,6 @@
-import { managementError, type ManagedThread } from "./management";
+import { saveLocalSessions, restoreLocalSessions } from "./draft-storage";
+import type { RpcCall, RpcParams } from "../../lib/rpc";
+import { managementError } from "./management";
 import type { ThreadSection } from "../../generated/v2/ThreadSection";
 import type { ReviewTarget } from "../../generated/v2/ReviewTarget";
 import type { ReviewStartResponse } from "../../generated/v2/ReviewStartResponse";
@@ -19,6 +21,7 @@ import { readHistory } from "./history";
 import { conversationExecuting } from "../conversation/activity";
 import { ROOT_THREAD_SOURCES } from "./list";
 import { Polling } from "./polling";
+import { pruneHistoryCache } from "./history-cache";
 import {
   initialState,
   descendantIds,
@@ -26,6 +29,8 @@ import {
   removeDraft,
   promoteDraft,
   removeThread,
+  archiveThread,
+  unarchiveThread,
   clearCompletion,
   sessionNotification,
   reconcileNotifications,
@@ -40,8 +45,28 @@ export class TurnBusyError extends Error {
   }
 }
 export class SessionsStore extends Store<SessionsState> {
-  protected override update(state: SessionsState): void {
-    super.update(reconcileNotifications(this.state, state));
+  private persistenceScope = "";
+  activateDraftScope(scope: string): void {
+    if (scope === this.persistenceScope) return;
+    this.persistenceScope = scope;
+    this.update(restoreLocalSessions(scope, this.state));
+  }
+  protected override update(state: SessionsState, deferred = false): void {
+    if (
+      this.persistenceScope &&
+      (state.localDrafts !== this.state.localDrafts ||
+        state.selectedId !== this.state.selectedId ||
+        Object.keys(state.localDrafts).some(
+          (id) => state.threads[id] !== this.state.threads[id],
+        ))
+    )
+      state = {
+        ...state,
+        draftPersistenceWarning: saveLocalSessions(this.persistenceScope, state)
+          ? undefined
+          : "浏览器存储不可用或草稿超过容量，新会话信息仅保留在当前页面。",
+      };
+    super.update(reconcileNotifications(this.state, state), deferred);
   }
   private confirmedMetadata(ids: string[]): Record<string, true> {
     const pending = { ...this.state.notificationMetadataPending };
@@ -49,13 +74,37 @@ export class SessionsStore extends Store<SessionsState> {
     return pending;
   }
   private historyRevisions = new Map<string, number>();
+  // Display eligibility survives writer activation and reconnect revalidation.
+  private displayableHistory = new Set<string>();
+  private historyTouched = new Map<string, number>();
+  private trimHistory(id: string): void {
+    this.historyTouched.set(id, Date.now());
+    const protectedIds = new Set([id, ...this.protectedHistory()]);
+    for (const key of this.locks.keys())
+      protectedIds.add(key.slice(key.indexOf(":") + 1));
+    const { state, evictedIds } = pruneHistoryCache(this.state, {
+      protectedIds,
+      touched: this.historyTouched,
+    });
+    for (const evicted of evictedIds) {
+      this.displayableHistory.delete(evicted);
+      this.historySynced.delete(evicted);
+      this.historyTouched.delete(evicted);
+    }
+    if (state !== this.state) this.update(state);
+  }
   private sectionRead = 0;
   private sectionGeneration = 0;
+  private historyInitialized = false;
+  private historyNeedsRestart = false;
+  private historyCursors = new Set<string>();
   private hiddenServerIds = new Set<string>();
   private creatingDrafts = new Set<symbol>();
   private deferredStartedIds = new Set<string>();
   private canWrite(id: string): boolean {
-    return this.state.threadAccess[id] === "editable";
+    return (
+      !this.state.archivedIds[id] && this.state.threadAccess[id] === "editable"
+    );
   }
   resolveId(id: string): string {
     return (
@@ -118,6 +167,8 @@ export class SessionsStore extends Store<SessionsState> {
     const sectionFilter = this.state.sectionFilter;
     const sectionGeneration = this.sectionGeneration;
     const previous = this.state.threads;
+    const projects = new Map<string, string | null>();
+    this.projectListReads.add(projects);
     try {
       const page = await this.connection.client.request<{ data: Thread[] }>(
         "thread/list",
@@ -151,10 +202,13 @@ export class SessionsStore extends Store<SessionsState> {
         )
           continue;
         const old = previous[thread.id];
+        const incoming = projects.has(thread.id)
+          ? { ...thread, projectId: projects.get(thread.id)! }
+          : thread;
         const metadata =
           this.canWrite(thread.id) && old && thread.updatedAt <= old.updatedAt
-            ? { ...thread, status: old.status }
-            : thread;
+            ? { ...incoming, status: old.status }
+            : incoming;
         merged = mergeThread(merged, metadata);
         confirmedIds.push(thread.id);
         if (!ids.includes(thread.id)) ids.unshift(thread.id);
@@ -167,6 +221,8 @@ export class SessionsStore extends Store<SessionsState> {
       });
     } catch {
       // Keep cached summaries on transient discovery failures.
+    } finally {
+      this.projectListReads.delete(projects);
     }
   }
   private setAccess(id: string, access: ThreadAccess): void {
@@ -175,63 +231,91 @@ export class SessionsStore extends Store<SessionsState> {
       threadAccess: { ...this.state.threadAccess, [id]: access },
     });
   }
+  // Keep notifications only for the lifetime of the overlapping operation.
+  // Unknown threads cannot be represented by placeholders without losing real metadata.
+  private projectReads = new Map<string, Set<{ projectId?: string | null }>>();
+  private projectListReads = new Set<Map<string, string | null>>();
+  private trackProjectRead(id: string) {
+    const change: { projectId?: string | null } = {};
+    const pending = this.projectReads.get(id) ?? new Set();
+    pending.add(change);
+    this.projectReads.set(id, pending);
+    return {
+      apply: (thread: Thread): Thread =>
+        "projectId" in change
+          ? { ...thread, projectId: change.projectId! }
+          : thread,
+      release: () => {
+        pending.delete(change);
+        if (!pending.size && this.projectReads.get(id) === pending)
+          this.projectReads.delete(id);
+      },
+    };
+  }
   private mergeRead(
     thread: Thread,
     previous: Thread | undefined,
+    project?: { apply: (thread: Thread) => Thread },
   ): SessionsState | undefined {
     if (!this.visibleServerId(thread.id)) return;
     const current = this.state.threads[thread.id];
     if (previous && !current) return;
     // Metadata/notifications may advance while history pages are loading.
     // Merge the loaded turns while preserving those newer metadata fields.
+    const incoming =
+      current && current !== previous
+        ? {
+            ...thread,
+            ...current,
+            source: isSubagentThread(current) ? current.source : thread.source,
+            parentThreadId: current.parentThreadId ?? thread.parentThreadId,
+            turns: thread.turns,
+          }
+        : thread;
     return {
       ...this.state,
-      ...mergeThread(
-        this.state,
-        current && current !== previous
-          ? {
-              ...thread,
-              ...current,
-              source: isSubagentThread(current)
-                ? current.source
-                : thread.source,
-              parentThreadId: current.parentThreadId ?? thread.parentThreadId,
-              turns: thread.turns,
-            }
-          : thread,
-      ),
+      ...mergeThread(this.state, project?.apply(incoming) ?? incoming),
       notificationMetadataPending: this.confirmedMetadata([thread.id]),
     };
   }
   private async syncViewedThread(id: string, epoch: number): Promise<void> {
-    const before = this.state.threads[id];
-    const { thread: metadata } = await this.connection.client.request<{
-      thread: Thread;
-    }>("thread/read", { threadId: id, includeTurns: false });
-    if (!this.current(epoch)) return;
-    const synced = this.historySynced.get(id);
-    const changed =
-      !synced ||
-      metadata.updatedAt !== synced.updatedAt ||
-      metadata.status.type !== synced.status ||
-      metadata.status.type === "active" ||
-      !!this.activeTurn(id);
-    const thread = changed
-      ? await this.readHistory(id, epoch, true, metadata)
-      : metadata;
-    if (!this.current(epoch)) return;
-    const merged = this.mergeRead(thread, before);
-    if (merged) {
-      if (changed) this.recordHistory(thread);
-      this.update({
-        ...this.state,
-        ...merged,
-        historySyncError:
-          this.state.selectedId === id ? null : this.state.historySyncError,
-      });
+    const project = this.trackProjectRead(id);
+    try {
+      const before = this.state.threads[id];
+      const { thread: metadata } = await this.connection.client.request<{
+        thread: Thread;
+      }>("thread/read", { threadId: id, includeTurns: false });
+      if (!this.current(epoch)) return;
+      const synced = this.historySynced.get(id);
+      const changed =
+        !synced ||
+        metadata.updatedAt !== synced.updatedAt ||
+        metadata.status.type !== synced.status ||
+        metadata.status.type === "active" ||
+        !!this.activeTurn(id);
+      const thread = changed
+        ? !this.state.historyPages[id]
+          ? await this.readWindow(id, epoch, null, metadata)
+          : await this.readHistory(id, epoch, true, metadata)
+        : metadata;
+      if (!this.current(epoch)) return;
+      const merged = this.mergeRead(thread, before, project);
+      if (merged) {
+        if (changed) this.recordHistory(thread);
+        this.update({
+          ...this.state,
+          ...merged,
+          historySyncError:
+            this.state.selectedId === id ? null : this.state.historySyncError,
+        });
+      }
+    } finally {
+      project.release();
     }
   }
   activate(id: string): Promise<void> {
+    if (this.state.archivedIds[id])
+      return Promise.reject(new Error("此会话已归档，请先恢复会话再继续。"));
     if (this.state.localDrafts[id])
       return Promise.reject(new Error("发送第一条消息时才会创建会话。"));
     if (this.canWrite(id)) return Promise.resolve();
@@ -239,6 +323,7 @@ export class SessionsStore extends Store<SessionsState> {
       this.perform(async (epoch) => {
         if (this.state.selectedId === id) this.historySync.stop();
         this.setAccess(id, "activating");
+        const project = this.trackProjectRead(id);
         try {
           const { thread } = await this.connection.client.request<{
             thread: Thread;
@@ -258,7 +343,7 @@ export class SessionsStore extends Store<SessionsState> {
             this.state.threadAccess[id] !== "activating"
           )
             return;
-          this.hydrate(history, epoch, true);
+          this.hydrate(project.apply(history), epoch, true);
         } catch (error) {
           if (
             !this.current(epoch) ||
@@ -271,6 +356,7 @@ export class SessionsStore extends Store<SessionsState> {
           this.setAccess(id, occupied ? "occupied" : "viewing");
           if (!occupied) throw error;
         } finally {
+          project.release();
           if (this.current(epoch) && this.state.selectedId === id)
             this.scheduleHistorySync(id, epoch);
         }
@@ -286,7 +372,8 @@ export class SessionsStore extends Store<SessionsState> {
       this.state.selectedId === id &&
       this.state.threadAccess[id] !== "activating" &&
       !this.canWrite(id) &&
-      !this.state.localDrafts[id];
+      !this.state.localDrafts[id] &&
+      !this.state.archivedIds[id];
     if (!active()) return;
     this.historySync.start(
       async () => {
@@ -318,6 +405,7 @@ export class SessionsStore extends Store<SessionsState> {
     { updatedAt: number; status: Thread["status"]["type"] }
   >();
   private recordHistory(thread: Thread): void {
+    this.displayableHistory.add(thread.id);
     this.historySynced.set(thread.id, {
       updatedAt: thread.updatedAt,
       status: thread.status.type,
@@ -342,7 +430,11 @@ export class SessionsStore extends Store<SessionsState> {
   private selectionGeneration = 0;
   private actions = 0;
   private locks = new Map<string, Promise<unknown>>();
-  constructor(private connection: ConnectionStore) {
+  constructor(
+    private connection: ConnectionStore,
+    private protectedHistory: () => Iterable<string> = () => [],
+    private deletedDrafts: (ids: string[]) => void = () => {},
+  ) {
     super(initialState());
     let epoch = connection.getSnapshot().epoch;
     let scope = connection.getSnapshot().scope;
@@ -353,6 +445,8 @@ export class SessionsStore extends Store<SessionsState> {
         this.historySync.stop();
         this.discovery.stop();
         this.historySynced.clear();
+        this.projectReads.clear();
+        this.projectListReads.clear();
         this.historyRevisions.clear();
         this.sectionRead++;
         this.creatingDrafts.clear();
@@ -366,17 +460,34 @@ export class SessionsStore extends Store<SessionsState> {
             Object.keys(this.state.threadAccess).map((id) => [id, "viewing"]),
           ),
           loading: false,
+          historyLoading: false,
+          historyError: null,
           openingId: null,
           error: null,
           historySyncError: null,
+          historyPages: Object.fromEntries(
+            Object.entries(this.state.historyPages).map(([id, page]) => [
+              id,
+              { ...page, loading: false },
+            ]),
+          ),
         });
       }
       const nextScope = connection.getSnapshot().scope;
       if (scope !== nextScope) {
+        this.persistenceScope = "";
         scope = nextScope;
+        this.sectionGeneration++;
+        this.projectReads.clear();
+        this.projectListReads.clear();
         this.completedNotifications.clear();
         this.historySynced.clear();
+        this.displayableHistory.clear();
+        this.historyTouched.clear();
         this.hiddenServerIds.clear();
+        this.historyInitialized = false;
+        this.historyNeedsRestart = false;
+        this.historyCursors.clear();
         this.creatingDrafts.clear();
         this.deferredStartedIds.clear();
         this.update(initialState());
@@ -386,6 +497,13 @@ export class SessionsStore extends Store<SessionsState> {
       else this.discovery.stop();
     });
     connection.client.onNotification((event) => {
+      if (event.method === "thread/project/updated") {
+        for (const pending of this.projectListReads)
+          pending.set(event.params.threadId, event.params.projectId);
+        for (const pending of this.projectReads.get(event.params.threadId) ??
+          [])
+          pending.projectId = event.params.projectId;
+      }
       if (
         event.method === "thread/archived" ||
         event.method === "thread/deleted"
@@ -394,11 +512,18 @@ export class SessionsStore extends Store<SessionsState> {
           event.method === "thread/deleted"
             ? descendantIds(this.state, event.params.threadId)
             : [event.params.threadId];
+        if (event.method === "thread/deleted") this.deletedDrafts(ids);
         for (const id of ids) {
           this.hiddenServerIds.add(id);
           this.historySynced.delete(id);
+          this.displayableHistory.delete(id);
         }
       }
+      if (
+        event.method === "thread/archived" &&
+        this.state.selectedId === event.params.threadId
+      )
+        this.historySync.stop();
       if (event.method === "thread/reverted") {
         void this.syncReverted(event.params.threadId);
         return;
@@ -420,7 +545,7 @@ export class SessionsStore extends Store<SessionsState> {
             listIds: Array.from(new Set([id, ...next.listIds])),
           };
       }
-      this.update(next);
+      this.update(next, event.method.endsWith("/delta"));
       if (
         event.method === "thread/closed" &&
         this.state.selectedId === event.params.threadId
@@ -515,6 +640,9 @@ export class SessionsStore extends Store<SessionsState> {
         throw new Error("Connection changed before action started.");
       return operation();
     });
+    return this.rememberLock(key, pending);
+  }
+  private rememberLock<T>(key: string, pending: Promise<T>): Promise<T> {
     this.locks.set(key, pending);
     void pending
       .finally(() => {
@@ -558,6 +686,8 @@ export class SessionsStore extends Store<SessionsState> {
   ): void {
     if (this.current(epoch)) {
       this.historySynced.delete(thread.id);
+      if (thread.turns.length || !resumed)
+        this.displayableHistory.add(thread.id);
       this.update({
         ...this.state,
         ...mergeThread(this.state, thread, resumed),
@@ -572,7 +702,7 @@ export class SessionsStore extends Store<SessionsState> {
   async restoreSelected(): Promise<void> {
     const epoch = this.connection.getSnapshot().epoch;
     const id = this.state.selectedId;
-    if (!id || this.state.localDrafts[id]) return;
+    if (!id || this.state.localDrafts[id] || this.state.archivedIds[id]) return;
     try {
       await this.locked(`read:${id}`, () => this.syncViewedThread(id, epoch));
       if (this.current(epoch) && this.state.selectedId === id) {
@@ -586,73 +716,196 @@ export class SessionsStore extends Store<SessionsState> {
   clearError(): void {
     this.update({ ...this.state, error: null });
   }
-  refresh = (): Promise<void> => this.locked("list", () => this.list(false));
+  private listLock(): string {
+    return `list:${this.sectionGeneration}`;
+  }
+  refresh = (): Promise<void> =>
+    this.locked(this.listLock(), () => this.list(false));
   loadMore = (): Promise<void> =>
     this.state.nextCursor
-      ? this.locked("list", () => this.list(true))
+      ? this.locked(this.listLock(), () => this.list(true))
       : Promise.resolve();
-  private list(append: boolean): Promise<void> {
-    const cursor = append ? this.state.nextCursor : null;
+  /** Drain summary pages without blocking navigation or prefetching conversation bodies. */
+  loadAll = (): Promise<void> => {
+    if (
+      this.connection.getSnapshot().status !== "connected" ||
+      this.state.historyComplete
+    )
+      return Promise.resolve();
+    const epoch = this.connection.getSnapshot().epoch;
+    const generation = this.sectionGeneration;
+    const current = () =>
+      this.current(epoch) &&
+      generation === this.sectionGeneration &&
+      this.connection.getSnapshot().status === "connected";
+    return this.locked(`history-list:${generation}`, async () => {
+      if (!current()) return;
+      this.update({ ...this.state, historyLoading: true, historyError: null });
+      try {
+        // A normal first-page refresh may already be running. Share its result
+        // before advancing the one continuation owned by this section filter.
+        const firstPage = this.locks.get(this.listLock());
+        if (firstPage) await firstPage;
+        if (!current()) return;
+        if (!this.historyInitialized || this.historyNeedsRestart)
+          await this.locked(this.listLock(), () => this.list(false, true));
+        while (current() && this.state.nextCursor)
+          await this.locked(this.listLock(), () => this.list(true, true));
+      } catch (error) {
+        if (current()) {
+          this.update({ ...this.state, historyError: errorMessage(error) });
+          throw error;
+        }
+      } finally {
+        if (current()) this.update({ ...this.state, historyLoading: false });
+      }
+    });
+  };
+  private list(append: boolean, background = false): Promise<void> {
+    let cursor = append ? this.state.nextCursor : null;
     const sectionFilter = this.state.sectionFilter;
     const sectionGeneration = this.sectionGeneration;
-    return this.performGlobally(async (epoch) => {
-      const previous = this.state.threads;
-      const result = await this.connection.client.request<{
-        data: Thread[];
-        nextCursor: string | null;
-      }>("thread/list", {
-        sourceKinds: ROOT_THREAD_SOURCES,
-        ...(sectionFilter === "all"
-          ? {}
-          : {
-              sectionId: sectionFilter === "unsectioned" ? null : sectionFilter,
-            }),
-        limit: 50,
-        sortKey: "updated_at",
-        sortDirection: "desc",
-        ...(cursor ? { cursor } : {}),
-      });
-      if (
-        !this.current(epoch) ||
-        sectionGeneration !== this.sectionGeneration ||
-        sectionFilter !== this.state.sectionFilter
-      )
-        return;
-      const received = result.data.filter(
-        (thread) =>
-          this.visibleServerId(thread.id) &&
-          this.state.threads[thread.id] === previous[thread.id],
-      );
-      const merged = received.reduce(
-        (state, thread) =>
-          this.state.threads[thread.id] === previous[thread.id]
-            ? mergeThread(
-                state,
-                this.canWrite(thread.id) &&
-                  previous[thread.id] &&
-                  thread.updatedAt <= previous[thread.id].updatedAt
-                  ? { ...thread, status: previous[thread.id].status }
-                  : thread,
-              )
-            : state,
-        this.state as ConversationState,
-      );
-      this.update({
-        ...this.state,
-        ...merged,
-        notificationMetadataPending: this.confirmedMetadata(
-          received.map((thread) => thread.id),
-        ),
-        listIds: Array.from(
-          new Set([
-            ...(append ? this.state.listIds : []),
-            ...result.data
-              .map((thread) => thread.id)
-              .filter((id) => this.visibleServerId(id)),
-          ]),
-        ),
-        nextCursor: result.nextCursor,
-      });
+    const epoch = this.connection.getSnapshot().epoch;
+    const current = () =>
+      this.current(epoch) && sectionGeneration === this.sectionGeneration;
+    const initialize =
+      !append && (!this.historyInitialized || this.historyNeedsRestart);
+    if (initialize) this.historyCursors.clear();
+    const operation = async () => {
+      for (let page = 0; page < 10; page++) {
+        const beforeIds = new Set(this.state.listIds);
+        const previous = this.state.threads;
+        const projects = new Map<string, string | null>();
+        this.projectListReads.add(projects);
+        let result: { data: Thread[]; nextCursor: string | null };
+        try {
+          result = await this.connection.client.request<{
+            data: Thread[];
+            nextCursor: string | null;
+          }>("thread/list", {
+            sourceKinds: ROOT_THREAD_SOURCES,
+            ...(sectionFilter === "all"
+              ? {}
+              : {
+                  sectionId:
+                    sectionFilter === "unsectioned" ? null : sectionFilter,
+                }),
+            limit: 50,
+            sortKey: "updated_at",
+            sortDirection: "desc",
+            ...(cursor ? { cursor } : {}),
+          });
+        } finally {
+          this.projectListReads.delete(projects);
+        }
+        if (!current() || sectionFilter !== this.state.sectionFilter) return;
+        result.data = result.data.map((thread) =>
+          projects.has(thread.id)
+            ? { ...thread, projectId: projects.get(thread.id)! }
+            : thread,
+        );
+        const received = result.data.filter(
+          (thread) =>
+            this.visibleServerId(thread.id) &&
+            this.state.threads[thread.id] === previous[thread.id],
+        );
+        const listedIds = result.data
+          .filter((thread) => this.visibleServerId(thread.id))
+          .map((thread) => thread.id);
+        if (cursor) this.historyCursors.add(cursor);
+        const invalidCursor =
+          result.nextCursor != null &&
+          (typeof result.nextCursor !== "string" || !result.nextCursor.trim());
+        const repeated =
+          !!result.nextCursor && this.historyCursors.has(result.nextCursor);
+        const paginationError = invalidCursor || repeated;
+        // Refresh only revalidates the head. Its cursor must not replace a
+        // continuation already advanced by the background traversal.
+        const advance = append || initialize;
+        if (advance) {
+          this.historyInitialized = true;
+          this.historyNeedsRestart = paginationError;
+        }
+        const merged = received.reduce(
+          (state, thread) =>
+            this.state.threads[thread.id] === previous[thread.id]
+              ? mergeThread(
+                  state,
+                  this.canWrite(thread.id) &&
+                    previous[thread.id] &&
+                    thread.updatedAt <= previous[thread.id].updatedAt
+                    ? { ...thread, status: previous[thread.id].status }
+                    : thread,
+                )
+              : state,
+          this.state as ConversationState,
+        );
+        this.update({
+          ...this.state,
+          ...merged,
+          notificationMetadataPending: this.confirmedMetadata(
+            received.map((thread) => thread.id),
+          ),
+          listIds: Array.from(
+            new Set(
+              append
+                ? [...this.state.listIds, ...listedIds]
+                : [...listedIds, ...this.state.listIds],
+            ),
+          ),
+          ...(advance
+            ? {
+                nextCursor: paginationError
+                  ? null
+                  : (result.nextCursor ?? null),
+                historyComplete: !paginationError && result.nextCursor == null,
+                historyError: null,
+              }
+            : {}),
+        });
+        if (advance && repeated)
+          throw new Error(
+            "会话分页游标重复，已停止加载。请刷新会话列表后重试。",
+          );
+        if (advance && invalidCursor)
+          throw new Error("会话分页游标无效，已停止加载。请重试。");
+        if (
+          !append ||
+          !result.nextCursor ||
+          listedIds.some((id) => {
+            const thread = this.state.threads[id];
+            return (
+              !beforeIds.has(id) &&
+              thread &&
+              (sectionFilter === "all" ||
+                (sectionFilter === "unsectioned"
+                  ? !thread.section
+                  : thread.section?.id === sectionFilter))
+            );
+          })
+        )
+          return;
+        cursor = result.nextCursor;
+      }
+      throw new Error("连续多页没有新增会话，请再次加载或刷新列表。");
+    };
+    const pending = background ? operation() : this.performGlobally(operation);
+    return pending.catch((error) => {
+      if (current()) {
+        const message = errorMessage(error);
+        const invalidContinuation =
+          !!cursor &&
+          /(?:invalid|expired|unknown|malformed).*cursor|cursor.*(?:invalid|expired|unknown|malformed|not found)|游标.*(?:无效|过期|不存在)/i.test(
+            message,
+          );
+        if (invalidContinuation) this.historyNeedsRestart = true;
+        this.update({
+          ...this.state,
+          historyError: message,
+          ...(invalidContinuation ? { nextCursor: null } : {}),
+        });
+      }
+      throw error;
     });
   }
   clearSelection(): void {
@@ -667,6 +920,7 @@ export class SessionsStore extends Store<SessionsState> {
   }
   open(id: string): Promise<void> {
     id = this.resolveId(id);
+    if (id !== this.state.selectedId) this.trimHistory(id);
     if (
       this.state.selectedId === id &&
       this.state.threads[id] &&
@@ -703,7 +957,7 @@ export class SessionsStore extends Store<SessionsState> {
       return Promise.resolve();
     }
     // A previously loaded conversation can be displayed while its history refreshes.
-    if (this.historySynced.has(id) && this.state.threads[id]) {
+    if (this.displayableHistory.has(id) && this.state.threads[id]) {
       this.historySync.stop();
       const generation = ++this.selectionGeneration;
       const epoch = this.connection.getSnapshot().epoch;
@@ -737,40 +991,57 @@ export class SessionsStore extends Store<SessionsState> {
       return pending as Promise<void>;
     this.historySync.stop();
     if (!this.state.threadAccess[id]) this.setAccess(id, "viewing");
-    this.selectionGeneration++;
+    const selection = ++this.selectionGeneration;
     this.update({
       ...clearCompletion(this.state, id),
       selectedId: id,
       openingId: id,
     });
     return this.locked(`read:${id}`, () =>
-      this.performGlobally(async (epoch) => {
-        const before = this.state.threads[id];
-        let thread: Thread;
+      this.perform(async (epoch) => {
+        const project = this.trackProjectRead(id);
         try {
-          thread = await this.readHistory(id, epoch);
-        } catch (error) {
+          const before = this.state.threads[id];
+          let thread: Thread;
+          try {
+            thread = await this.readWindow(id, epoch);
+          } catch (error) {
+            if (!this.current(epoch)) return;
+            throw error;
+          }
           if (!this.current(epoch)) return;
-          throw error;
-        }
-        if (!this.current(epoch)) return;
-        const merged = this.mergeRead(thread, before);
-        if (merged) {
-          this.recordHistory(thread);
-          this.update({
-            ...this.state,
-            ...merged,
-            listIds: Array.from(new Set([id, ...this.state.listIds])),
-          });
-        }
-        if (this.current(epoch) && this.state.selectedId === id) {
-          this.scheduleHistorySync(id, epoch);
+          const merged = this.mergeRead(thread, before, project);
+          if (merged) {
+            this.recordHistory(thread);
+            this.update({
+              ...this.state,
+              ...merged,
+              listIds: Array.from(new Set([id, ...this.state.listIds])),
+            });
+          }
+          if (this.current(epoch) && this.state.selectedId === id) {
+            this.scheduleHistorySync(id, epoch);
+          }
+        } finally {
+          project.release();
         }
       }),
-    ).finally(() => {
-      if (this.state.openingId === id)
-        this.update({ ...this.state, openingId: null });
-    });
+    )
+      .catch((error) => {
+        if (
+          this.selectionGeneration === selection &&
+          this.state.selectedId === id
+        )
+          this.update({ ...this.state, error: errorMessage(error) });
+        throw error;
+      })
+      .finally(() => {
+        if (
+          this.selectionGeneration === selection &&
+          this.state.openingId === id
+        )
+          this.update({ ...this.state, openingId: null });
+      });
   }
   create(options: ThreadStartParams = {}): Promise<Thread> {
     return this.locked("create", async () => {
@@ -785,6 +1056,7 @@ export class SessionsStore extends Store<SessionsState> {
     if (!draft) return;
     if (this.locks.has(`send:${id}`))
       throw new Error("正在发送，请等待发送结束后再删除草稿。");
+    this.deletedDrafts([id]);
     let next = removeDraft(this.state, id);
     const acceptedServerId =
       draft.serverId && next.threads[draft.serverId]?.turns.length
@@ -930,6 +1202,10 @@ export class SessionsStore extends Store<SessionsState> {
         }>(id, epoch, "thread/revert", { threadId: id, beforeTurnId });
         if (!this.current(epoch)) return;
         // History merging preserves old turns; replace explicitly after a successful revert.
+        this.historyRevisions.set(id, (this.historyRevisions.get(id) ?? 0) + 1);
+        this.historySynced.delete(id);
+        const historyPages = { ...this.state.historyPages };
+        delete historyPages[id];
         // Keep the confirmed prefix visible even if the subsequent history read fails.
         const diffs = { ...this.state.diffs };
         const plans = { ...this.state.plans };
@@ -950,6 +1226,7 @@ export class SessionsStore extends Store<SessionsState> {
         delete unreadCompleted[id];
         this.update({
           ...this.state,
+          historyPages,
           diffs,
           plans,
           fileOutputs,
@@ -967,12 +1244,18 @@ export class SessionsStore extends Store<SessionsState> {
         onConfirmed?.(source.turns[index]);
         try {
           const history = await this.readHistory(id, epoch);
-          if (this.current(epoch))
+          if (this.current(epoch)) {
+            this.recordHistory(history);
             this.update({
               ...this.state,
-              historySyncError: null,
               ...mergeThread(this.state, history),
+              historyPages: {
+                ...this.state.historyPages,
+                [id]: { cursor: null, loading: false },
+              },
+              historySyncError: null,
             });
+          }
         } catch (error) {
           if (this.current(epoch))
             this.update({
@@ -1024,7 +1307,27 @@ export class SessionsStore extends Store<SessionsState> {
         });
         if (!this.current(epoch)) return;
         this.hiddenServerIds.add(id);
-        this.update(removeThread(this.state, id));
+        if (this.state.selectedId === id) this.historySync.stop();
+        this.update(archiveThread(this.state, id));
+      }, reportGlobally),
+    );
+  }
+  unarchive(id: string, reportGlobally = false): Promise<void> {
+    return this.locked(`unarchive:${id}`, () =>
+      this.perform(async (epoch) => {
+        const { thread } = await this.connection.client.request<{
+          thread: Thread;
+        }>("thread/unarchive", {
+          threadId: id,
+        });
+        if (!this.current(epoch)) return;
+        this.hiddenServerIds.delete(id);
+        // The response is authoritative even when the notification or list refresh is delayed.
+        const merged = thread
+          ? { ...this.state, ...mergeThread(this.state, thread) }
+          : this.state;
+        this.update(unarchiveThread(merged, id));
+        if (this.state.selectedId === id) this.scheduleHistorySync(id, epoch);
       }, reportGlobally),
     );
   }
@@ -1034,6 +1337,92 @@ export class SessionsStore extends Store<SessionsState> {
     return this.locked(`export:${id}`, () =>
       this.perform((epoch) => this.readHistory(id, epoch)),
     );
+  }
+  private async readWindow(
+    id: string,
+    epoch: number,
+    cursor: string | null = null,
+    metadata?: Thread,
+  ): Promise<Thread> {
+    const revision = this.historyRevisions.get(id) ?? 0;
+    let nextCursor: string | null = null;
+    const thread = await readHistory(
+      this.connection.client,
+      id,
+      this.state.threads[id],
+      () =>
+        this.current(epoch) &&
+        revision === (this.historyRevisions.get(id) ?? 0),
+      false,
+      metadata,
+      !cursor &&
+        this.state.threads[id]?.turns.length &&
+        !this.state.historyPages[id]
+        ? undefined
+        : {
+            cursor,
+            next: (value) => {
+              nextCursor = value;
+            },
+          },
+    );
+    if (
+      !this.current(epoch) ||
+      revision !== (this.historyRevisions.get(id) ?? 0)
+    )
+      throw new Error("会话已变化，请重新加载历史。");
+    this.update({
+      ...this.state,
+      historyPages: {
+        ...this.state.historyPages,
+        [id]: { cursor: nextCursor, loading: false },
+      },
+    });
+    return thread;
+  }
+  loadOlder(id: string): Promise<void> {
+    const requestedEpoch = this.connection.getSnapshot().epoch;
+    return this.locked(`older:${id}`, async () => {
+      // A user action must wait for a background read, not silently reuse it.
+      await this.locks.get(`read:${id}`)?.catch(() => {});
+      if (!this.current(requestedEpoch)) return;
+      return this.locked(`read:${id}`, async () => {
+        const page = this.state.historyPages[id];
+        if (!page?.cursor) return;
+        const epoch = this.connection.getSnapshot().epoch;
+        const revision = this.historyRevisions.get(id) ?? 0;
+        const before = this.state.threads[id];
+        this.update({
+          ...this.state,
+          historySyncError: null,
+          historyPages: {
+            ...this.state.historyPages,
+            [id]: { ...page, loading: true },
+          },
+        });
+        try {
+          const thread = await this.readWindow(id, epoch, page.cursor, before);
+          const merged = this.mergeRead(thread, before);
+          if (merged) this.update(merged);
+        } catch (error) {
+          if (
+            this.current(epoch) &&
+            revision === (this.historyRevisions.get(id) ?? 0)
+          )
+            this.update({
+              ...this.state,
+              historySyncError:
+                this.state.selectedId === id
+                  ? errorMessage(error)
+                  : this.state.historySyncError,
+              historyPages: {
+                ...this.state.historyPages,
+                [id]: { ...page, loading: false },
+              },
+            });
+        }
+      });
+    });
   }
   private async readHistory(
     id: string,
@@ -1063,6 +1452,7 @@ export class SessionsStore extends Store<SessionsState> {
     const revision = (this.historyRevisions.get(id) ?? 0) + 1;
     this.historyRevisions.set(id, revision);
     this.historySynced.delete(id);
+    this.displayableHistory.delete(id);
     const old = this.state.threads[id];
     if (!old || !this.visibleServerId(id)) return;
     const cleared = removeThread(this.state, id);
@@ -1083,7 +1473,17 @@ export class SessionsStore extends Store<SessionsState> {
       )
         return;
       const merged = this.mergeRead(thread, this.state.threads[id]);
-      if (merged) this.update({ ...merged, historySyncError: null });
+      if (merged) {
+        this.recordHistory(thread);
+        this.update({
+          ...merged,
+          historySyncError: null,
+          historyPages: {
+            ...this.state.historyPages,
+            [id]: { cursor: null, loading: false },
+          },
+        });
+      }
     } catch (error) {
       if (this.current(epoch) && this.historyRevisions.get(id) === revision)
         this.update({
@@ -1093,30 +1493,10 @@ export class SessionsStore extends Store<SessionsState> {
     }
   }
 
-  async setPinned(id: string, isPinned: boolean): Promise<void> {
-    return this.locked(`pin:${id}`, () =>
-      this.perform(async (epoch) => {
-        try {
-          const { thread } = await this.connection.client.request<{
-            thread: ManagedThread;
-          }>("thread/metadata/update", { threadId: id, isPinned });
-          if (!this.current(epoch) || !this.visibleServerId(id)) return;
-          if (thread.isPinned !== isPinned)
-            throw new Error("当前服务端不支持持久置顶，未更改会话。");
-          const old = this.state.threads[id];
-          if (old)
-            this.update({
-              ...this.state,
-              threads: {
-                ...this.state.threads,
-                [id]: { ...old, isPinned } as ManagedThread,
-              },
-            });
-        } catch (error) {
-          throw managementError(error);
-        }
-      }),
-    );
+  async setPinned(): Promise<void> {
+    // Neither the checked-in contract nor CLI 0.163.0 declares isPinned.
+    // Do not send invented fields, even when a server silently accepts them.
+    throw new Error("当前服务端协议不支持持久置顶。");
   }
   async loadSections(): Promise<void> {
     const epoch = this.connection.getSnapshot().epoch;
@@ -1155,10 +1535,14 @@ export class SessionsStore extends Store<SessionsState> {
       try {
         const { section } = await this.connection.client.request<{
           section: ThreadSection;
-        }>(sectionId ? "threadSection/update" : "threadSection/create", {
-          name: name.trim(),
-          ...(sectionId ? { sectionId } : {}),
-        });
+        }>(
+          ...(sectionId
+            ? ([
+                "threadSection/update",
+                { sectionId, name: name.trim() },
+              ] as const)
+            : (["threadSection/create", { name: name.trim() }] as const)),
+        );
         if (!this.current(epoch)) return;
         this.sectionRead++;
         this.update({
@@ -1236,13 +1620,21 @@ export class SessionsStore extends Store<SessionsState> {
   }
   setSectionFilter(sectionFilter: string): Promise<void> {
     this.sectionGeneration++;
+    this.historyInitialized = false;
+    this.historyNeedsRestart = false;
+    this.historyCursors.clear();
     this.update({
       ...this.state,
       sectionFilter,
       listIds: [],
       nextCursor: null,
+      historyLoading: false,
+      historyError: null,
+      historyComplete: false,
     });
-    return this.list(false);
+    // Capture the filter immediately for A-B-A navigation, while letting a
+    // background loader share this initial page rather than issue it twice.
+    return this.rememberLock(this.listLock(), this.list(false));
   }
   delete(id: string): Promise<void> {
     return this.locked(`delete:${id}`, () =>
@@ -1253,6 +1645,7 @@ export class SessionsStore extends Store<SessionsState> {
           });
           if (!this.current(epoch)) return;
           const ids = descendantIds(this.state, id);
+          this.deletedDrafts(ids);
           for (const child of ids) {
             this.hiddenServerIds.add(child);
             this.historySynced.delete(child);
@@ -1266,18 +1659,50 @@ export class SessionsStore extends Store<SessionsState> {
   }
   threadRequest<T>(
     id: string,
-    method: string,
-    params: Record<string, unknown>,
+    ...[method, params]: {
+      [
+        M in
+          | "thread/goal/set"
+          | "thread/goal/clear"
+          | "thread/attachment/add"
+          | "thread/attachment/remove"
+      ]: [
+        method: M,
+        params: Omit<RpcParams<M>, "threadId"> & { threadId?: string },
+      ];
+    }[
+      | "thread/goal/set"
+      | "thread/goal/clear"
+      | "thread/attachment/add"
+      | "thread/attachment/remove"]
   ): Promise<T> {
     if (this.state.localDrafts[id])
       return Promise.reject(new Error("请先发送第一条消息创建会话。"));
     return this.locked(`write:${id}`, () =>
       this.perform(async (epoch) => {
         const target = await this.ensureWritableTarget(id, epoch, {});
-        return this.writeRequest<T>(target, epoch, method, {
-          ...params,
-          threadId: target,
-        });
+        switch (method) {
+          case "thread/goal/set":
+            return this.writeRequest<T>(target, epoch, method, {
+              ...params,
+              threadId: target,
+            });
+          case "thread/goal/clear":
+            return this.writeRequest<T>(target, epoch, method, {
+              ...params,
+              threadId: target,
+            });
+          case "thread/attachment/add":
+            return this.writeRequest<T>(target, epoch, method, {
+              ...params,
+              threadId: target,
+            });
+          case "thread/attachment/remove":
+            return this.writeRequest<T>(target, epoch, method, {
+              ...params,
+              threadId: target,
+            });
+        }
       }),
     );
   }
@@ -1315,9 +1740,9 @@ export class SessionsStore extends Store<SessionsState> {
   private async writeRequest<T>(
     id: string,
     epoch: number,
-    method: string,
-    params: unknown,
+    ...call: RpcCall
   ): Promise<T> {
+    const method = call[0];
     const reverting = method === "thread/revert";
     if (!this.current(epoch))
       throw new Error(
@@ -1330,7 +1755,7 @@ export class SessionsStore extends Store<SessionsState> {
           : "会话写入权限已失效，消息未发送，草稿已保留。",
       );
     try {
-      return await this.connection.client.request<T>(method, params);
+      return await this.connection.client.request<T>(...call);
     } catch (error) {
       if (
         this.current(epoch) &&
@@ -1503,15 +1928,23 @@ export class SessionsStore extends Store<SessionsState> {
       }),
     );
   }
-  steer(id: string, input: UserInput[], expectedTurnId: string): Promise<void> {
+  steer(
+    id: string,
+    input: UserInput[],
+    expectedTurnId: string,
+    clientUserMessageId?: string,
+  ): Promise<void> {
+    id = this.resolveId(id);
     return this.locked(`send:${id}`, () =>
       this.perform(async (epoch) => {
+        await this.ensureWritableTarget(id, epoch, {});
         if (this.activeTurn(id)?.id !== expectedTurnId)
           throw new TurnBusyError();
         await this.writeRequest(id, epoch, "turn/steer", {
           threadId: id,
           expectedTurnId,
           input,
+          ...(clientUserMessageId ? { clientUserMessageId } : {}),
         });
         if (!this.current(epoch))
           throw new Error("连接已改变，请先核实消息是否已发送。");

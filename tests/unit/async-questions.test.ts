@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import {
   pendingAsyncQuestions,
   asyncAnswerText,
+  asyncAnswerClientId,
   type QuestionMessage,
 } from "../../src/features/conversation/async-questions";
 import { isTimelineProgress } from "../../src/features/conversation/model";
@@ -17,7 +18,7 @@ const question = (id: string): QuestionMessage => ({
   delivery: null,
   questions: [{ title: `偏好 ${id}`, options: ["甲", "乙"] }],
 });
-const user = (text: string): ThreadItem => ({
+const user = (text: string): Extract<ThreadItem, { type: "userMessage" }> => ({
   type: "userMessage",
   id: "reply",
   clientId: null,
@@ -56,10 +57,32 @@ it("resolves only the answered prompt and preserves another outstanding question
     pendingAsyncQuestions(thread([user("任务"), first, second, user(text)])),
   ).toEqual([second]);
 });
-it("supersedes old prompts on a manual follow-up and keeps new prompts", () => {
+it("preserves old prompts on an unrelated follow-up", () => {
   const old = question("old");
   const latest = question("latest");
   expect(
     pendingAsyncQuestions(thread([old, user("继续下一项任务"), latest])),
-  ).toEqual([latest]);
+  ).toEqual([old, latest]);
+});
+
+it("associates same-title prompts by item id after history reload", () => {
+  const first = question("one");
+  const second = { ...question("two"), questions: first.questions };
+  expect(
+    pendingAsyncQuestions(
+      thread([
+        first,
+        second,
+        {
+          ...user(asyncAnswerText(first, ["甲"])),
+          clientId: asyncAnswerClientId(first.id, "delivery"),
+        },
+      ]),
+    ),
+  ).toEqual([second]);
+  expect(
+    pendingAsyncQuestions(
+      thread([first, second, user("回答问题：\n偏好 one\n甲")]),
+    ),
+  ).toEqual([first, second]);
 });

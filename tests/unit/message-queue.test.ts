@@ -352,6 +352,7 @@ it("explicit answers steer the active turn ahead of ordinary queued work", async
     expect(request).toHaveBeenCalledWith("turn/steer", {
       threadId: "a",
       expectedTurnId: "working",
+      clientUserMessageId: expect.stringMatching(/^codex-question:question:/),
       input: [
         { type: "text", text: "回答问题：\nPreference\nB", text_elements: [] },
       ],
@@ -419,7 +420,7 @@ it("never automatically resends a question answer after an uncertain acknowledge
   ).toHaveLength(1);
 });
 
-it("drops a superseded queued answer rather than sending it into later work", async () => {
+it("keeps a queued answer after an unrelated manual follow-up", async () => {
   const { runtime, request, notify } = await fixture();
   notify({
     method: "item/completed",
@@ -458,5 +459,73 @@ it("drops a superseded queued answer rather than sending it into later work", as
   );
   expect(
     request.mock.calls.filter(([method]) => method.startsWith("turn/")),
-  ).toHaveLength(0);
+  ).toHaveLength(1);
 });
+
+it.each([true, false])(
+  "keeps confirmed answers visible until echo without blocking the outbox (active=%s)",
+  async (active) => {
+    const { runtime, request, notify, complete } = await fixture();
+    notify({
+      method: "item/completed",
+      params: {
+        threadId: "a",
+        turnId: "working",
+        item: asyncQuestion,
+        completedAtMs: 1000,
+      },
+    });
+    if (!active) complete();
+    let acknowledge!: () => void;
+    const acknowledgement = new Promise<void>((resolve) => {
+      acknowledge = resolve;
+    });
+    request.mockImplementation((async (method: string) => {
+      if (method === "turn/steer" || method === "turn/start") {
+        await acknowledgement;
+        return method === "turn/start" ? { turn: turn("answer-turn") } : {};
+      }
+      return {};
+    }) as never);
+    await runtime.queue.addAnswer("a", asyncQuestion, ["B"]);
+    await vi.waitFor(() =>
+      expect(runtime.queue.forThread("a").items[0]?.status).toBe("sending"),
+    );
+    expect(runtime.queue.forThread("a").sentAnswers?.question).toBeUndefined();
+    acknowledge();
+    await vi.waitFor(() =>
+      expect(runtime.queue.forThread("a").items).toHaveLength(0),
+    );
+    expect(runtime.queue.forThread("a").sentAnswers?.question).toEqual(["B"]);
+    // Re-submitting while waiting for echo must not send the answer twice.
+    await runtime.queue.addAnswer("a", asyncQuestion, ["B"]);
+    expect(
+      request.mock.calls.filter(
+        ([method]) => method === "turn/steer" || method === "turn/start",
+      ),
+    ).toHaveLength(1);
+    notify({
+      method: "item/completed",
+      params: {
+        threadId: "a",
+        turnId: active ? "working" : "answer-turn",
+        completedAtMs: 1001,
+        item: {
+          type: "userMessage",
+          id: "answer-echo",
+          clientId: null,
+          content: [
+            {
+              type: "text",
+              text: "回答问题：\nPreference\nB",
+              text_elements: [],
+            },
+          ],
+        },
+      },
+    });
+    // The next storage transaction reconciles receipts with authoritative history.
+    await runtime.queue.pause("a");
+    expect(runtime.queue.forThread("a").sentAnswers?.question).toBeUndefined();
+  },
+);

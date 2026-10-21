@@ -1,7 +1,7 @@
 import { pendingAsyncQuestions } from "../conversation/async-questions";
 import { requestThreadId } from "../requests/store";
 import { isSubagentThread, shouldNotifyThread } from "../sessions/state";
-import type { RpcRequest } from "../../lib/rpc";
+import { requestNoticeTitle } from "../task-center/model";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleCheck, CircleHelp, X } from "lucide-react";
 import { RuntimeContext, useRuntime } from "../../lib/runtime-context";
@@ -92,6 +92,13 @@ function EnvironmentNotifications({
           .filter(
             (item) =>
               !ignoredQuestions[JSON.stringify([thread.id, item.id])] &&
+              !answerQueues[thread.id]?.sentAnswers?.[item.id] &&
+              !requests.pending.some(
+                (request) =>
+                  requestThreadId(request) === thread.id &&
+                  "itemId" in request.params &&
+                  request.params.itemId === item.id,
+              ) &&
               !answerQueues[thread.id]?.items.some(
                 (task) => task.question?.itemId === item.id,
               ),
@@ -301,14 +308,6 @@ export function CompletionNotifications() {
   );
 }
 
-function requestNoticeTitle(request: RpcRequest): string {
-  return request.method === "item/tool/requestUserInput"
-    ? "需要你回答问题"
-    : request.method === "item/fileChange/requestApproval"
-      ? "文件修改待审批"
-      : "命令执行待审批";
-}
-
 function ActionNotice({
   threadId,
   title,
@@ -345,7 +344,7 @@ function ActionNotice({
           <small className="mt-1 block max-w-[225px] truncate text-xs text-muted">
             {titleOf(sessions.threads[threadId])}
           </small>
-          <small className="mt-1 block text-[11px] text-muted">
+          <small className="mt-1 block text-meta text-muted">
             点击前往处理
           </small>
         </span>

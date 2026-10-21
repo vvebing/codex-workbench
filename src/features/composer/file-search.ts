@@ -1,11 +1,10 @@
+import type { CodexClient } from "../../lib/rpc";
 import ignore, { type Ignore } from "ignore";
 import type { FuzzyFileSearchResponse } from "../../generated/FuzzyFileSearchResponse";
 import type { FuzzyFileSearchResult } from "../../generated/FuzzyFileSearchResult";
 import type { FsReadFileResponse } from "../../generated/v2/FsReadFileResponse";
 
-export interface FileSearchClient {
-  request<T>(method: string, params: unknown): Promise<T>;
-}
+export type FileSearchClient = Pick<CodexClient, "request">;
 
 // Each search reads fresh rules from the connected host, shared across candidates.
 // An excluded directory cannot be re-included by a .gitignore inside that directory.

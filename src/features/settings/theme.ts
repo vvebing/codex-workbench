@@ -18,7 +18,12 @@ function apply() {
   document.documentElement.style.colorScheme = resolved;
   document
     .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-    ?.setAttribute("content", resolved === "dark" ? "#191c19" : "#f7f7f5");
+    ?.setAttribute(
+      "content",
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--background")
+        .trim(),
+    );
 }
 function update(value: ThemePreference) {
   preference = value;

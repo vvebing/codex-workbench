@@ -1,9 +1,21 @@
+import { settingsInputClass } from "../settings/settings-ui";
+import {
+  questionDraftKey,
+  readQuestionDraft,
+  clearQuestionDraft,
+  writeQuestionDraft,
+} from "../conversation/question-drafts";
 import {
   PermissionsApproval,
   ElicitationApproval,
 } from "./AdditionalApprovals";
-import { ScrollArea, Button } from "../../components/ui";
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { ScrollArea, Button, ErrorNotice } from "../../components/ui";
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
 import { ShieldCheck } from "lucide-react";
 import { useRuntime } from "../../lib/runtime-context";
@@ -18,13 +30,19 @@ interface Choice {
 function ApprovalCard({
   title,
   children,
+  requestId,
 }: {
   title: ReactNode;
   children: ReactNode;
+  requestId?: string;
 }) {
   return (
-    <section className="mb-2.5 rounded-[10px] border border-border bg-elevated p-4 text-[13px]">
-      <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold">
+    <section
+      data-question-request-id={requestId}
+      tabIndex={requestId ? -1 : undefined}
+      className="mb-2.5 rounded-[10px] border border-border bg-elevated p-4 text-control"
+    >
+      <h3 className="mb-3 flex items-center gap-2 text-control font-semibold">
         {title}
       </h3>
       {children}
@@ -45,10 +63,37 @@ function UserInputForm({
 }: {
   params: ToolRequestUserInputParams;
   disabled: boolean;
-  respond: (result: unknown) => void;
+  respond: (result: unknown) => boolean;
 }) {
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [custom, setCustom] = useState<Record<string, string>>({});
+  const runtime = useRuntime();
+  const key = questionDraftKey(
+    runtime.connection.getSnapshot().url,
+    params.threadId,
+    params.itemId,
+  );
+  const [draft] = useState(() => readQuestionDraft(key));
+  const secretIds = params.questions
+    .filter((question) => question.isSecret)
+    .map((question) => question.id);
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      Object.entries(draft.values).filter(([id]) => !secretIds.includes(id)),
+    ),
+  );
+  const [custom, setCustom] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      Object.entries(draft.custom).filter(([id]) => !secretIds.includes(id)),
+    ),
+  );
+  useEffect(() => {
+    writeQuestionDraft(
+      key,
+      { values, custom },
+      params.questions
+        .filter((question) => question.isSecret)
+        .map((question) => question.id),
+    );
+  }, [key, values, custom, params.questions]);
   const answer = (id: string) =>
     values[id] === "__custom__" ? (custom[id] ?? "") : (values[id] ?? "");
   return (
@@ -56,14 +101,17 @@ function UserInputForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (params.questions.every((question) => answer(question.id).trim()))
-          respond({
-            answers: Object.fromEntries(
-              params.questions.map((question) => [
-                question.id,
-                { answers: [answer(question.id)] },
-              ]),
-            ),
-          });
+          if (
+            respond({
+              answers: Object.fromEntries(
+                params.questions.map((question) => [
+                  question.id,
+                  { answers: [answer(question.id)] },
+                ]),
+              ),
+            })
+          )
+            clearQuestionDraft(key);
       }}
     >
       {params.questions.map((question) => (
@@ -115,23 +163,55 @@ function UserInputForm({
           {question.isSecret ||
           !question.options?.length ||
           values[question.id] === "__custom__" ? (
-            <input
-              className="box-border w-full rounded-md border border-border bg-elevated p-2.5 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              type={question.isSecret ? "password" : "text"}
-              required
-              autoComplete="off"
-              aria-label={question.question}
-              value={
-                values[question.id] === "__custom__"
-                  ? (custom[question.id] ?? "")
-                  : (values[question.id] ?? "")
-              }
-              onChange={(event) =>
-                values[question.id] === "__custom__"
-                  ? setCustom({ ...custom, [question.id]: event.target.value })
-                  : setValues({ ...values, [question.id]: event.target.value })
-              }
-            />
+            question.isSecret ? (
+              <input
+                className={settingsInputClass}
+                type={question.isSecret ? "password" : "text"}
+                required
+                autoComplete="off"
+                aria-label={question.question}
+                value={
+                  values[question.id] === "__custom__"
+                    ? (custom[question.id] ?? "")
+                    : (values[question.id] ?? "")
+                }
+                onChange={(event) =>
+                  values[question.id] === "__custom__"
+                    ? setCustom({
+                        ...custom,
+                        [question.id]: event.target.value,
+                      })
+                    : setValues({
+                        ...values,
+                        [question.id]: event.target.value,
+                      })
+                }
+              />
+            ) : (
+              <textarea
+                className={settingsInputClass}
+                rows={4}
+                required
+                autoComplete="off"
+                aria-label={question.question}
+                value={
+                  values[question.id] === "__custom__"
+                    ? (custom[question.id] ?? "")
+                    : (values[question.id] ?? "")
+                }
+                onChange={(event) =>
+                  values[question.id] === "__custom__"
+                    ? setCustom({
+                        ...custom,
+                        [question.id]: event.target.value,
+                      })
+                    : setValues({
+                        ...values,
+                        [question.id]: event.target.value,
+                      })
+                }
+              />
+            )
           ) : null}
         </fieldset>
       ))}
@@ -156,7 +236,7 @@ function Approval({
 }) {
   const runtime = useRuntime();
   const respond = (result: unknown) => {
-    runtime.requests.respond(request.id, result);
+    return runtime.requests.respond(request.id, result);
   };
   if (request.method === "item/permissions/requestApproval")
     return (
@@ -180,7 +260,7 @@ function Approval({
     );
   if (request.method === "item/tool/requestUserInput")
     return (
-      <ApprovalCard title="需要你的回答">
+      <ApprovalCard title="需要你的回答" requestId={String(request.id)}>
         <UserInputForm
           params={request.params}
           disabled={disabled}
@@ -245,7 +325,7 @@ function Approval({
       {request.method === "item/commandExecution/requestApproval" ? (
         <>
           <ScrollArea orientation="both">
-            <pre className="my-3 whitespace-pre-wrap rounded-md bg-surface p-3 font-mono text-xs leading-[1.65] [overflow-wrap:anywhere]">
+            <pre className="my-3 whitespace-pre-wrap rounded-md bg-surface p-3 font-mono text-xs leading-code [overflow-wrap:anywhere]">
               {request.params.command ?? "请求执行操作"}
             </pre>
           </ScrollArea>
@@ -292,20 +372,49 @@ export function ApprovalQueue({ threadId }: { threadId: string }) {
   const pending = requests.pending.filter(
     (request) => requestThreadId(request) === threadId,
   );
-  if (!pending.length) return null;
+  const submitted = requests.submittedAnswers.filter(
+    (answer) => answer.threadId === threadId,
+  );
+  if (!pending.length && !submitted.length) return null;
   return (
     <div
       className="mx-auto max-w-[840px] px-4 py-2 sm:px-6 sm:py-3"
       aria-label="待处理请求"
     >
-      {requests.error && (
-        <p role="alert" className="text-danger">
-          {requests.error}
-        </p>
-      )}
+      {requests.error && <ErrorNotice>{requests.error}</ErrorNotice>}
+      {submitted.map((entry) => (
+        <ApprovalCard
+          key={`answer-${entry.epoch}-${entry.id}`}
+          title="你的回答"
+        >
+          <dl className="space-y-2">
+            {entry.answers.map((answer, index) => (
+              <div key={index}>
+                <dt className="font-semibold">{answer.question}</dt>
+                <dd className="whitespace-pre-wrap">{answer.answer}</dd>
+              </div>
+            ))}
+          </dl>
+          <p role="status" className="mt-2 text-muted">
+            {entry.status === "uncertain"
+              ? "连接已中断，提交结果待确认，请核实会话。系统不会自动重发。"
+              : entry.status === "resolved"
+                ? "请求已处理。"
+                : "回答已提交，等待服务端处理。"}
+          </p>
+          <Button
+            variant="quiet"
+            onClick={() =>
+              runtime.requests.dismissAnswer(entry.id, entry.epoch)
+            }
+          >
+            关闭回答摘要
+          </Button>
+        </ApprovalCard>
+      ))}
       {pending.map((request) => (
         <Approval
-          key={`${connection.epoch}-${request.id}`}
+          key={`${connection.url}-${connection.epoch}-${request.id}`}
           request={request}
           disabled={
             connection.status !== "connected" ||

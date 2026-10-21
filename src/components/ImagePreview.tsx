@@ -2,11 +2,8 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { Dialog } from "radix-ui";
 import { ImageOff, X, ZoomIn } from "lucide-react";
 import { IconButton } from "./ui";
-
-export interface PreviewImage {
-  url: string;
-  name: string;
-}
+import { ImageViewer, type PreviewImage } from "./ImageViewer";
+export type { PreviewImage } from "./ImageViewer";
 
 /** Shared by draft attachments and sent conversation images. */
 export function ImagePreview({
@@ -26,7 +23,7 @@ export function ImagePreview({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[80] bg-black/60" />
+        <Dialog.Overlay className="fixed inset-0 z-[80] bg-overlay-strong" />
         <Dialog.Content
           aria-describedby={undefined}
           onCloseAutoFocus={(event) => {
@@ -45,30 +42,12 @@ export function ImagePreview({
               </IconButton>
             </Dialog.Close>
           </div>
-          {image && <PreviewContent image={image} />}
+          {image && (
+            <ImageViewer image={image} className="max-h-[75dvh] w-full" />
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
-  );
-}
-function PreviewContent({ image }: { image: PreviewImage }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [image.url]);
-  return failed ? (
-    <div
-      role="status"
-      className="flex min-h-40 flex-col items-center justify-center gap-3 text-sm text-muted"
-    >
-      <ImageOff size={28} aria-hidden="true" />
-      图片无法加载
-    </div>
-  ) : (
-    <img
-      src={image.url}
-      alt={image.name}
-      onError={() => setFailed(true)}
-      className="min-h-0 max-h-[75dvh] w-full object-contain"
-    />
   );
 }
 export function imageSource(url: string) {

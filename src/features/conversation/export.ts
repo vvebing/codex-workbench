@@ -74,3 +74,18 @@ export async function copyFinalSummary(thread: Thread): Promise<void> {
   if (!text) throw new Error("此会话还没有已完成的最终总结。");
   await navigator.clipboard.writeText(text);
 }
+
+export function exportText(
+  text: string,
+  filename: string,
+  type = "text/plain",
+) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

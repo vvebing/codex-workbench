@@ -37,21 +37,10 @@ const turn = (id: string) =>
   }) as unknown as Turn;
 afterEach(() => vi.restoreAllMocks());
 
-test("pinning requires server acknowledgement and never claims unsupported success", async () => {
+test("pinning never sends a field absent from the protocol", async () => {
   const f = fixture();
-  f.request.mockResolvedValue({ thread: thread("a") });
-  await f.sessions.open("a");
-  await expect(f.sessions.setPinned("a", true)).rejects.toThrow(
-    "不支持持久置顶",
-  );
-  expect(f.sessions.getSnapshot().threads.a).not.toHaveProperty("isPinned");
-  f.request.mockResolvedValue({ thread: { ...thread("a"), isPinned: true } });
-  await f.sessions.setPinned("a", true);
-  expect(f.request).toHaveBeenLastCalledWith("thread/metadata/update", {
-    threadId: "a",
-    isPinned: true,
-  });
-  expect(f.sessions.getSnapshot().threads.a).toMatchObject({ isPinned: true });
+  await expect(f.sessions.setPinned()).rejects.toThrow("不支持持久置顶");
+  expect(f.request).not.toHaveBeenCalled();
 });
 
 test("sections persist CRUD and moving through their protocol endpoints", async () => {
@@ -236,7 +225,7 @@ test("revert activates a viewed historical thread before writing", async () => {
   const source = { ...thread("history"), historyMode: "paginated" as const };
   f.request
     .mockResolvedValueOnce({ thread: source })
-    .mockResolvedValueOnce({ data: [turn("a"), turn("b")], nextCursor: null });
+    .mockResolvedValueOnce({ data: [turn("b"), turn("a")], nextCursor: null });
   await f.sessions.open("history");
   expect(f.sessions.getSnapshot().threadAccess.history).toBe("viewing");
   f.request.mockClear();
@@ -291,7 +280,7 @@ test("revert explains an occupied remote session without writing or changing his
   const source = { ...thread("remote"), historyMode: "paginated" as const };
   f.request
     .mockResolvedValueOnce({ thread: source })
-    .mockResolvedValueOnce({ data: [turn("a"), turn("b")], nextCursor: null });
+    .mockResolvedValueOnce({ data: [turn("b"), turn("a")], nextCursor: null });
   await f.sessions.open("remote");
   f.request.mockClear();
   f.request.mockRejectedValueOnce(
@@ -326,7 +315,7 @@ test("revert reports writer loss during the request without replaying it", async
   const source = { ...thread("remote"), historyMode: "paginated" as const };
   f.request
     .mockResolvedValueOnce({ thread: source })
-    .mockResolvedValueOnce({ data: [turn("a"), turn("b")], nextCursor: null });
+    .mockResolvedValueOnce({ data: [turn("b"), turn("a")], nextCursor: null });
   await f.sessions.open("remote");
   f.request.mockClear();
   f.request
@@ -343,4 +332,112 @@ test("revert reports writer loss during the request without replaying it", async
     f.sessions.getSnapshot().threads.remote.turns.map((entry) => entry.id),
   ).toEqual(["a", "b"]);
   expect(f.sessions.getSnapshot().threadAccess.remote).toBe("occupied");
+});
+
+test("project notifications received while listing an unknown thread survive the list response", async () => {
+  const f = fixture();
+  const pending = deferred<{ data: Thread[]; nextCursor: null }>();
+  f.request.mockReturnValueOnce(pending.promise);
+  const refresh = f.sessions.refresh();
+  await vi.waitFor(() =>
+    expect(f.request).toHaveBeenCalledWith("thread/list", expect.anything()),
+  );
+  f.notify({
+    method: "thread/project/updated",
+    params: { threadId: "a", projectId: "current-project" },
+  });
+  pending.resolve({
+    data: [
+      { ...thread("a"), projectId: "stale-project", cwd: "/real-directory" },
+    ],
+    nextCursor: null,
+  });
+  await refresh;
+  expect(f.sessions.getSnapshot().threads.a).toMatchObject({
+    projectId: "current-project",
+    cwd: "/real-directory",
+  });
+  f.request.mockResolvedValueOnce({
+    data: [{ ...thread("a"), projectId: "later-project" }],
+    nextCursor: null,
+  });
+  await f.sessions.refresh();
+  expect(f.sessions.getSnapshot().threads.a.projectId).toBe("later-project");
+});
+
+test("archiving the current thread preserves reading context and rejects further writer acquisition", async () => {
+  const f = fixture();
+  const source = { ...thread("reading"), turns: [turn("done")] };
+  f.request.mockResolvedValue({ thread: source });
+  await f.sessions.open("reading");
+  await f.sessions.activate("reading");
+  f.notify({
+    method: "turn/diff/updated",
+    params: { threadId: "reading", turnId: "done", diff: "+preserved" },
+  });
+  const before = f.sessions.getSnapshot();
+  expect(before.threadAccess.reading).toBe("editable");
+  f.request.mockImplementationOnce(async () => {
+    // Servers may publish this before acknowledging the action.
+    f.notify({ method: "thread/archived", params: { threadId: "reading" } });
+    return {};
+  });
+  await f.sessions.archive("reading");
+  const archived = f.sessions.getSnapshot();
+  expect(archived.selectedId).toBe("reading");
+  expect(archived.threads.reading).toBe(before.threads.reading);
+  expect(archived.diffs.reading).toBe(before.diffs.reading);
+  expect(archived.threadAccess.reading).toBe("viewing");
+  expect(archived.archivedIds.reading).toBe(true);
+  expect(archived.listIds).not.toContain("reading");
+  f.request.mockClear();
+  await expect(f.sessions.activate("reading")).rejects.toThrow("已归档");
+  await expect(
+    f.sessions.startReview("reading", { type: "uncommittedChanges" }),
+  ).rejects.toThrow("已归档");
+  expect(f.request).not.toHaveBeenCalled();
+});
+
+test("external archiving keeps the current thread but removes background archived threads", async () => {
+  const f = fixture();
+  f.request.mockResolvedValueOnce({
+    thread: { ...thread("reading"), turns: [turn("done")] },
+  });
+  await f.sessions.open("reading");
+  f.request.mockResolvedValueOnce({
+    data: [thread("background")],
+    nextCursor: null,
+  });
+  await f.sessions.refresh();
+  f.notify({ method: "thread/archived", params: { threadId: "background" } });
+  expect(f.sessions.getSnapshot().threads.background).toBeUndefined();
+  expect(f.sessions.getSnapshot().selectedId).toBe("reading");
+  f.notify({ method: "thread/archived", params: { threadId: "reading" } });
+  expect(f.sessions.getSnapshot().threads.reading).toBeDefined();
+  expect(f.sessions.getSnapshot().selectedId).toBe("reading");
+  expect(f.sessions.getSnapshot().archivedIds).toEqual({
+    background: true,
+    reading: true,
+  });
+});
+
+test("restoration immediately restores local visibility without granting writer access or requiring a notification", async () => {
+  const f = fixture();
+  const source = { ...thread("reading"), turns: [turn("keep")] };
+  f.request.mockResolvedValueOnce({ thread: source });
+  await f.sessions.open("reading");
+  f.notify({ method: "thread/archived", params: { threadId: "reading" } });
+  f.request.mockResolvedValueOnce({ thread: { ...source, turns: [] } });
+  await f.sessions.unarchive("reading");
+  expect(f.sessions.getSnapshot().archivedIds.reading).toBeUndefined();
+  expect(f.sessions.getSnapshot().listIds).toContain("reading");
+  expect(f.sessions.getSnapshot().selectedId).toBe("reading");
+  expect(f.sessions.getSnapshot().threadAccess.reading).toBe("viewing");
+  expect(
+    f.sessions.getSnapshot().threads.reading.turns.map((turn) => turn.id),
+  ).toEqual(["keep"]);
+  f.request.mockRejectedValueOnce(new Error("list offline"));
+  await expect(f.sessions.refresh()).rejects.toThrow("list offline");
+  expect(f.sessions.getSnapshot().listIds).toContain("reading");
+  expect(f.sessions.getSnapshot().archivedIds.reading).toBeUndefined();
 });

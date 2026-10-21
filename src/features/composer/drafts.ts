@@ -1,3 +1,4 @@
+import { readDrafts, writeDrafts } from "./draft-storage";
 import type { UserInput } from "../../generated/v2/UserInput";
 import { restoredMessage } from "./restore-message";
 import { textDocument, documentApps } from "./editor-document";
@@ -10,12 +11,14 @@ export interface DraftImage {
   url: string;
 }
 export interface Draft {
+  persistenceWarning?: string;
   text: string;
   images: DraftImage[];
   revision: number;
   skills?: { name: string; path: string }[];
   document?: JSONContent;
   restored?: {
+    source?: "draft" | "message";
     id: string;
     preserved: boolean;
     unavailableAttachments: boolean;
@@ -30,13 +33,29 @@ export class DraftsStore extends Store<Record<string, Draft>> {
   constructor() {
     super({});
   }
+  protected override update(state: Record<string, Draft>): void {
+    const persisted = writeDrafts(this.scope, state);
+    const persistenceWarning = persisted
+      ? undefined
+      : "浏览器存储不可用或草稿超过容量，本次修改仅保留在当前页面。";
+    super.update(
+      Object.fromEntries(
+        Object.entries(state).map(([id, draft]) => [
+          id,
+          draft.persistenceWarning === persistenceWarning
+            ? draft
+            : { ...draft, persistenceWarning },
+        ]),
+      ),
+    );
+  }
   activateScope(scope: string): void {
     if (scope === this.scope) return;
     this.scopes.set(this.scope, this.state);
     this.aliasScopes.set(this.scope, this.aliases);
     this.scope = scope;
     this.aliases = this.aliasScopes.get(scope) ?? new Map();
-    this.update(this.scopes.get(scope) ?? {});
+    this.update(this.scopes.get(scope) ?? readDrafts(scope));
   }
   get(threadId: string): Draft {
     return this.state[this.resolveId(threadId)] ?? emptyDraft();
@@ -86,7 +105,12 @@ export class DraftsStore extends Store<Record<string, Draft>> {
     });
   }
   restoreMessage(threadId: string, content: UserInput[]): void {
-    const original = restoredMessage(content);
+    this.restoreDraft(threadId, restoredMessage(content));
+  }
+  restoreDraft(
+    threadId: string,
+    original: Omit<Draft, "revision"> & { unavailableAttachments?: boolean },
+  ): void {
     const existing = this.get(threadId);
     const preserved = !!existing.text.trim() || existing.images.length > 0;
     const appendText = !!existing.text && existing.text !== original.text;
@@ -97,7 +121,9 @@ export class DraftsStore extends Store<Record<string, Draft>> {
       ? {
           type: "doc",
           content: [
-            ...(original.text ? original.document?.content || [] : []),
+            ...(original.text
+              ? (original.document || textDocument(original.text)).content || []
+              : []),
             ...(original.text ? [{ type: "paragraph" }] : []),
             ...((existing.document || textDocument(existing.text)).content ||
               []),
@@ -123,9 +149,12 @@ export class DraftsStore extends Store<Record<string, Draft>> {
         ).values(),
       ],
       restored: {
+        source: "message",
         id: crypto.randomUUID(),
         preserved,
-        unavailableAttachments: original.unavailableAttachments,
+        unavailableAttachments:
+          original.unavailableAttachments === true ||
+          original.restored?.unavailableAttachments === true,
       },
     });
   }

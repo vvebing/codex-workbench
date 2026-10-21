@@ -6,6 +6,7 @@ import { attachBridge, type BridgeOptions } from "./bridge.js";
 import type { AppServerOutput } from "./app-server.js";
 import { allowedHost } from "./request-policy.js";
 import { SECURITY_HEADERS } from "./security-headers.js";
+import { serveCodexRelease } from "./codex-release.js";
 
 export interface WorkbenchServerOptions extends BridgeOptions {
   staticDir?: string;
@@ -55,6 +56,10 @@ export function createWorkbenchServer(options: WorkbenchServerOptions = {}) {
           },
         ),
       );
+      return;
+    }
+    if (req.url === "/codex-release") {
+      await serveCodexRelease(server, req, res);
       return;
     }
     if (req.url === "/healthz") {

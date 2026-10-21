@@ -28,7 +28,7 @@ export function ContextUsage({ usage }: { usage?: ThreadTokenUsage }) {
       <Popover.Trigger asChild>
         <button
           type="button"
-          className={`flex min-h-[30px] shrink-0 items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-[11px] tabular-nums hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-[550px]:min-h-10 max-[550px]:px-1 max-[550px]:text-[10px] ${percent !== null && percent >= 80 ? "text-warning" : "text-muted"}`}
+          className={`flex min-h-[30px] shrink-0 items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta tabular-nums hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-[550px]:min-h-10 max-[550px]:px-1 max-[550px]:text-fine ${percent !== null && percent >= 80 ? "text-warning" : "text-muted"}`}
           aria-label={`上下文使用量：${percent === null ? "待更新" : `${percent}%`}`}
           onClick={(event) => {
             event.preventDefault();
@@ -63,7 +63,7 @@ export function ContextUsage({ usage }: { usage?: ThreadTokenUsage }) {
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
-          className="z-[100] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto w-[min(300px,calc(100vw-24px))] rounded-xl border border-border bg-elevated px-4 py-3.5 text-xs leading-[1.6] text-muted shadow-lg"
+          className="z-[100] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto w-[min(300px,calc(100vw-24px))] rounded-xl border border-border bg-elevated px-4 py-3.5 text-xs leading-help text-muted shadow-lg"
           side="top"
           align="end"
           sideOffset={10}
@@ -75,7 +75,7 @@ export function ContextUsage({ usage }: { usage?: ThreadTokenUsage }) {
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}
         >
-          <strong className="text-[13px] text-foreground">上下文使用量</strong>
+          <strong className="text-control text-foreground">上下文使用量</strong>
           {known ? (
             <>
               <p className="mt-1.5 text-foreground tabular-nums">
@@ -96,7 +96,7 @@ export function ContextUsage({ usage }: { usage?: ThreadTokenUsage }) {
                 : `已用 ${formatTokens(used)} tokens；服务端尚未提供上下文上限。`}
             </p>
           )}
-          <p className="mt-2.5 border-t border-border pt-2.5 text-[11px]">
+          <p className="mt-2.5 border-t border-border pt-2.5 text-meta">
             根据最近一次模型请求的用量更新，包含输入与输出，不代表累计消耗。当前草稿尚未计入。
           </p>
         </Popover.Content>

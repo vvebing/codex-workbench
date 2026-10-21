@@ -1,12 +1,13 @@
+import type { CodexClient } from "../../lib/rpc";
 import type { Thread } from "../../generated/v2/Thread";
 import type { ThreadListResponse } from "../../generated/v2/ThreadListResponse";
+import type { ThreadReadResponse } from "../../generated/v2/ThreadReadResponse";
 import { ROOT_THREAD_SOURCES } from "../sessions/list";
 import { isSubagentThread } from "../sessions/state";
 import { Store, errorMessage } from "../../lib/store";
+import { sessionIdQuery } from "./search-results";
 
-export interface HistorySearchClient {
-  request<T>(method: string, params: unknown): Promise<T>;
-}
+export type HistorySearchClient = Pick<CodexClient, "request">;
 
 /** Dialog-owned results: searching never changes sidebar discovery or access. */
 export class HistorySearch extends Store<{
@@ -26,6 +27,7 @@ export class HistorySearch extends Store<{
     super({ threads: [], nextCursor: null, loading: true, error: null });
   }
   start(): void {
+    clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.load(false), 250);
   }
   dispose(): void {
@@ -44,6 +46,24 @@ export class HistorySearch extends Store<{
     if (!append) this.cursors.clear();
     this.update({ ...this.state, loading: true, error: null });
     try {
+      const threadId = sessionIdQuery(this.query);
+      if (threadId) {
+        const { thread } = await this.client.request<ThreadReadResponse>(
+          "thread/read",
+          { threadId, includeTurns: false },
+        );
+        if (generation !== this.generation || !this.current()) return;
+        const exact = [thread.id, thread.sessionId].some(
+          (id) => id?.toLowerCase() === threadId,
+        );
+        this.update({
+          threads: exact && !isSubagentThread(thread) ? [thread] : [],
+          nextCursor: null,
+          loading: false,
+          error: null,
+        });
+        return;
+      }
       const page = await this.client.request<ThreadListResponse>(
         "thread/list",
         {
@@ -80,6 +100,20 @@ export class HistorySearch extends Store<{
       });
     } catch (error) {
       if (generation !== this.generation || !this.current()) return;
+      if (
+        sessionIdQuery(this.query) &&
+        /no such thread|thread[^\n]*(?:not found|does not exist)|会话不存在/i.test(
+          errorMessage(error),
+        )
+      ) {
+        this.update({
+          threads: [],
+          nextCursor: null,
+          loading: false,
+          error: null,
+        });
+        return;
+      }
       this.update({
         ...this.state,
         loading: false,

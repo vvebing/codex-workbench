@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { FileWorkspaceStore } from "../../src/features/files/store";
+import type { SessionsStore } from "../../src/features/sessions/store";
 import type { ConnectionStore } from "../../src/features/connection/store";
 import { workspaceGitStore } from "../../src/features/shell/workspace-git";
 
@@ -10,7 +12,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
-function fixture() {
+function fixture(roots: Record<string, string> = {}) {
   vi.useFakeTimers();
   vi.stubGlobal("window", {
     addEventListener: vi.fn(),
@@ -31,9 +33,16 @@ function fixture() {
     },
     getSnapshot: () => state,
     client: {
-      request: (method: string, params: { command?: string[] }) =>
+      request: (
+        method: string,
+        params: { command?: string[]; cwd?: string },
+      ) =>
         params.command?.includes("rev-parse")
-          ? Promise.resolve({ exitCode: 0, stdout: "/repo\n", stderr: "" })
+          ? Promise.resolve({
+              exitCode: 0,
+              stdout: `${roots[params.cwd ?? ""] ?? "/repo"}\n`,
+              stderr: "",
+            })
           : request(method, params),
       onNotification: vi.fn(() => vi.fn()),
     },
@@ -90,6 +99,7 @@ describe("shared workspace Git status", () => {
     );
     const old = workspaceGitStore(connection, "/repo", 1, 1);
     const off = old.subscribe(vi.fn());
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
     state.scope = 2;
     const next = workspaceGitStore(connection, "/repo", 1, 2);
     expect(next).not.toBe(old);
@@ -117,7 +127,7 @@ describe("shared workspace Git status", () => {
     expect(request).toHaveBeenCalledTimes(1);
     off();
   });
-  it("clears successful state on disconnect and after a failed refresh", async () => {
+  it("retains successful state after a failed refresh and clears on disconnect", async () => {
     const { state, request, connection, emit } = fixture();
     request.mockResolvedValue({
       exitCode: 0,
@@ -131,12 +141,261 @@ describe("shared workspace Git status", () => {
     );
     request.mockRejectedValueOnce(new Error("offline"));
     await store.refresh();
-    expect(store.getSnapshot().value).toBeUndefined();
+    expect(store.getSnapshot().value?.repoRoot).toBe("/repo");
+    expect(store.getSnapshot().failed).toBe(true);
     await store.refresh();
     expect(store.getSnapshot().value).toBeDefined();
     state.status = "disconnected";
     emit();
     expect(store.getSnapshot().value).toBeUndefined();
     off();
+  });
+  it("deduplicates revision invalidations and retains an unchanged snapshot and root", async () => {
+    const { request, connection } = fixture();
+    request.mockResolvedValue({
+      exitCode: 0,
+      stdout: "# branch.head main\0",
+      stderr: "",
+    });
+    const command = vi.spyOn(connection.client, "request");
+    const store = workspaceGitStore(connection, "/repo", 1, 1);
+    const off = store.subscribe(vi.fn());
+    await vi.waitFor(() => expect(store.getSnapshot().loading).toBe(false));
+    const snapshot = store.getSnapshot();
+    store.observeRevision(1);
+    store.observeRevision(1);
+    store.observeRevision(1);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(store.getSnapshot()).toBe(snapshot);
+    expect(
+      command.mock.calls.filter(([, params]) =>
+        (params as { command?: string[] }).command?.includes("rev-parse"),
+      ),
+    ).toHaveLength(1);
+    off();
+  });
+  it("invalidates clean-file baselines when HEAD changes with no changed files", async () => {
+    const { request, connection } = fixture();
+    request.mockResolvedValue({
+      exitCode: 0,
+      stdout: "# branch.head main\0# branch.oid aaa\0",
+      stderr: "",
+    });
+    const store = workspaceGitStore(connection, "/repo", 1, 1);
+    const off = store.subscribe(vi.fn());
+    await vi.waitFor(() => expect(store.getSnapshot().loading).toBe(false));
+    expect(store.getSnapshot().head).toBe("aaa");
+    const value = store.getSnapshot().value;
+    request.mockResolvedValue({
+      exitCode: 0,
+      stdout: "# branch.head main\0# branch.oid bbb\0",
+      stderr: "",
+    });
+    await store.refresh();
+    expect(store.getSnapshot().head).toBe("bbb");
+    expect(store.getSnapshot().value).toBe(value);
+    expect(store.getSnapshot().value?.files).toEqual([]);
+    off();
+  });
+  it("shares one status read for sibling directories and physical path aliases", async () => {
+    const { connection, request } = fixture({
+      "/repo/src": "/repo",
+      "/repo/tests": "/repo",
+      "/alias": "/repo",
+    });
+    request.mockResolvedValue({
+      exitCode: 0,
+      stdout: "# branch.head main\0",
+      stderr: "",
+    });
+    const command = vi.spyOn(connection.client, "request");
+    const handles = ["/repo/src", "/repo/tests", "/alias"].map((cwd) =>
+      workspaceGitStore(connection, cwd, 1, 1),
+    );
+    const offs = handles.map((handle) => handle.subscribe(vi.fn()));
+    await vi.waitFor(() =>
+      expect(handles.every((handle) => !handle.getSnapshot().loading)).toBe(
+        true,
+      ),
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(
+      command.mock.calls
+        .filter(([, args]) =>
+          (args as { command?: string[] }).command?.includes("status"),
+        )
+        .map(([, args]) => (args as { cwd: string }).cwd),
+    ).toEqual(["/repo"]);
+    expect(handles[0].getSnapshot()).toBe(handles[1].getSnapshot());
+    expect(handles[1].getSnapshot()).toBe(handles[2].getSnapshot());
+    offs.forEach((off) => off());
+  });
+  it("keeps linked worktrees and nested submodules separate", async () => {
+    const { connection, request } = fixture({
+      "/repo/src": "/repo",
+      "/worktrees/other/src": "/worktrees/other",
+      "/repo/submodule/src": "/repo/submodule",
+    });
+    request.mockResolvedValue({
+      exitCode: 0,
+      stdout: "# branch.head main\0",
+      stderr: "",
+    });
+    const handles = [
+      "/repo/src",
+      "/worktrees/other/src",
+      "/repo/submodule/src",
+    ].map((cwd) => workspaceGitStore(connection, cwd, 1, 1));
+    const offs = handles.map((handle) => handle.subscribe(vi.fn()));
+    await vi.waitFor(() =>
+      expect(handles.every((handle) => !handle.getSnapshot().loading)).toBe(
+        true,
+      ),
+    );
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(
+      handles.map((handle) => handle.getSnapshot().value?.repoRoot),
+    ).toEqual(["/repo", "/worktrees/other", "/repo/submodule"]);
+    offs.forEach((off) => off());
+  });
+  it("rejects root resolutions from an old connection and deduplicates concurrent resolution", async () => {
+    const { connection, request, state, emit } = fixture();
+    let finish!: (value: unknown) => void;
+    const command = vi.spyOn(connection.client, "request").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }) as never,
+    );
+    const first = workspaceGitStore(connection, "/repo/src", 1, 1);
+    const off = first.subscribe(vi.fn());
+    const offAgain = first.subscribe(vi.fn());
+    expect(command).toHaveBeenCalledTimes(1);
+    state.epoch++;
+    emit();
+    finish({ exitCode: 0, stdout: "/repo\n", stderr: "" });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(request).not.toHaveBeenCalled();
+    expect(first.getSnapshot().value).toBeUndefined();
+    off();
+    offAgain();
+  });
+  it("invalidates for another session in the same worktree but excludes a nested submodule", async () => {
+    const { connection, request } = fixture({
+      "/repo/src": "/repo",
+      "/repo/tests": "/repo",
+      "/repo/submodule": "/repo/submodule",
+    });
+    request.mockResolvedValue({
+      exitCode: 0,
+      stdout: "# branch.head main\0",
+      stderr: "",
+    });
+    const handle = workspaceGitStore(connection, "/repo/src", 1, 1);
+    handle.sessions = {
+      getSnapshot: () => ({
+        threads: {
+          sibling: { cwd: "/repo/tests" },
+          submodule: { cwd: "/repo/submodule" },
+        },
+      }),
+    } as unknown as SessionsStore;
+    const off = handle.subscribe(vi.fn());
+    await vi.waitFor(() => expect(handle.getSnapshot().loading).toBe(false));
+    const notify = vi.mocked(connection.client.onNotification).mock.calls[0][0];
+    notify({
+      method: "turn/completed",
+      params: { threadId: "sibling" },
+    } as never);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(request).toHaveBeenCalledTimes(2);
+    notify({
+      method: "turn/diff/updated",
+      params: { threadId: "submodule" },
+    } as never);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(request).toHaveBeenCalledTimes(2);
+    off();
+  });
+  it("resubscribes while root discovery is still pending without losing the eventual read", async () => {
+    const { connection, request } = fixture();
+    request.mockResolvedValue({
+      exitCode: 0,
+      stdout: "# branch.head main\0",
+      stderr: "",
+    });
+    const original = connection.client.request;
+    let finish!: (value: unknown) => void;
+    vi.spyOn(connection.client, "request").mockImplementation(((
+      ...call: Parameters<typeof original>
+    ) =>
+      call[0] === "command/exec" && call[1].command.includes("rev-parse")
+        ? new Promise((resolve) => {
+            finish = (value) => resolve(value as never);
+          })
+        : original(...call)) as typeof original);
+    const handle = workspaceGitStore(connection, "/repo/src", 1, 1);
+    const off = handle.subscribe(vi.fn());
+    off();
+    const offAgain = handle.subscribe(vi.fn());
+    finish({ exitCode: 0, stdout: "/repo\n", stderr: "" });
+    await vi.waitFor(() => expect(handle.getSnapshot().loading).toBe(false));
+    expect(request).toHaveBeenCalledTimes(1);
+    offAgain();
+  });
+  it("resolves alias mutation paths to their worktree and excludes submodule mutations", async () => {
+    const { connection, request } = fixture({
+      "/repo/src": "/repo",
+      "/alias": "/repo\nsrc/",
+      "/repo/submodule": "/repo/submodule",
+    });
+    request.mockResolvedValue({
+      exitCode: 0,
+      stdout: "# branch.head main\0",
+      stderr: "",
+    });
+    let changedPaths = ["/alias/a.ts", "/alias/b.ts"];
+    const handle = workspaceGitStore(connection, "/repo/src", 1, 1);
+    handle.files = {
+      getSnapshot: () => ({ revision: 0, changedPaths }),
+      subscribe: () => () => {},
+    } as unknown as FileWorkspaceStore;
+    const command = vi.spyOn(connection.client, "request");
+    const off = handle.subscribe(vi.fn());
+    await vi.waitFor(() => expect(handle.getSnapshot().loading).toBe(false));
+    handle.observeRevision(1);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(
+      command.mock.calls.filter(
+        ([, args]) => (args as { cwd?: string }).cwd === "/alias",
+      ),
+    ).toHaveLength(1);
+    changedPaths = ["/repo/submodule/a.ts"];
+    handle.observeRevision(2);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(request).toHaveBeenCalledTimes(2);
+    off();
+  });
+  it("caches root failures briefly and permits immediate manual retry", async () => {
+    const { connection } = fixture();
+    const command = vi.spyOn(connection.client, "request").mockResolvedValue({
+      exitCode: 1,
+      stdout: "",
+      stderr: "not a repository",
+    } as never);
+    const handle = workspaceGitStore(connection, "/not-repo", 1, 1);
+    const off = handle.subscribe(vi.fn());
+    await vi.waitFor(() => expect(handle.getSnapshot().failed).toBe(true));
+    off();
+    const offAgain = handle.subscribe(vi.fn());
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(command).toHaveBeenCalledTimes(1);
+    await handle.refresh();
+    expect(command).toHaveBeenCalledTimes(2);
+    offAgain();
   });
 });

@@ -1,5 +1,9 @@
-import { useRef, useState } from "react";
-import { useStore } from "../../components/hooks";
+import {
+  selectComposerSession,
+  sameComposerSession,
+} from "./session-selection";
+import { useMemo, useRef, useState } from "react";
+import { useStore, useStoreSelector } from "../../components/hooks";
 import { useRuntime } from "../../lib/runtime-context";
 import { errorMessage } from "../../lib/store";
 import type { ReasoningEffort } from "../../generated/ReasoningEffort";
@@ -8,11 +12,13 @@ import { conversationCapabilities, draftCommand } from "./capabilities";
 import { commands } from "./Completions";
 import { getDefaultModel, useDefaultModel } from "../settings/model-preference";
 import { composerModel } from "./model";
+import { approvalOptions } from "./approval-policy";
+import { pendingAsyncQuestions } from "../conversation/async-questions";
 
 interface Selection {
   chosenModel: string;
   chosenEffort?: ReasoningEffort;
-  policy: AskForApproval;
+  policyChoices?: Record<string, AskForApproval | undefined>;
 }
 type CommandAction = "skills" | "mention" | "model" | "permissions";
 
@@ -23,12 +29,22 @@ export function useComposerSession(
 ) {
   const runtime = useRuntime();
   const connection = useStore(runtime.connection);
-  const sessions = useStore(runtime.sessions);
+  const selectSession = useMemo(
+    () => (state: ReturnType<typeof runtime.sessions.getSnapshot>) =>
+      selectComposerSession(state, threadId),
+    [runtime, threadId],
+  );
+  const { sessions } = useStoreSelector(
+    runtime.sessions,
+    selectSession,
+    sameComposerSession,
+  );
   useDefaultModel();
   useStore(runtime.drafts);
   useStore(runtime.requests);
   useStore(runtime.submissions);
   useStore(runtime.queue);
+  useStore(runtime.questionDismissals);
   const [commandPending, setCommandPending] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
@@ -50,13 +66,28 @@ export function useComposerSession(
       commandLock.current ||
       runtime.submissions.isSending(id) ||
       !runtime.queue.getSnapshot().ready;
-    const waiting = runtime.requests.forThread(id).length > 0;
+    const requests = runtime.requests.forThread(id);
+    const waiting = requests.length > 0;
+    const inputRequest = requests.find(
+      (request) => request.method === "item/tool/requestUserInput",
+    );
+    const queue = runtime.queue.forThread(id);
+    const asyncQuestion =
+      thread &&
+      pendingAsyncQuestions(thread).find(
+        (item) =>
+          !runtime.questionDismissals.isIgnored(id, item.id) &&
+          !queue.sentAnswers?.[item.id] &&
+          !queue.items.some((task) => task.question?.itemId === item.id),
+      );
     return {
       id,
       draft,
       thread,
       access,
       waiting,
+      inputRequest,
+      asyncQuestion,
       sending,
       localDraft: !!state.localDrafts[id],
       connected: connection.status === "connected",
@@ -75,7 +106,9 @@ export function useComposerSession(
         thread,
         selection.chosenModel,
         selection.chosenEffort,
-        state.localDrafts[id] ? getDefaultModel() : "",
+        state.localDrafts[id]
+          ? state.localDrafts[id].options.model || getDefaultModel()
+          : "",
         !!state.localDrafts[id],
       ),
     };
@@ -161,7 +194,11 @@ export function useComposerSession(
         {
           ...(state.modelId ? { model: state.modelId } : {}),
           ...(state.effort ? { effort: state.effort } : {}),
-          approvalPolicy: selection.policy,
+          ...approvalOptions(
+            selection.policyChoices?.[
+              JSON.stringify([connection.scope, threadId])
+            ],
+          ),
         },
         mode,
       );

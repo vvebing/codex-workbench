@@ -51,15 +51,17 @@ export function SettingsDialog({
   open,
   onOpenChange,
   onRestored,
+  initialSection = "general",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRestored: (id: string) => void;
+  initialSection?: "general" | "activity";
 }) {
   const state = useStore(environments);
   const active = environments.active();
   const narrow = useNarrow();
-  const [section, setSection] = useState("general");
+  const [section, setSection] = useState<string>(initialSection);
   const [environmentPage, setEnvironmentPage] =
     useState<EnvironmentPage>("connection");
   const sessionSettings = useSessionSettings(open);
@@ -71,10 +73,10 @@ export function SettingsDialog({
   });
   useEffect(() => {
     if (open) {
-      setSection("general");
+      setSection(initialSection);
       setEnvironmentPage("connection");
     }
-  }, [open]);
+  }, [open, initialSection]);
   const current = sections.find((entry) => entry.value === section)!;
   const managesEnvironment =
     section === "connections" || section === "activity";
@@ -109,7 +111,7 @@ export function SettingsDialog({
               key={value}
               value={value}
               disabled={connectionSettings.busy}
-              className="flex min-h-10 min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] text-muted hover:bg-hover data-[state=active]:bg-selected data-[state=active]:font-semibold data-[state=active]:text-accent max-[900px]:min-h-11 max-[900px]:justify-center max-[900px]:px-2 max-[550px]:text-xs"
+              className="flex min-h-10 min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-control text-muted hover:bg-hover data-[state=active]:bg-selected data-[state=active]:font-semibold data-[state=active]:text-accent max-[900px]:min-h-11 max-[900px]:justify-center max-[900px]:px-2 max-[550px]:text-xs"
             >
               <Icon
                 className="max-[550px]:hidden"

@@ -54,6 +54,33 @@ const delta = (
 });
 
 describe("conversation stream state", () => {
+  it("updates project assignment without replacing workspace or conversation content", () => {
+    const initial = mergeThread(emptyState(), {
+      ...thread([turn()]),
+      projectId: "before",
+    });
+    const event: RpcNotification = {
+      method: "thread/project/updated",
+      params: { threadId: "thread", projectId: "after" },
+    };
+    const next = reduceNotification(initial, event);
+    expect(next.threads.thread.projectId).toBe("after");
+    expect(next.threads.thread.cwd).toBe(initial.threads.thread.cwd);
+    expect(next.threads.thread.turns).toBe(initial.threads.thread.turns);
+    expect(reduceNotification(next, event)).toBe(next);
+    expect(
+      reduceNotification(next, {
+        method: "thread/project/updated",
+        params: { threadId: "thread", projectId: null },
+      }).threads.thread.projectId,
+    ).toBeNull();
+    expect(
+      reduceNotification(next, {
+        method: "thread/project/updated",
+        params: { threadId: "unknown", projectId: "other" },
+      }),
+    ).toBe(next);
+  });
   it("keeps a confirmed interruption terminal even without a completion timestamp", () => {
     const active = mergeThread(emptyState(), thread([turn()]));
     const stopped = reduceNotification(active, {

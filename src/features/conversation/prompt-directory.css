@@ -1,0 +1,74 @@
+.prompt-directory-controls {
+  position: absolute;
+  top: 8px;
+  right: 18px;
+  z-index: 10;
+  display: flex;
+  gap: 6px;
+}
+.prompt-directory-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--foreground);
+  font-size: var(--text-caption);
+  box-shadow: 0 2px 8px var(--shadow-color);
+}
+.prompt-directory-trigger:hover {
+  background: var(--hover);
+}
+.prompt-directory-panel {
+  z-index: 60;
+  width: min(340px, calc(100vw - 24px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--foreground);
+  box-shadow: var(--shadow-dialog);
+}
+.prompt-directory-scroll {
+  max-height: min(55vh, 480px);
+}
+.prompt-directory-list {
+  padding: 0 12px 6px 6px;
+}
+.prompt-directory-entry {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 6px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  text-align: left;
+  align-items: baseline;
+}
+.prompt-directory-entry:hover {
+  background: var(--hover);
+}
+.prompt-directory-entry[aria-current] {
+  background: var(--selected);
+  color: var(--accent);
+}
+[data-slot="conversation-timeline-shell"]:has(.prompt-directory-controls)
+  .conversation-content {
+  padding-top: 56px;
+}
+@media (max-width: 600px) {
+  .prompt-directory-controls {
+    right: 12px;
+  }
+  .prompt-directory-trigger {
+    min-height: 40px;
+  }
+  .prompt-directory-panel {
+    width: calc(100vw - 24px);
+  }
+  .prompt-directory-entry {
+    min-height: 48px;
+  }
+}

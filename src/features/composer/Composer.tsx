@@ -9,7 +9,7 @@ import {
 } from "../../components/ui";
 import { Completions, type Completion } from "./Completions";
 import { completionToken } from "./completion-token";
-import { useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import {
   ArrowUp,
   Square,
@@ -32,7 +32,14 @@ import { QueuedTasks } from "./QueuedTasks";
 
 import type { ReasoningEffort } from "../../generated/ReasoningEffort";
 import type { AskForApproval } from "../../generated/v2/AskForApproval";
+import { approvalOptions } from "./approval-policy";
 const policies = [
+  {
+    value: "inherit",
+    name: "继承会话策略",
+    description:
+      "来源：服务端会话配置；新会话使用服务端默认。当前有效策略未核实。",
+  },
   {
     value: "on-request",
     name: "按需审批",
@@ -57,7 +64,7 @@ const efforts: Record<string, string> = {
   high: "高",
   xhigh: "极高",
 };
-export function Composer({
+export const Composer = memo(function Composer({
   threadId,
   onInspectAgent,
 }: {
@@ -66,7 +73,9 @@ export function Composer({
 }) {
   const [chosenModel, setChosenModel] = useState("");
   const [chosenEffort, setChosenEffort] = useState<ReasoningEffort>();
-  const [policy, setPolicy] = useState<AskForApproval>("on-request");
+  const [policyChoices, setPolicyChoices] = useState<
+    Record<string, AskForApproval | undefined>
+  >({});
   const [reading, setReading] = useState(false);
   const {
     runtime,
@@ -78,6 +87,8 @@ export function Composer({
     access,
     connected,
     waiting,
+    inputRequest,
+    asyncQuestion,
     modelId,
     model,
     effort,
@@ -92,10 +103,24 @@ export function Composer({
     stop,
   } = useComposerSession(
     threadId,
-    { chosenModel, chosenEffort, policy },
+    { chosenModel, chosenEffort, policyChoices },
     reading,
   );
-  const { running, executing, hasContent, showStop } = capabilities;
+  const policyKey = JSON.stringify([connection.scope, threadId]);
+  const policy = policyChoices[policyKey];
+  const { running, executing, hasContent } = capabilities;
+  const showStop = capabilities.showStop && !inputRequest;
+  function goToQuestion() {
+    const attribute = inputRequest
+      ? "data-question-request-id"
+      : "data-async-question-id";
+    const id = String(inputRequest?.id ?? asyncQuestion?.id ?? "");
+    const card = Array.from(
+      document.querySelectorAll<HTMLElement>(`[${attribute}]`),
+    ).find((element) => element.getAttribute(attribute) === id);
+    card?.scrollIntoView({ behavior: "smooth", block: "center" });
+    card?.focus({ preventScroll: true });
+  }
   const queueing =
     !!running || runtime.queue.forThread(threadId).items.length > 0;
   const runningSendMode = useRunningSendMode();
@@ -242,10 +267,13 @@ export function Composer({
     }
   }
   return (
-    <div className="mx-auto w-full min-w-0 max-w-[840px] shrink-0 px-7 pb-[13px] max-[550px]:px-2.5 max-[550px]:pb-2">
+    <div
+      data-slot="conversation-composer"
+      className="conversation-content shrink-0 pb-3 @max-[550px]/conversation:pb-2"
+    >
       <div
         data-slot="composer-status"
-        className="flex min-h-7 items-center gap-[7px] px-[5px] text-[10px] text-subtle max-[550px]:min-h-[25px]"
+        className="flex min-h-7 items-center gap-[7px] px-[5px] text-fine text-subtle @max-[550px]/conversation:min-h-[25px]"
         role="status"
       >
         {readOnly ? (
@@ -277,6 +305,8 @@ export function Composer({
                 ? "会话正在执行 · 发送时确认是否可继续"
                 : "查看历史 · 发送消息后继续会话"}
           </span>
+        ) : inputRequest ? (
+          <span>请先在问题卡片中回答 · 下方普通消息草稿会保留</span>
         ) : waiting ? (
           <>
             <span className="inline-block size-1.5 shrink-0 rounded-full bg-warning" />
@@ -293,13 +323,43 @@ export function Composer({
         ) : (
           <span>
             {draft.restored
-              ? `${draft.restored.preserved ? "原消息已恢复，未发送草稿已保留" : "原消息已恢复，可修改后发送"}${draft.restored.unavailableAttachments ? " · 部分附件需重新添加" : ""}${sessions.historySyncError ? " · 历史暂未刷新" : ""}`
+              ? `${draft.restored.source === "draft" ? "草稿已恢复，可修改后发送" : draft.restored.preserved ? "原消息已恢复，未发送草稿已保留" : "原消息已恢复，可修改后发送"}${sessions.historySyncError ? " · 历史暂未刷新" : ""}`
               : connected
                 ? "准备就绪"
                 : "连接后即可发送消息"}
           </span>
         )}
       </div>
+      {(draft.persistenceWarning || sessions.draftPersistenceWarning) && (
+        <div className="mb-2 px-[5px] text-xs text-warning" role="status">
+          {draft.persistenceWarning || sessions.draftPersistenceWarning}
+        </div>
+      )}
+      {draft.restored?.unavailableAttachments && (
+        <div className="mb-2 px-[5px] text-xs text-muted" role="status">
+          草稿已恢复 · 图片附件需重新添加
+        </div>
+      )}
+      {(inputRequest || asyncQuestion) && (
+        <div
+          className="mb-2 flex flex-wrap items-center gap-2 px-[5px] text-xs text-muted"
+          role="status"
+        >
+          <span>
+            {inputRequest
+              ? "回答请在问题卡片中提交；此输入框保留普通消息草稿。"
+              : `有待回答问题。下方输入框发送普通消息，${defaultSteering ? "立即引导当前任务" : queueing ? "加入任务队列" : "发送到会话"}；回答请使用问题卡片。`}
+          </span>
+          <Button
+            type="button"
+            variant="quiet"
+            size="sm"
+            onClick={goToQuestion}
+          >
+            前往问题卡片回答
+          </Button>
+        </div>
+      )}
       <QueuedTasks key={`${connection.url}-${threadId}`} threadId={threadId} />
       <form
         className={`relative overflow-hidden rounded-[15px] border bg-elevated shadow-sm focus-within:border-accent/60 focus-within:ring-[3px] focus-within:ring-accent/10 ${dragging ? "border-accent ring-[3px] ring-accent/20" : "border-border"}`}
@@ -360,7 +420,7 @@ export function Composer({
               {draft.images.map((image) => (
                 <div
                   data-slot="attachment"
-                  className="flex shrink-0 items-center gap-[7px] rounded-lg border border-border p-1 text-[11px]"
+                  className="flex shrink-0 items-center gap-[7px] rounded-lg border border-border p-1 text-meta"
                   key={image.id}
                 >
                   <button
@@ -407,11 +467,19 @@ export function Composer({
           placeholder={
             readOnly
               ? "其他客户端正在使用此会话，可在这里查看输出"
-              : queueing
-                ? defaultSteering
-                  ? "补充当前任务的要求，Enter 立即引导；Shift+Enter 换行…"
-                  : "输入下一项任务，Enter 排队；Shift+Enter 换行…"
-                : "描述任务，/ 命令 · $ 技能 · @ 文件；可粘贴图片…"
+              : inputRequest
+                ? "普通消息草稿 · 请先前往问题卡片回答…"
+                : asyncQuestion
+                  ? defaultSteering
+                    ? "普通消息 · Enter 立即引导；回答请前往问题卡片…"
+                    : queueing
+                      ? "普通消息 · Enter 排队；回答请前往问题卡片…"
+                      : "普通消息 · Enter 发送；回答请前往问题卡片…"
+                  : queueing
+                    ? defaultSteering
+                      ? "补充当前任务的要求，Enter 立即引导；Shift+Enter 换行…"
+                      : "输入下一项任务，Enter 排队；Shift+Enter 换行…"
+                    : "描述任务，/ 命令 · $ 技能 · @ 文件；可粘贴图片…"
           }
           onChange={(document, text, skills) => {
             runtime.drafts.setDocument(threadId, document, text, skills);
@@ -476,7 +544,7 @@ export function Composer({
             }
           }}
         />
-        <div className="@container flex flex-wrap items-center gap-[3px] px-[9px] pt-2 pb-[9px] max-[550px]:gap-0 max-[550px]:px-[7px] max-[550px]:pt-[5px] max-[550px]:pb-2">
+        <div className="@container flex flex-wrap items-center gap-[3px] px-[9px] pt-2 pb-[9px] @max-[550px]/conversation:gap-0 @max-[550px]/conversation:px-[7px] @max-[550px]/conversation:pt-[5px] @max-[550px]/conversation:pb-2">
           <input
             hidden
             ref={input}
@@ -507,19 +575,35 @@ export function Composer({
               <button
                 data-slot="policy-choice"
                 type="button"
-                className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-[11px] text-muted hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 max-[550px]:min-h-10 max-[550px]:px-1 max-[550px]:text-[10px] max-[550px]:gap-[3px]"
+                className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta text-muted hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 @max-[550px]/conversation:min-h-10 @max-[550px]/conversation:px-1 @max-[550px]/conversation:text-fine @max-[550px]/conversation:gap-[3px]"
                 disabled={readOnly}
               >
                 <ShieldCheck size={15} />
-                <span>{policies.find((p) => p.value === policy)?.name}</span>
+                <span>
+                  {policies.find((p) => p.value === policy)?.name ??
+                    "继承会话策略"}
+                </span>
                 <ChevronDown size={12} />
               </button>
             }
           >
-            <MenuLabel>审批策略</MenuLabel>
+            <MenuLabel>审批策略 · 当前会话</MenuLabel>
+            <div className="max-w-80 px-3 py-2 text-fine text-muted">
+              {policy
+                ? "来源：本地显式选择。发送新轮次时覆盖当前及后续轮次；排队任务保留入队时的选择。"
+                : "不发送审批覆盖；沿用服务端会话策略。继承不会撤销此前已发送的覆盖。"}
+              追加到执行中的轮次沿用该轮策略。沙箱仍由服务端控制。
+            </div>
             <DropdownMenu.RadioGroup
-              value={typeof policy === "string" ? policy : "on-request"}
-              onValueChange={(value) => setPolicy(value as AskForApproval)}
+              value={typeof policy === "string" ? policy : "inherit"}
+              onValueChange={(value) =>
+                setPolicyChoices((choices) => ({
+                  ...choices,
+                  [policyKey]: approvalOptions(
+                    value as AskForApproval | "inherit",
+                  ).approvalPolicy,
+                }))
+              }
             >
               {policies.map((p) => (
                 <DropdownMenu.RadioItem value={p.value} key={p.value}>
@@ -544,17 +628,17 @@ export function Composer({
               <button
                 data-slot="model-choice"
                 type="button"
-                className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-[11px] text-foreground hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 max-[550px]:min-h-10 max-[550px]:px-1 max-[550px]:text-[10px]"
+                className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta text-foreground hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 @max-[550px]/conversation:min-h-10 @max-[550px]/conversation:px-1 @max-[550px]/conversation:text-fine"
                 disabled={readOnly}
               >
-                <Cpu size={14} className="max-[550px]:hidden" />
-                <span className="max-w-[160px] truncate @max-[650px]:max-w-[90px] max-[550px]:max-w-[85px]">
+                <Cpu size={14} className="@max-[550px]/conversation:hidden" />
+                <span className="max-w-[160px] truncate @max-[650px]:max-w-[90px] @max-[550px]/conversation:max-w-[85px]">
                   {model?.displayName ||
                     modelId ||
                     (localDraft ? "设备默认" : "服务端默认")}
                 </span>
                 {effort && (
-                  <small className="text-[10px] text-subtle">
+                  <small className="text-fine text-subtle">
                     · {efforts[effort] || effort}
                   </small>
                 )}
@@ -564,18 +648,18 @@ export function Composer({
           >
             <MenuLabel>模型</MenuLabel>
             {!connected ? (
-              <p className="p-[9px] text-[11px] text-muted">
+              <p className="p-[9px] text-meta text-muted">
                 连接工作环境后，可选择服务端提供的模型。
               </p>
             ) : connection.modelsLoading ? (
-              <p className="p-[9px] text-[11px] text-muted" role="status">
+              <p className="p-[9px] text-meta text-muted" role="status">
                 正在读取可用模型…
               </p>
             ) : connection.modelsError ? (
               <>
-                <p className="p-[9px] text-[11px] text-muted" role="alert">
+                <ErrorNotice className="m-1">
                   读取模型失败：{connection.modelsError}
-                </p>
+                </ErrorNotice>
                 <DropdownMenu.Item
                   onSelect={(event) => {
                     event.preventDefault();
@@ -586,7 +670,7 @@ export function Composer({
                 </DropdownMenu.Item>
               </>
             ) : !models.length ? (
-              <p className="p-[9px] text-[11px] text-muted">
+              <p className="p-[9px] text-meta text-muted">
                 服务端未返回可选模型，继续使用当前会话模型或服务端默认模型。
               </p>
             ) : null}
@@ -658,7 +742,19 @@ export function Composer({
             <AgentEntry thread={thread} onSelect={onInspectAgent} />
           )}
           <ContextUsage key={threadId} usage={sessions.tokenUsage[threadId]} />
-          {running && hasContent && (
+          {inputRequest && running && access === "editable" && (
+            <Button
+              type="button"
+              variant="quiet"
+              size="sm"
+              disabled={!capabilities.canStop}
+              onClick={() => void stop()}
+              title="停止当前执行并暂停任务队列；不会提交问题回答"
+            >
+              {stopping ? "正在停止" : "停止当前执行"}
+            </Button>
+          )}
+          {running && hasContent && !inputRequest && (
             <Button
               type="button"
               variant="quiet"
@@ -677,46 +773,61 @@ export function Composer({
           )}
           <button
             data-slot="composer-action"
-            className={`ml-auto grid size-[31px] shrink-0 place-items-center rounded-[9px] border-0 disabled:bg-hover disabled:text-subtle max-[550px]:size-10 ${showStop ? "bg-danger-soft text-danger enabled:hover:bg-danger/20" : "bg-accent text-background enabled:hover:bg-accent/90"}`}
-            type={showStop ? "button" : "submit"}
-            onClick={showStop ? () => void stop() : undefined}
-            aria-label={
-              showStop
-                ? stopping
-                  ? "正在停止"
-                  : "停止执行"
-                : sending
-                  ? "正在提交"
-                  : access === "occupied"
-                    ? "重试发送"
-                    : defaultSteering
-                      ? "立即引导"
-                      : queueing
-                        ? "排队发送"
-                        : "发送消息"
+            className={`ml-auto grid size-[31px] shrink-0 place-items-center rounded-[9px] border-0 disabled:bg-hover disabled:text-subtle @max-[550px]/conversation:size-10 ${showStop ? "bg-danger-soft text-danger enabled:hover:bg-danger/20" : "bg-accent text-background enabled:hover:bg-accent/90"}`}
+            type={inputRequest || showStop ? "button" : "submit"}
+            onClick={
+              inputRequest
+                ? goToQuestion
+                : showStop
+                  ? () => void stop()
+                  : undefined
             }
-            title={
-              !connected
-                ? "请先连接"
+            aria-label={
+              inputRequest
+                ? "前往问题卡片回答"
                 : showStop
                   ? stopping
                     ? "正在停止"
                     : "停止执行"
-                  : waiting
-                    ? "请先回答当前请求"
-                    : !hasContent
-                      ? "输入消息或添加图片"
-                      : sending
-                        ? "正在提交"
-                        : defaultSteering
-                          ? "立即引导当前轮次（Enter）"
-                          : queueing
-                            ? "加入队列，当前轮次结束后发送（Enter）"
-                            : "发送消息"
+                  : sending
+                    ? "正在提交"
+                    : access === "occupied"
+                      ? "重试发送"
+                      : defaultSteering
+                        ? "立即引导"
+                        : queueing
+                          ? "排队发送"
+                          : "发送消息"
             }
-            disabled={showStop ? !capabilities.canStop : !capabilities.canSend}
+            title={
+              inputRequest
+                ? "前往问题卡片回答，普通消息草稿会保留"
+                : !connected
+                  ? "请先连接"
+                  : showStop
+                    ? stopping
+                      ? "正在停止"
+                      : "停止执行"
+                    : waiting
+                      ? "请先回答当前请求"
+                      : !hasContent
+                        ? "输入消息或添加图片"
+                        : sending
+                          ? "正在提交"
+                          : defaultSteering
+                            ? "立即引导当前轮次（Enter）"
+                            : queueing
+                              ? "加入队列，当前轮次结束后发送（Enter）"
+                              : "发送消息"
+            }
+            disabled={
+              !inputRequest &&
+              (showStop ? !capabilities.canStop : !capabilities.canSend)
+            }
           >
-            {showStop ? (
+            {inputRequest ? (
+              <ChevronDown size={19} className="rotate-180" />
+            ) : showStop ? (
               stopping ? (
                 <LoaderCircle size={18} className="animate-spin" />
               ) : (
@@ -750,4 +861,4 @@ export function Composer({
       )}
     </div>
   );
-}
+});

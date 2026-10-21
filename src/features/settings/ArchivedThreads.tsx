@@ -1,3 +1,4 @@
+import { ROOT_THREAD_SOURCES } from "../sessions/list";
 import { useEffect, useRef, useState } from "react";
 import {
   Archive,
@@ -7,7 +8,12 @@ import {
   RotateCcw,
   Search,
 } from "lucide-react";
-import { Button, SelectField } from "../../components/ui";
+import {
+  Button,
+  ErrorNotice,
+  IconButton,
+  SelectField,
+} from "../../components/ui";
 import { folderOf, titleOf, useStore } from "../../components/hooks";
 import type { Environment } from "../connection/environments";
 import type { Thread } from "../../generated/v2/Thread";
@@ -62,6 +68,7 @@ export function ArchivedThreads({
     void runtime.connection.client
       .request<Page>("thread/list", {
         archived: true,
+        sourceKinds: ROOT_THREAD_SOURCES,
         limit: 30,
         sortKey: sort,
         ...(search ? { searchTerm: search } : {}),
@@ -136,16 +143,13 @@ export function ArchivedThreads({
             { value: "created_at", label: "创建时间" },
           ]}
         />
-        <button
-          type="button"
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-hover hover:text-foreground max-[900px]:size-10"
-          title="刷新归档会话"
-          aria-label="刷新归档会话"
+        <IconButton
+          label="刷新归档会话"
           disabled={!connected || busy}
           onClick={() => setRevision((value) => value + 1)}
         >
           <RefreshCw size={16} />
-        </button>
+        </IconButton>
       </div>
       {!connected && (
         <div className="mt-6 flex flex-col items-center rounded-xl border border-dashed border-border bg-surface px-4 py-8 text-center text-muted">
@@ -157,10 +161,7 @@ export function ArchivedThreads({
         </div>
       )}
       {error && (
-        <div
-          role="alert"
-          className="mb-4 rounded-lg border border-danger/25 bg-danger-soft p-4 text-xs text-danger [overflow-wrap:anywhere]"
-        >
+        <ErrorNotice className="mb-4">
           <p className="mb-2">{error}</p>
           <Button
             variant="secondary"
@@ -170,7 +171,7 @@ export function ArchivedThreads({
           >
             重新加载
           </Button>
-        </div>
+        </ErrorNotice>
       )}
       {connected && threads.length > 0 && (
         <p className="mb-3 text-xs text-muted">
@@ -192,17 +193,17 @@ export function ArchivedThreads({
             />
             <Folder size={17} />
             <span className="min-w-0 flex-1">
-              <strong className="block text-[13px] [overflow-wrap:anywhere]">
+              <strong className="block text-control [overflow-wrap:anywhere]">
                 {folderOf(cwd)}
               </strong>
               <small
-                className="mt-1 block text-[11px] text-muted [overflow-wrap:anywhere]"
+                className="mt-1 block text-meta text-muted [overflow-wrap:anywhere]"
                 title={cwd}
               >
                 {cwd || "未指定工作区"}
               </small>
             </span>
-            <span className="rounded-lg bg-hover px-2 py-1 text-[11px] text-muted">
+            <span className="rounded-lg bg-hover px-2 py-1 text-meta text-muted">
               {entries.length}
             </span>
           </summary>
@@ -214,11 +215,11 @@ export function ArchivedThreads({
                 key={thread.id}
               >
                 <div className="min-w-0 flex-1">
-                  <strong className="block text-[13px] font-medium leading-relaxed [overflow-wrap:anywhere]">
+                  <strong className="block text-control font-medium leading-relaxed [overflow-wrap:anywhere]">
                     {titleOf(thread)}
                   </strong>
                   <time
-                    className="mt-1 block text-[11px] text-muted"
+                    className="mt-1 block text-meta text-muted"
                     dateTime={new Date(
                       (sort === "created_at"
                         ? thread.createdAt
@@ -282,9 +283,8 @@ export function ArchivedThreads({
         </p>
       )}
       {cursor && (
-        <button
-          type="button"
-          className="mx-auto mt-6 flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-elevated px-3 py-2 text-xs font-medium hover:bg-hover max-[900px]:min-h-[42px]"
+        <Button
+          className="mx-auto mt-6 flex w-fit"
           disabled={busy || !connected}
           onClick={() =>
             void action(async (current) => {
@@ -292,6 +292,7 @@ export function ArchivedThreads({
                 "thread/list",
                 {
                   archived: true,
+                  sourceKinds: ROOT_THREAD_SOURCES,
                   limit: 30,
                   sortKey: sort,
                   cursor,
@@ -312,7 +313,7 @@ export function ArchivedThreads({
           }
         >
           加载更多会话
-        </button>
+        </Button>
       )}
     </div>
   );

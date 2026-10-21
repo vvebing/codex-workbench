@@ -1,5 +1,5 @@
 import type { McpServerOauthLoginCompletedNotification } from "../../generated/v2/McpServerOauthLoginCompletedNotification";
-import type { ClientRequest } from "../../generated/ClientRequest";
+import type { RpcCall } from "../../lib/rpc";
 import type { ListMcpServerStatusResponse } from "../../generated/v2/ListMcpServerStatusResponse";
 import type { ConfigReadResponse } from "../../generated/v2/ConfigReadResponse";
 import type { ConfigRequirementsReadResponse } from "../../generated/v2/ConfigRequirementsReadResponse";
@@ -160,11 +160,8 @@ export class EnvironmentToolsStore extends Store<State> {
       this.connection.getSnapshot().status === "connected"
     );
   }
-  private request<M extends ClientRequest["method"], T>(
-    method: M,
-    params: Extract<ClientRequest, { method: M }>["params"],
-  ) {
-    return this.connection.client.request<T>(method, params);
+  private request<T>(...call: RpcCall) {
+    return this.connection.client.request<T>(...call);
   }
   async load<K extends ToolSection>(
     key: K,
@@ -185,53 +182,44 @@ export class EnvironmentToolsStore extends Store<State> {
       let result: Data[ToolSection];
       switch (key) {
         case "mcp":
-          result = await this.request<"mcpServerStatus/list", Data["mcp"]>(
-            "mcpServerStatus/list",
-            {
-              cursor: more ? this.state.mcp.data?.nextCursor : null,
-              limit: 50,
-              detail: "toolsAndAuthOnly",
-            },
-          );
+          result = await this.request<Data["mcp"]>("mcpServerStatus/list", {
+            cursor: more ? this.state.mcp.data?.nextCursor : null,
+            limit: 50,
+            detail: "toolsAndAuthOnly",
+          });
           break;
         case "config":
-          result = await this.request<"config/read", Data["config"]>(
-            "config/read",
-            { cwd: this.cwd, includeLayers: false },
-          );
+          result = await this.request<Data["config"]>("config/read", {
+            cwd: this.cwd,
+            includeLayers: false,
+          });
           break;
         case "requirements":
-          result = await this.request<
+          result = await this.request<Data["requirements"]>(
             "configRequirements/read",
-            Data["requirements"]
-          >("configRequirements/read", undefined);
+            undefined,
+          );
           break;
         case "skills":
-          result = await this.request<"skills/list", Data["skills"]>(
-            "skills/list",
-            { ...context, forceReload: true },
-          );
+          result = await this.request<Data["skills"]>("skills/list", {
+            ...context,
+            forceReload: true,
+          });
           break;
         case "hooks":
-          result = await this.request<"hooks/list", Data["hooks"]>(
-            "hooks/list",
-            context,
-          );
+          result = await this.request<Data["hooks"]>("hooks/list", context);
           break;
         case "apps":
-          result = await this.request<"app/list", Data["apps"]>("app/list", {
+          result = await this.request<Data["apps"]>("app/list", {
             cursor: more ? this.state.apps.data?.nextCursor : null,
             limit: 50,
           });
           break;
         case "installed":
-          result = await this.request<"app/installed", Data["installed"]>(
-            "app/installed",
-            {},
-          );
+          result = await this.request<Data["installed"]>("app/installed", {});
           break;
         case "app":
-          result = await this.request<"app/read", Data["app"]>("app/read", {
+          result = await this.request<Data["app"]>("app/read", {
             appIds: appId ? [appId] : [],
             includeTools: true,
           });
@@ -255,7 +243,7 @@ export class EnvironmentToolsStore extends Store<State> {
         [key]: { data: result, busy: false, error: null },
       });
     } catch (error) {
-      if (this.current(epoch, generation))
+      if (this.current(epoch, generation) && this.requests.get(key) === serial)
         this.update({
           ...this.state,
           [key]: {
@@ -297,10 +285,10 @@ export class EnvironmentToolsStore extends Store<State> {
     return this.action("oauth", async (current) => {
       this.loginName = name;
       this.earlyLogin = [];
-      const result = await this.request<
+      const result = await this.request<McpServerOauthLoginResponse>(
         "mcpServer/oauth/login",
-        McpServerOauthLoginResponse
-      >("mcpServer/oauth/login", { name });
+        { name },
+      );
       if (!safeAuthorizationUrl(result.authorizationUrl))
         throw Error("服务端返回无效登录地址");
       if (current()) {
@@ -354,28 +342,33 @@ export class EnvironmentToolsStore extends Store<State> {
           !["untrusted", "on-request", "never"].includes(value))
       )
         throw Error("配置值无效");
-      const result = await this.request<
+      const result = await this.request<ConfigWriteResponse>(
         "config/value/write",
-        ConfigWriteResponse
-      >("config/value/write", {
-        keyPath,
-        value: value.trim(),
-        mergeStrategy: "replace",
-        ...(this.state.config.data?.origins[keyPath]?.name.type === "user"
-          ? {
-              expectedVersion: this.state.config.data.origins[keyPath]!.version,
-              filePath:
-                this.state.config.data.origins[keyPath]!.name.type === "user"
-                  ? this.state.config.data.origins[keyPath]!.name.file
-                  : undefined,
-            }
-          : {}),
-      });
+        {
+          keyPath,
+          value: value.trim(),
+          mergeStrategy: "replace",
+          ...(this.state.config.data?.origins[keyPath]?.name.type === "user"
+            ? {
+                expectedVersion:
+                  this.state.config.data.origins[keyPath]!.version,
+                filePath:
+                  this.state.config.data.origins[keyPath]!.name.type === "user"
+                    ? this.state.config.data.origins[keyPath]!.name.file
+                    : undefined,
+              }
+            : {}),
+        },
+      );
       if (current()) {
         this.update({
           ...this.state,
           message: `配置已写入：${result.status}${result.overriddenMetadata ? "（被其他配置覆盖）" : ""}`,
+          // A concurrent read may have started before the write. Supersede it
+          // and refresh origins/version before accepting the next edit.
+          config: empty(),
         });
+        await this.load("config");
       }
     });
   }

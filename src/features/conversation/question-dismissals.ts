@@ -30,6 +30,16 @@ export class QuestionDismissalsStore extends Store<Record<string, true>> {
   isIgnored(threadId: string, itemId: string): boolean {
     return !!this.state[JSON.stringify([threadId, itemId])];
   }
+  restore(threadId: string, itemId: string): void {
+    const state = { ...this.state };
+    delete state[JSON.stringify([threadId, itemId])];
+    try {
+      localStorage.setItem(this.key(), JSON.stringify(state));
+    } catch {
+      /* Keep in memory. */
+    }
+    this.update(state);
+  }
   ignore(threadId: string, itemId: string): void {
     const state = {
       ...this.state,

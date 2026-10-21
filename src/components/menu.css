@@ -6,7 +6,7 @@
     gap: 9px;
     border-radius: var(--radius-md);
     padding: 9px 10px;
-    font-size: 12px;
+    font-size: var(--text-caption);
     outline: none;
   }
 
@@ -23,13 +23,13 @@
     display: block;
     max-width: 265px;
     margin-top: 3px;
-    font-size: 10px;
-    line-height: 1.6;
+    font-size: var(--text-fine);
+    line-height: var(--leading-help);
     color: var(--muted);
   }
 
   .menu-content :where(strong) {
-    font-size: 12px;
+    font-size: var(--text-caption);
     font-weight: 500;
   }
 

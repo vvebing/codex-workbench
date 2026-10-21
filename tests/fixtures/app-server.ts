@@ -21,6 +21,11 @@ export const MOCK_WORKSPACES = [
   "/demo/api-service",
 ];
 export interface MockOptions {
+  threadCount?: number;
+  commandExec?: (params: {
+    command: string[];
+    cwd: string;
+  }) => { stdout: string; stderr?: string; exitCode?: number } | undefined;
   initialImageMessage?: { input: UserInput[]; answer: string };
   base64Files?: Record<string, string>;
   resetCreditsCountOnly?: boolean;
@@ -33,6 +38,7 @@ export interface MockOptions {
   gitStatusExitCode?: number;
   initialGitFiles?: [string, string][];
   gitWriteError?: string;
+  sandboxMode?: ConfigReadResponse["config"]["sandbox_mode"];
   initiallyArchived?: number;
   sameNamedWorkspaces?: boolean;
   streamIntervalMs?: number;
@@ -138,6 +144,8 @@ export function createMockServer(options: MockOptions = {}) {
   const gitBaselines = new Map<string, string>();
   const gitBlobs = new Map<string, string>();
   const files = new Map<string, string>();
+  for (const path of Object.keys(options.base64Files ?? {}))
+    files.set(path, "");
   const directories = new Set([
     "/",
     "/demo",
@@ -213,7 +221,9 @@ export function createMockServer(options: MockOptions = {}) {
     return state;
   };
 
-  const threads = Array.from({ length: 90 }, (_, i) => makeThread(i));
+  const threads = Array.from({ length: options.threadCount ?? 90 }, (_, i) =>
+    makeThread(i),
+  );
   if (options.initialImageMessage) {
     const items = threads[0].turns[0].items;
     const user = items.find((item) => item.type === "userMessage");
@@ -262,7 +272,7 @@ export function createMockServer(options: MockOptions = {}) {
       model_provider: "mock",
       approval_policy: "on-request",
       approvals_reviewer: "user",
-      sandbox_mode: "workspace-write",
+      sandbox_mode: options.sandboxMode ?? "workspace-write",
       sandbox_workspace_write: null,
       forced_chatgpt_workspace_id: null,
       forced_login_method: null,
@@ -454,6 +464,7 @@ export function createMockServer(options: MockOptions = {}) {
       const { id, method } = msg;
       requestLog.push({
         method,
+        ...(method === "thread/list" ? { params: msg.params } : {}),
         ...(method.startsWith("fs/")
           ? {
               params: msg.params,
@@ -491,7 +502,7 @@ export function createMockServer(options: MockOptions = {}) {
         return reply(
           id,
           {
-            userAgent: "codex-workbench-mock/1.0",
+            userAgent: "codex_web/0.160.0 (mock; test) (codex_web; 0.1.0)",
             platformFamily: "unix",
             platformOs: "mock",
           },
@@ -695,6 +706,17 @@ export function createMockServer(options: MockOptions = {}) {
           );
         }
         if (method === "command/exec") {
+          const custom = options.commandExec?.(p);
+          if (custom)
+            return reply(
+              id,
+              {
+                stdout: custom.stdout,
+                stderr: custom.stderr ?? "",
+                exitCode: custom.exitCode ?? 0,
+              },
+              method,
+            );
           const args: string[] = p.command ?? [];
           const result = (stdout = "", exitCode = 0, stderr = "") =>
             reply(id, { exitCode, stdout, stderr }, method);
@@ -820,17 +842,31 @@ export function createMockServer(options: MockOptions = {}) {
           }
           if (!args.includes("status"))
             return fail(id, "Unsupported mock Git command");
+          // Porcelain exposes index blob IDs; baseline changes must invalidate
+          // consumers even when the list of changed paths stays the same.
+          const statusFiles = new Map(state.files);
+          for (const path of gitBaselines.keys()) {
+            if (path.startsWith(`${p.cwd}/`)) {
+              const relative = path.slice(p.cwd.length + 1);
+              statusFiles.set(relative, statusFiles.get(relative) ?? ".M");
+            }
+          }
           const stdout =
             typeof options.gitStatus === "function"
               ? options.gitStatus(p.cwd)
               : (options.gitStatus ??
                 `# branch.oid ${state.head}\0# branch.head ${state.branch}\0` +
-                  [...state.files]
-                    .map(([path, xy]) =>
-                      xy === "??"
-                        ? `? ${path}\0`
-                        : `1 ${xy} N... 100644 100644 100644 abc abc ${path}\0`,
-                    )
+                  [...statusFiles]
+                    .map(([path, xy]) => {
+                      if (xy === "??") return `? ${path}\0`;
+                      const absolute = `${p.cwd}/${path}`;
+                      const baseline =
+                        gitBaselines.get(absolute) ?? files.get(absolute) ?? "";
+                      const indexOid = createHash("sha1")
+                        .update(baseline)
+                        .digest("hex");
+                      return `1 ${xy} N... 100644 100644 100644 ${"c".repeat(40)} ${indexOid} ${path}\0`;
+                    })
                     .join(""));
           return result(stdout, options.gitStatusExitCode ?? 0);
         }
@@ -1273,7 +1309,8 @@ export function createMockServer(options: MockOptions = {}) {
           return;
         }
         if (method === "thread/metadata/update") {
-          Object.assign(t, { isPinned: p.isPinned });
+          if ("isPinned" in p)
+            throw Error("Unsupported metadata field: isPinned");
           return reply(id, { thread: metadata(t) }, method);
         }
         if (method === "thread/section/move") {
@@ -1493,7 +1530,7 @@ export function createMockServer(options: MockOptions = {}) {
           const item: ThreadItem = {
             type: "userMessage",
             id: randomUUID(),
-            clientId: null,
+            clientId: p.clientUserMessageId ?? null,
             content: p.input,
           };
           run.turn.items.push(item);
@@ -1519,7 +1556,10 @@ export function createMockServer(options: MockOptions = {}) {
           .join("\n");
         const turn = makeTurn(text);
         const user = turn.items[0];
-        if (user.type === "userMessage") user.content = p.input ?? [];
+        if (user.type === "userMessage") {
+          user.content = p.input ?? [];
+          user.clientId = p.clientUserMessageId ?? null;
+        }
         turn.items = turn.items.slice(0, 1);
         turn.status = "inProgress";
         turn.completedAt = null;
@@ -2150,6 +2190,19 @@ export function createMockServer(options: MockOptions = {}) {
   return Object.assign(server, {
     requestLog,
     responseLog,
+    setProject(threadId: string, projectId: string | null) {
+      const thread = threads.find((thread) => thread.id === threadId);
+      if (!thread) throw Error(`Unknown mock thread ${threadId}`);
+      thread.projectId = projectId;
+      for (const socket of wss.clients)
+        if (socket.readyState === WebSocket.OPEN)
+          socket.send(
+            JSON.stringify({
+              method: "thread/project/updated",
+              params: { threadId, projectId },
+            }),
+          );
+    },
     setDirectory(path: string) {
       directories.add(fsPath(path));
       changed(fsPath(path));

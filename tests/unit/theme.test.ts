@@ -38,6 +38,10 @@ function browser(
     documentElement: root,
     querySelector: () => meta,
   });
+  vi.stubGlobal("getComputedStyle", () => ({
+    getPropertyValue: () =>
+      root.dataset.theme === "dark" ? "#191c19" : "#ffffff",
+  }));
   vi.stubGlobal("window", {
     localStorage: {
       getItem: (key: string) => {
@@ -77,7 +81,7 @@ describe("theme preferences", () => {
     b.changeSystem(false);
     expect(b.root.dataset.theme).toBe("light");
     expect(b.root.style.colorScheme).toBe("light");
-    expect(b.meta.content).toBe("#f7f7f5");
+    expect(b.meta.content).toBe("#ffffff");
   });
   it("persists explicit themes and ignores system changes until system is selected", () => {
     const b = browser("dark");

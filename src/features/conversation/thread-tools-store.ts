@@ -197,7 +197,9 @@ export class ThreadToolsStore extends Store<ToolsState> {
   }
   clearGoal(): Promise<void> {
     return this.action(async (current) => {
-      await this.sessions.threadRequest(this.threadId, "thread/goal/clear", {});
+      await this.sessions.threadRequest(this.threadId, "thread/goal/clear", {
+        origin: "user",
+      });
       if (current()) {
         this.goalRevision++;
         this.update({

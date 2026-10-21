@@ -11,6 +11,10 @@ const original = "# Demo project\nProject file preview.\n";
 test.beforeEach(async ({ page }) => {
   directoryDelay = 0;
   server = createMockServer({
+    base64Files: {
+      "/demo/atlas-web/screenshot.png":
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+    },
     responseDelayMs: (method) =>
       method === "fs/readDirectory" ? directoryDelay : 0,
     initialGitFiles: test.info().title.startsWith("Git file actions")
@@ -31,20 +35,21 @@ test.beforeEach(async ({ page }) => {
   if (!address || typeof address === "string")
     throw new Error("Missing listener");
   url = `ws://127.0.0.1:${address.port}`;
-  await page.addInitScript(() =>
-    localStorage.setItem(
-      "codex-environments",
-      JSON.stringify([
-        {
-          id: "local",
-          name: "本机",
-          kind: "local",
-          url: "ws://127.0.0.1:4501",
-          autoConnect: false,
-        },
-      ]),
-    ),
-  );
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("codex-environments"))
+      localStorage.setItem(
+        "codex-environments",
+        JSON.stringify([
+          {
+            id: "local",
+            name: "本机",
+            kind: "local",
+            url: "ws://127.0.0.1:4501",
+            autoConnect: false,
+          },
+        ]),
+      );
+  });
 });
 
 test.afterEach(async () => {
@@ -77,7 +82,7 @@ async function openReadme(page: Page) {
   await openFirst(page);
   await page.getByRole("button", { name: "打开项目面板" }).click();
   const panel = page.getByRole("complementary", { name: "项目面板" });
-  await panel.getByRole("button", { name: "README.md", exact: true }).click();
+  await panel.getByRole("button", { name: /^README\.md(?:，|$)/ }).click();
   const workspace = page.getByRole("region", { name: "文件编辑工作区" });
   await expect(workspace.locator(".monaco-editor")).toBeVisible();
   await expect(workspace.locator(".view-lines")).toContainText("Demo project");
@@ -92,6 +97,81 @@ async function edit(page: Page, text: string) {
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.insertText(text);
 }
+
+test("unsaved file edits survive reload without writing to disk", async ({
+  page,
+}) => {
+  const { workspace } = await openReadme(page);
+  await edit(page, "Recovered unsaved content");
+  await expect(workspace.locator(".view-lines")).toContainText(
+    "Recovered unsaved content",
+  );
+  page.on("dialog", (dialog) => void dialog.accept());
+  await page.reload();
+  await page.getByRole("button", { name: /^返回文件编辑器/ }).click();
+  const restored = page.getByRole("region", { name: "文件编辑工作区" });
+  await expect(
+    restored.getByText(
+      "已从浏览器恢复未保存的编辑内容，尚未写入文件。保存前会重新核对磁盘内容。",
+    ),
+  ).toBeVisible();
+  await expect(restored.locator(".view-lines")).toContainText(
+    "Recovered unsaved content",
+  );
+  expect(
+    server.requestLog.filter((entry) => entry.method === "fs/writeFile"),
+  ).toHaveLength(0);
+  await restored.getByRole("button", { name: "保存", exact: true }).click();
+  await expect
+    .poll(
+      () =>
+        server.requestLog.filter((entry) => entry.method === "fs/writeFile")
+          .length,
+    )
+    .toBe(1);
+});
+
+test("image tabs render inline and preserve text undo history", async ({
+  page,
+}) => {
+  const { panel, workspace } = await openReadme(page);
+  await edit(page, "Changed text");
+  await panel
+    .getByRole("button", { name: "screenshot.png", exact: true })
+    .click();
+  const image = workspace.getByRole("img", {
+    name: "screenshot.png",
+    exact: true,
+  });
+  await expect(image).toBeVisible();
+  await expect
+    .poll(() =>
+      image.evaluate((node) => (node as HTMLImageElement).naturalWidth),
+    )
+    .toBe(1);
+  await expect(workspace.locator(".monaco-editor")).toBeHidden();
+  await expect(
+    workspace.getByRole("button", { name: "保存", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("dialog", { name: "screenshot.png", exact: true }),
+  ).toHaveCount(0);
+  await workspace.getByRole("tab", { name: /README.md/ }).click();
+  await expect(workspace.locator(".view-lines")).toContainText("Changed text");
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await page.keyboard.press("ControlOrMeta+z");
+    if (
+      (await workspace.locator(".view-lines").innerText()).includes(
+        "Demo project",
+      )
+    )
+      break;
+  }
+  await expect(workspace.locator(".view-lines")).toContainText("Demo project");
+  expect(
+    server.requestLog.some((request) => request.method === "fs/writeFile"),
+  ).toBe(false);
+});
 
 test("files open in main Monaco workspace and save back to the same host path", async ({
   page,
@@ -855,7 +935,7 @@ test("Git gutter handles boundary deletions and clears across files and unavaila
   await panel.getByRole("button", { name: /^new-file\.txt(?:，|$)/ }).click();
   await expect(workspace.locator(".git-gutter-added").first()).toBeVisible();
   await expect(workspace.locator(".git-gutter-deleted")).toHaveCount(0);
-  await panel.getByRole("button", { name: "README.md", exact: true }).click();
+  await panel.getByRole("button", { name: /^README\.md(?:，|$)/ }).click();
   await expect(workspace.locator(".git-gutter-deleted")).toHaveCount(2);
   server.setGitBaseline(`${root}/README.md`, "x".repeat(256 * 1024 + 1));
   await panel
@@ -893,10 +973,19 @@ test("ignored tree files and folders stay visible and usable with muted styling"
   ).not.toHaveAttribute("data-git-ignored", "true");
 });
 
-test("editor keeps native themes and accessible icon controls", async ({
+test("editor shares appearance tokens and keeps accessible icon controls", async ({
   page,
 }) => {
   const { workspace } = await openReadme(page);
+  // Layer order must keep Tailwind's reset below feature component rules.
+  await expect(workspace.locator(".file-toolbar")).toHaveCSS(
+    "padding",
+    "0px 8px",
+  );
+  await expect(workspace.locator(".file-toolbar")).toHaveCSS(
+    "border-bottom-width",
+    "1px",
+  );
   for (const theme of ["dark", "light"]) {
     await page.evaluate((value) => {
       document.documentElement.dataset.theme = value;
@@ -912,7 +1001,35 @@ test("editor keeps native themes and accessible icon controls", async ({
           ),
       )
       .toBe(true);
+    const background = await page.evaluate(
+      () => getComputedStyle(document.documentElement).backgroundColor,
+    );
+    await expect(workspace.locator(".monaco-editor").first()).toHaveCSS(
+      "background-color",
+      background,
+    );
   }
+  const lines = workspace.locator(".view-lines").first();
+  await expect(lines).toHaveCSS("font-size", "13px");
+  await page.evaluate(() => {
+    const style = document.documentElement.style;
+    style.setProperty("--font-scale", "1.25");
+    style.setProperty("--code-font-size", "19.5px");
+    style.setProperty("--font-mono", '"Courier New", monospace');
+  });
+  await expect(lines).toHaveCSS("font-size", "19.5px");
+  // Monaco appends its platform fallbacks after the configured font stack.
+  await expect(lines).toHaveCSS("font-family", /^"Courier New", monospace/);
+  // Theme/typography changes update the existing editor without discarding undo.
+  // A single word is one Monaco typing undo group (spaces can split groups).
+  await edit(page, "appearanceSafeDraft");
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--code-font-size", "16.25px");
+  });
+  await expect(lines).toHaveCSS("font-size", "16.25px");
+  await expect(lines).toContainText("appearanceSafeDraft");
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(lines).toContainText("Demo project");
   const modes = workspace.getByRole("group", { name: "Markdown 显示方式" });
   await expect(
     modes.getByRole("button", { name: "编辑", exact: true }),
@@ -921,6 +1038,17 @@ test("editor keeps native themes and accessible icon controls", async ({
   await expect(
     modes.getByRole("button", { name: "分屏", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  const selected = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.backgroundColor = "var(--selected)";
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  await expect(
+    modes.getByRole("button", { name: "分屏", exact: true }),
+  ).toHaveCSS("background-color", selected);
   await expect(workspace.locator(".file-markdown-preview")).toBeVisible();
   await page.setViewportSize({ width: 1000, height: 800 });
   await expect
@@ -997,13 +1125,22 @@ test("wide editor splits from chat and preserves scroll draft and undo across la
     .poll(async () => (await chat.boundingBox())!.width)
     .toBeGreaterThan(before);
   const after = (await chat.boundingBox())!.width;
+  const content = chat.locator("[data-slot=conversation-content]");
+  const composerBox = chat.locator("[data-slot=conversation-composer]");
+  expect((await content.boundingBox())!.width).toBeCloseTo(after, 0);
+  expect((await composerBox.boundingBox())!.width).toBeCloseTo(after, 0);
+  expect(await chat.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
   const timeline = chat.locator(
     '[data-slot="conversation-timeline"] > [data-radix-scroll-area-viewport]',
   );
-  await timeline.evaluate((element) => {
-    element.scrollTop = 0;
-    element.dispatchEvent(new Event("scroll"));
-  });
+  // Only user scroll intent pauses automatic following, not programmatic scroll.
+  await timeline.hover();
+  await page.mouse.wheel(0, -10000);
+  await expect
+    .poll(() => timeline.evaluate((element) => element.scrollTop))
+    .toBe(0);
   await workspace
     .getByRole("button", { name: "专注编辑", exact: true })
     .click();
@@ -1048,4 +1185,139 @@ test("wide editor splits from chat and preserves scroll draft and undo across la
     "layout-safe draft",
   );
   await expect(composer).toHaveText("conversation draft");
+});
+
+async function selectWorkspaceSession(page: Page, title: string) {
+  await page.keyboard.press("Control+k");
+  const search = page.getByRole("dialog", { name: "搜索会话" });
+  await search.getByPlaceholder("搜索标题、摘要或工作区…").fill(title);
+  await search.getByRole("option").filter({ hasText: title }).first().click();
+  await expect(search).toBeHidden();
+  await expect(page.locator("#main")).toHaveAttribute("aria-label", title);
+}
+
+test("same-project editor keeps its DOM, unsaved draft and undo when cwd fallback matches", async ({
+  page,
+}) => {
+  const { workspace } = await openReadme(page);
+  const editor = workspace.locator(".monaco-editor");
+  const originalEditor = await editor.elementHandle();
+  await edit(page, "same-project unsaved draft");
+  await expect(
+    workspace.getByRole("button", { name: "保存", exact: true }),
+  ).toBeEnabled();
+  await selectWorkspaceSession(page, "审批流程演示 · 4");
+  await expect(workspace).toBeVisible();
+  expect(await originalEditor!.evaluate((node) => node.isConnected)).toBe(true);
+  await expect(workspace.locator(".view-lines")).toContainText(
+    "same-project unsaved draft",
+  );
+  await workspace.locator(".view-lines").click({ position: { x: 80, y: 10 } });
+  let undoSteps = 0;
+  while (undoSteps < 4) {
+    await page.keyboard.press("ControlOrMeta+z");
+    undoSteps++;
+    if (
+      (await workspace.locator(".view-lines").innerText()).includes(
+        "Demo project",
+      )
+    )
+      break;
+  }
+  await expect(workspace.locator(".view-lines")).toContainText("Demo project");
+  for (let step = 0; step < undoSteps; step++)
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+  await expect(workspace.locator(".view-lines")).toContainText(
+    "same-project unsaved draft",
+  );
+  await selectWorkspaceSession(page, "工作区导航与搜索 · 1");
+  await expect(workspace).toBeVisible();
+  expect(await originalEditor!.evaluate((node) => node.isConnected)).toBe(true);
+  expect(server.fileText(`${root}/README.md`)).toBe(original);
+  expect(
+    server.requestLog.some((request) => request.method === "fs/writeFile"),
+  ).toBe(false);
+});
+
+test("same-project editor remains visible across different cwd values with a canonical project", async ({
+  page,
+}) => {
+  server.setProject("mock-thread-001", "shared-project");
+  server.setProject("mock-thread-002", "shared-project");
+  const { workspace } = await openReadme(page);
+  const originalEditor = await workspace
+    .locator(".monaco-editor")
+    .elementHandle();
+  await edit(page, "canonical project draft");
+  await selectWorkspaceSession(page, "设计令牌与暗色模式 · 2");
+  await expect(workspace).toBeVisible();
+  expect(await originalEditor!.evaluate((node) => node.isConnected)).toBe(true);
+  await expect(workspace.locator(".view-lines")).toContainText(
+    "canonical project draft",
+  );
+  await expect(
+    workspace.getByRole("tab", { name: "● README.md", exact: true }),
+  ).toBeVisible();
+});
+
+test("cross-project selection hides the editor even when cwd is identical", async ({
+  page,
+}) => {
+  server.setProject("mock-thread-001", "project-a");
+  server.setProject("mock-thread-004", "project-b");
+  const { workspace } = await openReadme(page);
+  await edit(page, "cross-project retained draft");
+  await selectWorkspaceSession(page, "审批流程演示 · 4");
+  await expect(workspace).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: /返回文件编辑器/ }),
+  ).toBeVisible();
+  expect(server.fileText(`${root}/README.md`)).toBe(original);
+});
+
+test("same-project navigation preserves an explicitly hidden editor", async ({
+  page,
+}) => {
+  const { workspace } = await openReadme(page);
+  await workspace
+    .getByRole("button", { name: "返回会话", exact: true })
+    .click();
+  await expect(workspace).toBeHidden();
+  await selectWorkspaceSession(page, "审批流程演示 · 4");
+  await expect(workspace).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: /返回文件编辑器/ }),
+  ).toBeVisible();
+  await selectWorkspaceSession(page, "工作区导航与搜索 · 1");
+  await expect(workspace).toBeHidden();
+});
+
+test("file selection remembers the creation directory across panel tabs", async ({
+  page,
+}) => {
+  const { panel } = await openReadme(page);
+  const src = panel.getByRole("button", { name: /^src(?:，|$)/ });
+  await src.click();
+  await expect(src).toHaveAttribute("aria-pressed", "true");
+  await panel.getByRole("tab", { name: "Git", exact: true }).click();
+  await panel.getByRole("tab", { name: "文件", exact: true }).click();
+  await expect(src).toHaveAttribute("aria-pressed", "true");
+  await panel.getByRole("button", { name: "新建文件", exact: true }).click();
+  let dialog = page.getByRole("dialog", { name: "新建文件", exact: true });
+  await expect(dialog.getByLabel("相对于项目根目录的路径")).toHaveValue("src/");
+  await dialog.getByLabel("相对于项目根目录的路径").fill("src/selected.txt");
+  await dialog.getByRole("button", { name: "确认", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => server.fileText(`${root}/src/selected.txt`)).toBe("");
+  await expect(
+    panel.getByRole("button", { name: "src/selected.txt", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await panel.getByRole("button", { name: "新建目录", exact: true }).click();
+  dialog = page.getByRole("dialog", { name: "新建目录", exact: true });
+  await expect(dialog.getByLabel("相对于项目根目录的路径")).toHaveValue("src/");
+  await dialog.getByRole("button", { name: "取消", exact: true }).click();
+  await panel.getByRole("button", { name: "选择项目根目录" }).click();
+  await panel.getByRole("button", { name: "新建文件", exact: true }).click();
+  dialog = page.getByRole("dialog", { name: "新建文件", exact: true });
+  await expect(dialog.getByLabel("相对于项目根目录的路径")).toHaveValue("");
 });

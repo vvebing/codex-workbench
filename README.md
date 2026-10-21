@@ -41,6 +41,20 @@ npm start
 
 当前服务面向本机使用，监听和 Host／Origin 校验均限制为 loopback；远端执行通过 SSH 转发连接。停止 `npm start` 会关闭它启动的 app-server，不会停止用户原先运行的服务。`npm run dev` 不会启动或停止 app-server，开发时仍需手动运行。
 
+## macOS 后台运行
+
+使用 launchd 在登录后自动启动生产构建，并在进程异常退出后自动重启。先完成构建，再安装服务：
+
+```sh
+npm run build
+npm run daemon:install
+npm run daemon:status
+```
+
+`npm run daemon:start` 启动服务，`daemon:stop` 停止服务，`daemon:restart` 重新生成配置并重启，`daemon:logs` 持续查看日志（Ctrl+C 退出），`daemon:uninstall` 停止并移除服务。`npm run daemon` 查看命令帮助。
+
+服务标识为 `com.codex-workbench`，配置保存于 `~/Library/LaunchAgents/com.codex-workbench.plist`，日志位于项目的 `logs/start.out.log` 和 `logs/start.err.log`。后台直接使用安装时的 Node 运行 `dist/server/index.js`，启动行为与 `npm start` 相同。安装或重启时保存当前 PATH 和 PORT，例如 `PORT=5182 npm run daemon:install`；无需 `.env`。更新代码后运行 `npm run build && npm run daemon:restart`；移动项目或更换 Node 安装位置后也需重新安装服务。卸载保留日志。
+
 ## 开发与验证
 
 ```sh
