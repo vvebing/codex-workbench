@@ -1,4 +1,5 @@
 import { ROOT_THREAD_SOURCES } from "../sessions/list";
+import { mergeArchivedThreads } from "./archived-threads";
 import { useEffect, useRef, useState } from "react";
 import {
   Archive,
@@ -75,7 +76,7 @@ export function ArchivedThreads({
       })
       .then((page) => {
         if (generation.current !== current) return;
-        setThreads(page.data);
+        setThreads(mergeArchivedThreads([], page.data));
         setCursor(page.nextCursor);
         if (page.nextCursor) seenCursors.current.add(page.nextCursor);
       })
@@ -303,11 +304,7 @@ export function ArchivedThreads({
               if (page.nextCursor && seenCursors.current.has(page.nextCursor))
                 throw Error("分页游标重复，请刷新后重试。");
               if (page.nextCursor) seenCursors.current.add(page.nextCursor);
-              setThreads((old) => [
-                ...new Map(
-                  [...old, ...page.data].map((thread) => [thread.id, thread]),
-                ).values(),
-              ]);
+              setThreads((old) => mergeArchivedThreads(old, page.data));
               setCursor(page.nextCursor);
             })
           }

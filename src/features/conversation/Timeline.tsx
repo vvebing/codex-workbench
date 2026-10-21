@@ -1054,6 +1054,10 @@ function TimelineContent({
             readingIntentUntil.current = Date.now() + 2000;
         }}
         viewportProps={{
+          // Reading anchors and bottom following are managed here. Native
+          // anchoring can otherwise turn a content collapse into an upward
+          // scroll that is mistaken for navigation away from the bottom.
+          style: { overflowAnchor: "none" },
           onWheelCapture: () => {
             readingIntentUntil.current = Date.now() + 1500;
           },

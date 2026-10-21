@@ -1188,7 +1188,8 @@ test("wide editor splits from chat and preserves scroll draft and undo across la
 });
 
 async function selectWorkspaceSession(page: Page, title: string) {
-  await page.keyboard.press("Control+k");
+  // Monaco reserves Ctrl+K on Linux/Windows while the editor has focus.
+  await page.getByRole("button", { name: /^搜索会话/ }).click();
   const search = page.getByRole("dialog", { name: "搜索会话" });
   await search.getByPlaceholder("搜索标题、摘要或工作区…").fill(title);
   await search.getByRole("option").filter({ hasText: title }).first().click();
