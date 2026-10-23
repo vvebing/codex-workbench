@@ -478,6 +478,9 @@ test("creates, renames, forks a session and archives its branch", async ({
   await send(page, "请给出完整实施结果");
   await completed(page);
   await send(page, "继续补充边界条件");
+  await expect(
+    page.locator("[data-slot=conversation-turn]").last(),
+  ).toContainText("继续补充边界条件");
   await completed(page);
   await expect(page.getByRole("button", { name: "从此轮分支" })).toHaveCount(0);
   await menu(page, "分叉会话");
@@ -802,9 +805,11 @@ test("questions support custom choices and secret input then resume execution", 
   await expect(
     page.locator("[data-slot=conversation-timeline]"),
   ).not.toContainText("fictional-only");
-  // Submitted blocking questions close immediately and return focus to the composer.
-  await expect(page.getByLabel("待处理请求")).toHaveCount(0);
-  await expect(input(page)).toBeFocused();
+  // The empty request container remains mounted; focus follows the saved answer.
+  await expect(
+    page.getByLabel("待处理请求").locator("[data-question-request-id]"),
+  ).toHaveCount(0);
+  await expect(page.locator("[data-answer-record]").last()).toBeFocused();
   expect(frames).toContainEqual(
     expect.objectContaining({
       result: {
@@ -925,10 +930,8 @@ for (const blocking of [false, true]) {
           ),
         });
     } else {
-      await expect(panel).toHaveCount(0);
-      await expect(
-        page.getByRole("textbox", { name: "消息输入框" }),
-      ).toBeFocused();
+      await expect(panel.getByRole("form")).toHaveCount(0);
+      await expect(page.locator("[data-answer-record]").last()).toBeFocused();
       expect(
         JSON.stringify(
           fixtureServer.requestLog.findLast(
@@ -1107,11 +1110,14 @@ test("external writer async question restores a saved answer and requires confir
   fixtureServer.releaseWriter();
   await delivery.getByRole("button", { name: "继续发送", exact: true }).click();
   await expect(form).toHaveCount(0);
-  expect(
-    fixtureServer.requestLog.filter((entry) =>
-      ["turn/start", "turn/steer"].includes(entry.method),
-    ),
-  ).toHaveLength(1);
+  await expect
+    .poll(
+      () =>
+        fixtureServer.requestLog.filter((entry) =>
+          ["turn/start", "turn/steer"].includes(entry.method),
+        ).length,
+    )
+    .toBe(1);
 });
 
 test("external writer async question can cancel a saved answer without sending", async ({
@@ -4560,6 +4566,8 @@ test("nested operation logs hand wheel scrolling to the conversation at both edg
   page,
 }) => {
   // This test inspects individual tool controls; process folding is covered separately.
+  // Keep wheel handoff independent of disclosure height animations.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(() =>
     localStorage.setItem("codex-workbench.auto-collapse-process", "false"),
   );
@@ -4586,7 +4594,8 @@ test("nested operation logs hand wheel scrolling to the conversation at both edg
   await expect(viewport).toHaveCSS("overscroll-behavior-y", "contain");
   // Establish a reader position before Playwright scrolls the log into view.
   // Hover's automatic scroll alone is not a user scroll intent.
-  await viewport.hover();
+  // Use the viewport gutter so an expanded log cannot consume this first wheel.
+  await viewport.hover({ position: { x: 4, y: 100 } });
   await page.mouse.wheel(0, -180);
   await expect(page.getByRole("button", { name: /回到底部/ })).toBeVisible();
   await output.hover();
