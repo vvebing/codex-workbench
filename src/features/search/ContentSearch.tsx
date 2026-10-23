@@ -7,7 +7,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { ErrorNotice, IconButton } from "../../components/ui";
+import { ErrorNotice, IconButton, ScrollArea } from "../../components/ui";
 import { useStore } from "../../components/hooks";
 import { useRuntime } from "../../lib/runtime-context";
 import type { Thread } from "../../generated/v2/Thread";
@@ -242,8 +242,9 @@ function ConnectedSearch({
           <span className="mt-1 block">{results.warning}</span>
         )}
       </div>
-      <div
-        className="min-h-0 flex-1 overflow-auto pb-3"
+      <ScrollArea
+        className="flex-1"
+        viewportProps={{ className: "pb-3" }}
         aria-label="内容搜索结果"
         aria-busy={busy}
       >
@@ -294,7 +295,7 @@ function ConnectedSearch({
               ))}
           </div>
         ))}
-      </div>
+      </ScrollArea>
     </section>
   );
 }

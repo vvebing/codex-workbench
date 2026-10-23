@@ -3,6 +3,7 @@ import {
   matchesNavigationStatus,
   navigationProjects,
   navigationThreads,
+  navigationActivityAt,
   threadStatus,
   type NavigationEnvironment,
 } from "../../src/features/navigation/navigation-model";
@@ -144,6 +145,95 @@ test("projects follow the latest session update across worktrees and use names o
   expect(navigationProjects(navigationThreads([local], visits))[0].name).toBe(
     "alpha",
   );
+});
+
+test("navigation uses current creation, update, and recency metadata for activity", () => {
+  const thread = {
+    ...placeholderThread("activity"),
+    createdAt: 10,
+    updatedAt: 20,
+    recencyAt: 15,
+  };
+  expect(navigationActivityAt(thread)).toBe(20);
+  expect(navigationActivityAt({ ...thread, recencyAt: 30 })).toBe(30);
+  expect(
+    navigationActivityAt({ ...thread, updatedAt: 0, recencyAt: null }),
+  ).toBe(10);
+});
+
+test("navigation publishes recency-only changes without requiring a reload or another metadata event", () => {
+  const original = {
+    ...placeholderThread("activity"),
+    createdAt: 1,
+    updatedAt: 10,
+    recencyAt: 10,
+  };
+  const { stores, environment } = runtimeFixture(stateWith(original));
+  const data = createNavigationDataSource([environment]);
+  const before = data.snapshot();
+  stores.sessions.set(stateWith({ ...original, recencyAt: 30 }));
+  const changed = data.snapshot();
+  expect(changed).not.toBe(before);
+  expect(
+    navigationProjects(navigationThreads(changed, {}))[0].latestActivityAt,
+  ).toBe(30);
+});
+
+test("initialization follows the first message through draft promotion and stops on execution or failure", () => {
+  const thread = placeholderThread("draft");
+  const environment = source(stateWith(thread));
+  environment.sessions.localDrafts.draft = { options: {} };
+  environment.sessions.threadAccess.draft = "activating";
+  environment.messages = [{ threadId: "draft", status: "creating" }];
+  const item = () => navigationThreads([environment], {})[0];
+  expect(item().initializing).toBe("正在创建会话");
+  environment.sessions = {
+    ...stateWith({ ...thread, id: "server" }),
+    draftOrigins: { server: "draft" },
+  };
+  environment.messages = [{ threadId: "draft", status: "sending" }];
+  expect(item().thread.id).toBe("server");
+  expect(item().initializing).toBe("正在发送");
+  environment.sessions.threadAccess.server = "activating";
+  expect(item().initializing).toBe("正在初始化");
+  environment.sessions.threadAccess.server = "editable";
+  environment.sessions.threads.server = {
+    ...environment.sessions.threads.server,
+    status: { type: "active", activeFlags: [] },
+  };
+  expect(item().initializing).toBeNull();
+  expect(item().running).toBe(true);
+  environment.sessions.threads.server = {
+    ...environment.sessions.threads.server,
+    status: { type: "idle" },
+  };
+  environment.messages = [{ threadId: "draft", status: "failed" }];
+  expect(item().initializing).toBeNull();
+  environment.messages = [{ threadId: "draft", status: "uncertain" }];
+  expect(item().initializing).toBeNull();
+  environment.messages = [{ threadId: "draft", status: "sending" }];
+  environment.connected = false;
+  expect(item().initializing).toBeNull();
+});
+
+test("navigation publishes initialization access changes without waiting for another metadata update", () => {
+  const { stores, environment } = runtimeFixture(
+    stateWith(placeholderThread("initializing")),
+  );
+  const data = createNavigationDataSource([environment]);
+  const before = data.snapshot();
+  stores.sessions.set({
+    ...stores.sessions.getSnapshot(),
+    threadAccess: { initializing: "activating" },
+  });
+  const changed = data.snapshot();
+  expect(changed).not.toBe(before);
+  expect(navigationThreads(changed, {})[0].initializing).toBe("正在初始化");
+  stores.sessions.set({
+    ...stores.sessions.getSnapshot(),
+    threadAccess: { initializing: "editable" },
+  });
+  expect(navigationThreads(data.snapshot(), {})[0].initializing).toBeNull();
 });
 
 test("status filters keep waiting, failure, execution, and unread dimensions independent", () => {

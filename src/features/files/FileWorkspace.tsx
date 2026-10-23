@@ -14,7 +14,12 @@ import {
   Save,
   X,
 } from "lucide-react";
-import { Button, IconButton, ErrorNotice } from "../../components/ui";
+import {
+  Button,
+  IconButton,
+  ErrorNotice,
+  ScrollArea,
+} from "../../components/ui";
 import { useGitBaseline } from "./use-git-baseline";
 import {
   Component,
@@ -50,9 +55,11 @@ class EditorBoundary extends Component<
           <ErrorNotice className="m-3 shrink-0">
             编辑器加载失败。草稿仍保留在当前工作区；请先复制未保存的内容，再刷新页面重试。
           </ErrorNotice>
-          <pre className="file-readonly" tabIndex={0}>
-            <code>{this.props.text}</code>
-          </pre>
+          <ScrollArea orientation="both" className="flex-1">
+            <pre className="file-readonly" tabIndex={0}>
+              <code>{this.props.text}</code>
+            </pre>
+          </ScrollArea>
         </>
       );
     return this.props.children;
@@ -106,6 +113,12 @@ export function FileWorkspace({
     };
   }, [compare, baseText, diskText, gitComparison, gitBaseline?.text]);
   const [saveAs, setSaveAs] = useState<string>();
+  const [discard, setDiscard] = useState<{
+    type: "close" | "reload";
+    id: string;
+    path: string;
+  }>();
+  const discardTarget = state.documents.find((item) => item.id === discard?.id);
   const [busy, setBusy] = useState(false);
   const [position, setPosition] = useState({
     line: 1,
@@ -115,6 +128,10 @@ export function FileWorkspace({
   const run = (operation: Promise<unknown>) => {
     setNotice("");
     void operation.catch((error: unknown) => setNotice(String(error)));
+  };
+  const closeFile = (id: string) => {
+    files.close(id);
+    if (!files.getSnapshot().documents.length) files.setVisible(false);
   };
   const save = () => {
     if (
@@ -155,76 +172,79 @@ export function FileWorkspace({
         <IconButton label="返回会话" onClick={() => files.setVisible(false)}>
           <ArrowLeft size={16} aria-hidden="true" />
         </IconButton>
-        <div
-          className="flex min-w-[120px] flex-1 self-stretch overflow-x-auto"
-          role="tablist"
-          aria-label="已打开文件"
+        <ScrollArea
+          orientation="horizontal"
+          className="min-w-[120px] flex-1 self-stretch"
         >
-          {state.documents.map((item) => (
-            <div
-              className={`file-tab ${item.id === state.activeId ? "is-active" : ""}`}
-              key={item.id}
-            >
-              <button
-                role="tab"
-                aria-selected={item.id === state.activeId}
-                title={`${item.path}${item.preview ? "（预览，双击固定）" : ""}`}
-                className={item.preview ? "is-preview" : undefined}
-                onDoubleClick={() => files.pin(item.id)}
-                onKeyDown={(event) => {
-                  const index = state.documents.findIndex(
-                    (doc) => doc.id === item.id,
-                  );
-                  const next =
-                    event.key === "ArrowRight"
-                      ? (index + 1) % state.documents.length
-                      : event.key === "ArrowLeft"
-                        ? (index - 1 + state.documents.length) %
-                          state.documents.length
-                        : event.key === "Home"
-                          ? 0
-                          : event.key === "End"
-                            ? state.documents.length - 1
-                            : -1;
-                  if (next < 0) return;
-                  event.preventDefault();
-                  files.select(state.documents[next].id);
-                  const tabs = event.currentTarget
-                    .closest('[role="tablist"]')
-                    ?.querySelectorAll<HTMLElement>('[role="tab"]');
-                  tabs?.item(next)?.focus();
-                }}
-                tabIndex={item.id === state.activeId ? 0 : -1}
-                onClick={() => files.select(item.id)}
+          <div
+            className="flex w-max min-w-full"
+            role="tablist"
+            aria-label="已打开文件"
+          >
+            {state.documents.map((item) => (
+              <div
+                className={`file-tab ${item.id === state.activeId ? "is-active" : ""}`}
+                key={item.id}
               >
-                {item.dirty ? "● " : ""}
-                {item.path.split(/[\\/]/).at(-1)}
-                {item.gitComparison
-                  ? ` · ${{ staged: "已暂存", unstaged: "未暂存", untracked: "未跟踪", conflict: "冲突" }[item.gitComparison.request.group]}`
-                  : ""}
-                {item.readonly ? " · 只读" : ""}
-              </button>
-              <IconButton
-                size="sm"
-                label={`关闭 ${item.path}`}
-                disabled={item.saving}
-                onClick={() => {
-                  if (
-                    !item.dirty ||
-                    window.confirm(
-                      `关闭 ${item.path} 将丢弃未保存的修改，是否继续？`,
-                    )
-                  ) {
-                    files.close(item.id);
-                    if (state.documents.length === 1) files.setVisible(false);
-                  }
-                }}
-              >
-                <X size={14} aria-hidden="true" />
-              </IconButton>
-            </div>
-          ))}
-        </div>
+                <button
+                  role="tab"
+                  aria-selected={item.id === state.activeId}
+                  title={`${item.path}${item.preview ? "（预览，双击固定）" : ""}`}
+                  className={item.preview ? "is-preview" : undefined}
+                  onDoubleClick={() => files.pin(item.id)}
+                  onKeyDown={(event) => {
+                    const index = state.documents.findIndex(
+                      (doc) => doc.id === item.id,
+                    );
+                    const next =
+                      event.key === "ArrowRight"
+                        ? (index + 1) % state.documents.length
+                        : event.key === "ArrowLeft"
+                          ? (index - 1 + state.documents.length) %
+                            state.documents.length
+                          : event.key === "Home"
+                            ? 0
+                            : event.key === "End"
+                              ? state.documents.length - 1
+                              : -1;
+                    if (next < 0) return;
+                    event.preventDefault();
+                    files.select(state.documents[next].id);
+                    const tabs = event.currentTarget
+                      .closest('[role="tablist"]')
+                      ?.querySelectorAll<HTMLElement>('[role="tab"]');
+                    tabs?.item(next)?.focus();
+                  }}
+                  tabIndex={item.id === state.activeId ? 0 : -1}
+                  onClick={() => files.select(item.id)}
+                >
+                  {item.dirty ? "● " : ""}
+                  {item.path.split(/[\\/]/).at(-1)}
+                  {item.gitComparison
+                    ? ` · ${{ staged: "已暂存", unstaged: "未暂存", untracked: "未跟踪", conflict: "冲突" }[item.gitComparison.request.group]}`
+                    : ""}
+                  {item.readonly ? " · 只读" : ""}
+                </button>
+                <IconButton
+                  size="sm"
+                  label={`关闭 ${item.path}`}
+                  disabled={item.saving}
+                  onClick={() => {
+                    if (item.dirty)
+                      setDiscard({
+                        type: "close",
+                        id: item.id,
+                        path: item.path,
+                      });
+                    else closeFile(item.id);
+                  }}
+                >
+                  <X size={14} aria-hidden="true" />
+                </IconButton>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
         {canSplit && onToggleFocus && (
           <IconButton
             label={focused ? "并排查看会话" : "专注编辑"}
@@ -323,13 +343,13 @@ export function FileWorkspace({
               label="重新加载"
               disabled={!connected || document.loading || document.saving}
               onClick={() => {
-                if (
-                  !document.dirty ||
-                  window.confirm(
-                    "重新加载将丢弃这个文件尚未保存的修改，是否继续？",
-                  )
-                )
-                  run(files.reload(document.id));
+                if (document.dirty)
+                  setDiscard({
+                    type: "reload",
+                    id: document.id,
+                    path: document.path,
+                  });
+                else run(files.reload(document.id));
               }}
             >
               <RefreshCw size={16} aria-hidden="true" />
@@ -463,20 +483,22 @@ export function FileWorkspace({
               }
             >
               {narrow ? (
-                <pre className="file-readonly" tabIndex={0}>
-                  {gitComparison && (
-                    <>
-                      原版本：{gitComparison.originalLabel}
-                      {"\n"}
-                      {gitComparison.original}
-                      {"\n\n"}新版本：{gitComparison.modifiedLabel}
-                      {"\n"}
-                    </>
-                  )}
-                  <code>
-                    {document.text || (document.error ? "" : "（空文件）")}
-                  </code>
-                </pre>
+                <ScrollArea orientation="both" className="flex-1">
+                  <pre className="file-readonly" tabIndex={0}>
+                    {gitComparison && (
+                      <>
+                        原版本：{gitComparison.originalLabel}
+                        {"\n"}
+                        {gitComparison.original}
+                        {"\n\n"}新版本：{gitComparison.modifiedLabel}
+                        {"\n"}
+                      </>
+                    )}
+                    <code>
+                      {document.text || (document.error ? "" : "（空文件）")}
+                    </code>
+                  </pre>
+                </ScrollArea>
               ) : (
                 <EditorBoundary text={document.text}>
                   <Suspense
@@ -576,7 +598,7 @@ export function FileWorkspace({
       )}
       {saveAs !== undefined && document && (
         <FileDialog
-          titleId="save-as-title"
+          title="另存为新文件"
           busy={busy}
           onClose={() => setSaveAs(undefined)}
         >
@@ -601,7 +623,6 @@ export function FileWorkspace({
                 .finally(() => setBusy(false));
             }}
           >
-            <h2 id="save-as-title">另存为新文件</h2>
             <label>
               新文件绝对路径
               <input
@@ -630,6 +651,47 @@ export function FileWorkspace({
               </Button>
             </div>
           </form>
+        </FileDialog>
+      )}
+      {discard && (
+        <FileDialog
+          title={discard.type === "close" ? "关闭文件" : "重新加载文件"}
+          busy={!!discardTarget?.saving || !!discardTarget?.loading}
+          onClose={() => setDiscard(undefined)}
+        >
+          <div className="file-dialog">
+            <p>
+              {discard.type === "close" ? "关闭" : "重新加载"}
+              将丢弃此文件尚未保存的修改，是否继续？
+            </p>
+            <p className="text-muted [overflow-wrap:anywhere]">
+              {discard.path}
+            </p>
+            <div className="file-dialog-actions">
+              <Button autoFocus onClick={() => setDiscard(undefined)}>
+                取消
+              </Button>
+              <Button
+                variant="danger"
+                disabled={
+                  !discardTarget ||
+                  discardTarget.saving ||
+                  discardTarget.loading ||
+                  (discard.type === "reload" && !connected)
+                }
+                onClick={() => {
+                  const action = discard;
+                  setDiscard(undefined);
+                  if (action.type === "close") closeFile(action.id);
+                  else run(files.reload(action.id));
+                }}
+              >
+                {discard.type === "close"
+                  ? "放弃修改并关闭"
+                  : "放弃修改并重新加载"}
+              </Button>
+            </div>
+          </div>
         </FileDialog>
       )}
     </section>

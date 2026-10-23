@@ -1,6 +1,16 @@
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
 import type { TurnStatus } from "../../generated/v2/TurnStatus";
 
+/** File changes and durations shown as 0.0 seconds do not need automatic motion. */
+export function isInstantOperation(item: ThreadItem): boolean {
+  if (item.type === "fileChange") return true;
+  return (
+    "durationMs" in item &&
+    item.durationMs !== null &&
+    (item.durationMs / 1000).toFixed(1) === "0.0"
+  );
+}
+
 /** Resolve an operation independently of its siblings or the enclosing turn. */
 export function operationStatus(
   item: ThreadItem,
@@ -28,7 +38,8 @@ export function operationStatus(
 export function commandTitle(
   item: Extract<ThreadItem, { type: "commandExecution" }>,
 ): string {
-  if (item.commandActions.length !== 1) return item.command;
+  if (item.commandActions.length !== 1)
+    return fallbackCommandTitle(item.command);
   const action = item.commandActions[0];
   switch (action.type) {
     case "read":
@@ -42,8 +53,19 @@ export function commandTitle(
           ? `搜索 ${action.path}`
           : "搜索文件";
     default:
-      return item.command;
+      return fallbackCommandTitle(item.command);
   }
+}
+
+/** Display a bounded command preview without attempting to interpret shell code. */
+function fallbackCommandTitle(command: string): string {
+  const compact = command.replace(/\s+/g, " ").trim();
+  const shell =
+    /^(?:\/[^\s]+\/)?(?:bash|zsh|sh)\s+-[a-z]*c\s+(["'])([\s\S]*)\1$/.exec(
+      compact,
+    );
+  const preview = shell?.[2] ?? compact;
+  return `执行命令 · ${preview.length > 100 ? `${preview.slice(0, 100)}…` : preview}`;
 }
 
 export interface OperationGroupContext {
@@ -51,74 +73,7 @@ export interface OperationGroupContext {
   completedItems?: Readonly<Record<string, boolean>>;
   startedItems?: Readonly<Record<string, boolean>>;
   waitingItems?: readonly string[];
-  expandedItems?: readonly string[];
   threadId: string;
   turnId: string;
   turnStatus: TurnStatus;
-}
-
-export interface OperationExpansion {
-  open: boolean;
-  version: number;
-  summaryId?: string;
-}
-
-/** A batch may gain members or a new first item; preserve its latest user choice. */
-export function operationSummaryExpansion(
-  items: readonly ThreadItem[],
-  choices: Readonly<Record<string, OperationExpansion>>,
-): OperationExpansion | undefined {
-  let latest: OperationExpansion | undefined;
-  for (const item of items) {
-    const choice = choices[item.id];
-    if (choice && (!latest || choice.version > latest.version)) latest = choice;
-  }
-  return latest;
-}
-
-/** Compact only successful operations, keeping chronological order in both lists. */
-export function partitionOperationGroup(
-  items: readonly ThreadItem[],
-  context: OperationGroupContext,
-  limit = 6,
-): { visible: ThreadItem[]; hidden: ThreadItem[] } {
-  if (!context.historical || context.turnStatus === "inProgress")
-    return { visible: [...items], hidden: [] };
-  const successful = items.filter((item) => {
-    if (
-      item.type === "userMessage" ||
-      item.type === "agentMessage" ||
-      item.type === "reasoning" ||
-      item.type === "plan" ||
-      item.type === "subAgentActivity" ||
-      item.type === "collabAgentToolCall" ||
-      context.expandedItems?.includes(item.id) ||
-      context.waitingItems?.includes(item.id)
-    )
-      return false;
-    const completed =
-      !!context.completedItems?.[
-        JSON.stringify([context.threadId, context.turnId, item.id])
-      ];
-    // Preserve a known live operation even if a historical turn is stale.
-    if (
-      "status" in item &&
-      (item.status === "inProgress" || item.status === "in_progress") &&
-      !completed
-    )
-      return false;
-    return (
-      operationStatus(item, context.turnStatus, completed, false) ===
-      "completed"
-    );
-  });
-  const hiddenIds = new Set(
-    successful
-      .slice(0, Math.max(0, successful.length - Math.max(0, Math.floor(limit))))
-      .map((item) => item.id),
-  );
-  return {
-    visible: items.filter((item) => !hiddenIds.has(item.id)),
-    hidden: items.filter((item) => hiddenIds.has(item.id)),
-  };
 }

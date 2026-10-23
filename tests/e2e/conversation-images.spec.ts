@@ -71,6 +71,17 @@ for (const width of [1440, 390]) {
     await page.keyboard.press("Enter");
     await expect(search).toBeHidden();
     const turn = page.locator('[data-slot="conversation-turn"]').first();
+    if (width === 390) {
+      // Stacked attachments exceed the prompt preview; expand before using its controls.
+      const expand = turn.getByRole("button", {
+        name: "展开完整问题",
+        exact: true,
+      });
+      await expand.click();
+      await expect(
+        turn.getByRole("button", { name: "收起问题", exact: true }),
+      ).toHaveAttribute("aria-expanded", "true");
+    }
     for (const name of [
       "对话附件 1",
       "对话附件 2",

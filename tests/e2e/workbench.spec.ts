@@ -353,8 +353,9 @@ test("conversation defaults to comfortable prose and width preference persists",
   const prose = content
     .locator("article:not([data-prompt-id]) > .markdown-content > p")
     .first();
+  // The timeline reserves 56px on the right for the prompt directory, plus 24px on the left.
   expect((await prose.boundingBox())!.width).toBeCloseTo(
-    (await content.boundingBox())!.width - 48,
+    (await content.boundingBox())!.width - 80,
     0,
   );
   await input(page).fill("width preference draft");
@@ -372,7 +373,7 @@ test("conversation defaults to comfortable prose and width preference persists",
   await expect(content).toHaveCSS("width", "1128px");
   await expect(composer).toHaveCSS("width", "1128px");
   expect((await prose.boundingBox())!.width).toBeCloseTo(
-    (await content.boundingBox())!.width - 48,
+    (await content.boundingBox())!.width - 80,
     0,
   );
   await expect(input(page)).toHaveText("width preference draft");
@@ -653,7 +654,7 @@ test("model and policy controls work and invalid attachments remain unsent", asy
   await page.locator("[data-slot=policy-choice]").click();
   await page.getByRole("menuitemradio", { name: /谨慎审批/ }).click();
   await expect(page.locator("[data-slot=policy-choice]")).toContainText(
-    "谨慎审批",
+    "下次：谨慎审批",
   );
   await expect(page.getByRole("menu")).toHaveCount(0);
   await page.locator("[data-slot=policy-choice]").click();
@@ -716,16 +717,15 @@ test("browser title matches preview labels when switching sessions without names
   page,
 }) => {
   await openFirst(page);
+  fixtureServer.setThreadName("mock-thread-010", null);
   fixtureServer.publish({
     method: "thread/name/updated",
     params: { threadId: "mock-thread-010" },
   });
   await expect(page.locator("[data-slot=breadcrumb] strong")).toHaveText(
-    "请检查接口分页与错误处理，并给出实施建议。",
+    "检查接口分页与错误处理",
   );
-  await expect(page).toHaveTitle(
-    "请检查接口分页与错误处理，并给出实施建议。 · Codex 工作台",
-  );
+  await expect(page).toHaveTitle("检查接口分页与错误处理 · Codex 工作台");
   await page.keyboard.press("Control+k");
   const search = page.getByRole("dialog", { name: "搜索会话" });
   await search
@@ -733,13 +733,12 @@ test("browser title matches preview labels when switching sessions without names
     .fill("设计令牌与暗色模式 · 2");
   await page.keyboard.press("Enter");
   await expect(search).toBeHidden();
+  fixtureServer.setThreadName("mock-thread-002", null);
   fixtureServer.publish({
     method: "thread/name/updated",
     params: { threadId: "mock-thread-002" },
   });
-  await expect(page).toHaveTitle(
-    "请检查设计令牌与暗色模式，并给出实施建议。 · Codex 工作台",
-  );
+  await expect(page).toHaveTitle("检查设计令牌与暗色模式 · Codex 工作台");
 });
 
 test("command approval uses server decision restrictions and resumes streaming", async ({
@@ -778,6 +777,7 @@ test("command approval uses server decision restrictions and resumes streaming",
 test("questions support custom choices and secret input then resume execution", async ({
   page,
 }) => {
+  const frames = recordComposerFrames(page);
   await openFirst(page);
   await send(page, "问题");
   await expect(
@@ -802,14 +802,143 @@ test("questions support custom choices and secret input then resume execution", 
   await expect(
     page.locator("[data-slot=conversation-timeline]"),
   ).not.toContainText("fictional-only");
-  await expect(
-    page.getByRole("heading", { name: "你的回答", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByLabel("待处理请求")).toContainText("分组侧栏");
-  await expect(page.getByLabel("待处理请求")).not.toContainText(
-    "fictional-only",
+  // Submitted blocking questions close immediately and return focus to the composer.
+  await expect(page.getByLabel("待处理请求")).toHaveCount(0);
+  await expect(input(page)).toBeFocused();
+  expect(frames).toContainEqual(
+    expect.objectContaining({
+      result: {
+        answers: {
+          layout: { answers: ["分组侧栏"] },
+          demoSecret: { answers: ["fictional-only"] },
+        },
+      },
+    }),
   );
 });
+
+for (const blocking of [false, true]) {
+  test(`question panels use bounded library scrolling for many ${blocking ? "blocking" : "async"} questions`, async ({
+    page,
+  }) => {
+    await openFirst(page);
+    const threadId = "mock-thread-010";
+    const titles = Array.from(
+      { length: 9 },
+      (_, index) => `请补充第 ${index + 1} 项偏好`,
+    );
+    if (blocking) {
+      fixtureServer.publish({
+        id: "many-questions",
+        method: "item/tool/requestUserInput",
+        params: {
+          threadId,
+          turnId: "many-question-turn",
+          itemId: "many-question-item",
+          isBlocking: true,
+          autoResolutionMs: null,
+          questions: titles.map((question, index) => ({
+            id: `preference-${index}`,
+            header: `偏好 ${index + 1}`,
+            question,
+            isOther: true,
+            isSecret: false,
+            options: null,
+          })),
+        },
+      });
+    } else {
+      fixtureServer.publish({
+        method: "turn/completed",
+        params: {
+          threadId,
+          turn: {
+            id: "many-question-turn",
+            rootTurnId: null,
+            status: "completed",
+            itemsView: "full",
+            error: null,
+            startedAt: null,
+            completedAt: null,
+            durationMs: null,
+            items: [
+              {
+                type: "agentMessage",
+                id: "many-question-item",
+                text: "请补充以下偏好。",
+                phase: "commentary",
+                memoryCitation: null,
+                delivery: null,
+                questions: titles.map((title) => ({ title, options: null })),
+              },
+            ],
+          },
+        },
+      });
+    }
+    const panel = blocking
+      ? page.getByLabel("待处理请求", { exact: true })
+      : page.getByRole("region", { name: "待回答问题", exact: true });
+    const viewport = blocking
+      ? panel.locator("xpath=ancestor::*[@data-radix-scroll-area-viewport][1]")
+      : panel.locator("[data-radix-scroll-area-viewport]");
+    await expect(panel.getByRole("textbox")).toHaveCount(9);
+    expect(
+      await viewport.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    ).toBe(true);
+    expect((await viewport.boundingBox())!.height).toBeLessThanOrEqual(
+      1000 * (blocking ? 0.38 : 0.45) + 1,
+    );
+    const composer = page.locator("[data-slot=composer-action]");
+    await expect(composer).toBeInViewport();
+    const originalY = (await composer.boundingBox())!.y;
+    for (const title of titles)
+      await panel
+        .getByRole("textbox", { name: title, exact: true })
+        .fill(`回答：${title}`);
+    await expect
+      .poll(() => viewport.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await expect(
+      panel.getByRole("textbox", { name: titles.at(-1)!, exact: true }),
+    ).toBeInViewport();
+    expect((await composer.boundingBox())!.y).toBe(originalY);
+    const submit = panel.getByRole("button", { name: "提交回答", exact: true });
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    if (blocking) {
+      await expect
+        .poll(
+          () =>
+            fixtureServer.responseLog.find(
+              (reply) => reply.id === "many-questions",
+            )?.result,
+        )
+        .toEqual({
+          answers: Object.fromEntries(
+            titles.map((title, index) => [
+              `preference-${index}`,
+              { answers: [`回答：${title}`] },
+            ]),
+          ),
+        });
+    } else {
+      await expect(panel).toHaveCount(0);
+      await expect(
+        page.getByRole("textbox", { name: "消息输入框" }),
+      ).toBeFocused();
+      expect(
+        JSON.stringify(
+          fixtureServer.requestLog.findLast(
+            (request) => request.method === "turn/start",
+          )?.input,
+        ),
+      ).toContain(titles.at(-1));
+    }
+  });
+}
 
 for (const running of [false, true]) {
   test(`async questions accept answers ${running ? "during execution" : "after completion"}`, async ({
@@ -905,6 +1034,7 @@ test("external writer async question saves an answer then delivers after write a
 }) => {
   await openFirst(page);
   const form = page.getByRole("form", { name: "回答异步问题" });
+  const delivery = page.locator('[data-slot="question-answer-delivery"]');
   await expect(form).toBeVisible();
   await expect(form).toContainText("提交后将保留回答");
   const radio = form.getByRole("radio", { name: "顶部", exact: true });
@@ -932,7 +1062,7 @@ test("external writer async question saves an answer then delivers after write a
     ),
   ).toHaveLength(0);
   await form.getByRole("button", { name: "提交回答" }).click();
-  await expect(form.getByRole("status")).toContainText("回答已保存");
+  await expect(delivery.getByRole("status")).toContainText("回答已保存");
   await expect(page.locator("[data-slot=action-notification]")).toHaveCount(0);
   expect(
     fixtureServer.requestLog.filter((entry) =>
@@ -960,19 +1090,22 @@ test("external writer async question restores a saved answer and requires confir
 }) => {
   await openFirst(page);
   const form = page.getByRole("form", { name: "回答异步问题" });
+  const delivery = page.locator('[data-slot="question-answer-delivery"]');
   await form.getByRole("radio", { name: "顶部", exact: true }).check();
   await form.getByRole("button", { name: "提交回答" }).click();
-  await expect(form.getByRole("status")).toContainText("回答已保存");
+  await expect(delivery.getByRole("status")).toContainText("回答已保存");
   await page.reload();
-  await expect(form.getByRole("status")).toContainText("请检查后继续队列");
-  await expect(form).toContainText("顶部");
+  await expect(delivery.getByRole("status")).toContainText("请检查后继续队列");
+  await expect(
+    page.locator("[data-answer-record]").filter({ has: delivery }),
+  ).toContainText("顶部");
   expect(
     fixtureServer.requestLog.filter((entry) =>
       ["turn/start", "turn/steer"].includes(entry.method),
     ),
   ).toHaveLength(0);
   fixtureServer.releaseWriter();
-  await form.getByRole("button", { name: "继续发送", exact: true }).click();
+  await delivery.getByRole("button", { name: "继续发送", exact: true }).click();
   await expect(form).toHaveCount(0);
   expect(
     fixtureServer.requestLog.filter((entry) =>
@@ -986,10 +1119,13 @@ test("external writer async question can cancel a saved answer without sending",
 }) => {
   await openFirst(page);
   const form = page.getByRole("form", { name: "回答异步问题" });
+  const delivery = page.locator('[data-slot="question-answer-delivery"]');
   await form.getByRole("radio", { name: "顶部", exact: true }).check();
   await form.getByRole("button", { name: "提交回答" }).click();
-  await expect(form.getByRole("status")).toContainText("回答已保存");
-  await form.getByRole("button", { name: "取消待发送", exact: true }).click();
+  await expect(delivery.getByRole("status")).toContainText("回答已保存");
+  await delivery
+    .getByRole("button", { name: "取消待发送", exact: true })
+    .click();
   await expect(
     form.getByRole("radio", { name: "顶部", exact: true }),
   ).toBeEnabled();
@@ -1156,6 +1292,7 @@ test("turn results display files and diffs independently of the project panel", 
     panel.getByRole("tab", { name: "文件", exact: true }),
   ).toHaveAttribute("data-state", "active");
   await expect(panel).not.toContainText("检查现状");
+  await turn.getByRole("button", { name: "展开执行过程", exact: true }).click();
   const command = turn
     .locator("[data-slot=conversation-tool]")
     .filter({ hasText: "npm run test" });
@@ -1826,7 +1963,9 @@ for (const permission of ["granted", "denied"] as const) {
     const row = page.locator("[data-slot=thread-row]").filter({
       has: page.locator("[data-slot=thread-link] > span", { hasText: title }),
     });
-    await expect(row.getByRole("img", { name: "有未读结果" })).toBeVisible();
+    await expect(
+      row.getByRole("img", { name: "已完成，结果未读" }),
+    ).toBeVisible();
     await expect(page.locator("[data-slot=breadcrumb] strong")).toHaveText(
       "新会话",
     );
@@ -1859,7 +1998,9 @@ for (const permission of ["granted", "denied"] as const) {
     await expect(page.locator("[data-slot=breadcrumb] strong")).toHaveText(
       title,
     );
-    await expect(row.getByRole("img", { name: "有未读结果" })).toHaveCount(0);
+    await expect(
+      row.getByRole("img", { name: "已完成，结果未读" }),
+    ).toHaveCount(0);
     await expect(notice).toHaveCount(0);
     await expect(page.locator("#product-favicon")).toHaveAttribute(
       "href",
@@ -2308,7 +2449,7 @@ test("current session completion sends a system notification without an unread i
   ).toContainText("会话已完成");
   await expect(
     page.locator(
-      '[data-slot=thread-row][data-selected=true] [role=img][aria-label="有未读结果"]',
+      "[data-slot=thread-row][data-selected=true] [data-slot=thread-completion-indicator]",
     ),
   ).toHaveCount(0);
   await expect
@@ -2398,7 +2539,9 @@ test("external partial history recovers from an ambiguous interruption and shows
 }) => {
   await openFirst(page);
   const footer = page.locator("[data-slot=conversation-turn-footer]").last();
-  await expect(footer).toHaveText("执行状态待确认");
+  await expect(
+    footer.getByText("执行状态待确认", { exact: true }),
+  ).toBeVisible();
   await expect(footer).toContainText("正在执行", { timeout: 15_000 });
   await expect(
     page.locator(
@@ -2535,13 +2678,14 @@ test("context usage opens details with hover, click and keyboard focus", async (
   });
   await openFirst(page);
   const indicator = page.getByRole("button", {
-    name: "上下文使用量：待更新",
+    name: "上下文：暂无数据",
     exact: true,
   });
   await expect(indicator).toBeVisible();
   await indicator.hover();
   const details = page.getByRole("dialog", { name: "上下文使用量详情" });
   await expect(details).toContainText("等待服务端上报上下文用量。");
+  await expect(details).toContainText("不代表上下文为空");
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await indicator.click();
@@ -2788,6 +2932,19 @@ test("conversation uses the library viewport and returns to the latest message",
     '[data-slot="conversation-timeline"] > [data-radix-scroll-area-viewport]',
   );
   await expect(viewport).toBeVisible();
+  // Completion is reported before the last execution height animation settles.
+  // This case checks navigation from a settled layout; live folding is covered separately.
+  await expect
+    .poll(() =>
+      viewport.evaluate((element) =>
+        Array.from(
+          element.querySelectorAll(
+            '[data-slot="conversation-execution"], [data-slot="disclosure-content"]',
+          ),
+        ).some((node) => node.getAnimations().length > 0),
+      ),
+    )
+    .toBe(false);
   await expect
     .poll(() =>
       viewport.evaluate(
@@ -3343,15 +3500,24 @@ test("local draft slow creation preserves edits made while the first message is 
     "data-delivery-status",
     "creating",
   );
+  const row = page.locator('[data-slot="thread-row"][data-selected="true"]');
+  await expect(
+    row.getByRole("img", { name: "正在创建会话", exact: true }),
+  ).toBeVisible();
   await expect(page.locator("[data-slot=composer-status]")).toContainText(
     "正在确认",
   );
   await expect(input(page)).toHaveText("");
-  await expect(page.locator("[data-slot=local-message]")).toContainText(
-    "正在创建会话…",
-  );
+  await expect(
+    page
+      .locator("[data-slot=local-message]")
+      .getByRole("status", { name: "正在创建会话…" }),
+  ).toBeVisible();
   await input(page).fill("创建期间的新草稿");
   await completed(page);
+  await expect(row.locator('[data-slot="initializing-indicator"]')).toHaveCount(
+    0,
+  );
   await expect(input(page)).toHaveText("创建期间的新草稿");
   await expect(page.locator("[data-slot=local-message]")).toHaveCount(0);
   await expect(
@@ -3432,10 +3598,11 @@ test("workspace actions toggle individual groups, share context menus and copy s
   const summary = await page.evaluate(() =>
     sessionStorage.getItem("test-clipboard"),
   );
-  await page.getByRole("button", { name: "复制最终总结", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "复制最终总结", exact: true }),
-  ).toHaveText("已复制最终总结");
+  const copyFinalAnswer = page
+    .getByRole("button", { name: "复制最终回答", exact: true })
+    .last();
+  await copyFinalAnswer.click();
+  await expect(copyFinalAnswer).toHaveText("已复制");
   expect(
     await page.evaluate(() => sessionStorage.getItem("test-clipboard")),
   ).toBe(summary);
@@ -3447,14 +3614,18 @@ test("external unloaded history updates automatically without sidebar status ico
   await openFirst(page);
   const row = page.locator("[data-slot=thread-row][data-selected=true]");
   const footer = page.locator("[data-slot=conversation-turn-footer]").last();
-  await expect(footer).toHaveText("执行状态待确认");
+  await expect(
+    footer.getByText("执行状态待确认", { exact: true }),
+  ).toBeVisible();
   await expect(row.getByRole("img", { name: "执行状态待确认" })).toHaveCount(0);
   await expect(row.locator("[data-slot=running-indicator]")).toHaveCount(0);
   await expect(
     page.locator("[data-slot=conversation-turn]").last(),
   ).toContainText("终端仍在执行", { timeout: 15000 });
   await expect(row.getByRole("img", { name: "内容已更新" })).toHaveCount(0);
-  await expect(footer).toHaveText("执行状态待确认");
+  await expect(
+    footer.getByText("执行状态待确认", { exact: true }),
+  ).toBeVisible();
   await expect(row.locator("[data-slot=running-indicator]")).toHaveCount(0);
   await expect(row.getByRole("img", { name: "执行状态待确认" })).toHaveCount(0);
   await expect(row.getByRole("img", { name: "内容已更新" })).toHaveCount(0);
@@ -3917,6 +4088,10 @@ test("default model preference persists, applies to new sessions and preserves e
 test("operation lifecycle expands while running and collapses after success", async ({
   page,
 }) => {
+  // This test inspects individual tool controls; process folding is covered separately.
+  await page.addInitScript(() =>
+    localStorage.setItem("codex-workbench.auto-collapse-process", "false"),
+  );
   await openFirst(page);
   await send(page, "operation-lifecycle");
   const command = page
@@ -3926,6 +4101,25 @@ test("operation lifecycle expands while running and collapses after success", as
     .filter({ hasText: "npm run test" });
   await expect(command).toHaveAttribute("open", "");
   await expect(command).toHaveAttribute("data-status", "inProgress");
+  expect(
+    await command.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const width =
+        element.clientWidth -
+        parseFloat(style.paddingLeft) -
+        parseFloat(style.paddingRight);
+      return Math.abs(
+        element.querySelector("summary")!.getBoundingClientRect().width - width,
+      );
+    }),
+  ).toBeLessThan(1);
+
+  const batch = page
+    .locator("[data-slot=conversation-turn]")
+    .last()
+    .locator('[data-slot="execution-summary"][data-category="run"]');
+  await expect(batch).toHaveAttribute("data-status", "completed");
+  await expect(batch.locator(":scope > summary")).toBeHidden();
   await expect(command).toHaveAttribute("data-status", "completed");
   await expect(command).not.toHaveAttribute("open");
   await command.locator("summary").click();
@@ -3947,13 +4141,32 @@ test("operation turn folding keeps final summaries and restores inline progress"
   await expect(
     turn.locator("[data-slot=conversation-progress-message]"),
   ).toHaveCount(0);
-  const progressBox = await commentary.boundingBox();
-  const dividerBox = await turn
-    .locator("[data-slot=turn-process-divider]")
-    .boundingBox();
-  expect(dividerBox!.y).toBeGreaterThanOrEqual(
-    progressBox!.y + progressBox!.height,
-  );
+  await expect
+    .poll(() =>
+      turn.evaluate((element) => {
+        const divider = element.querySelector(
+          '[data-slot="turn-process-divider"]',
+        )!;
+        const progress = Array.from(element.querySelectorAll("article")).find(
+          (article) => article.textContent === "中间进展：正在检查执行结果。",
+        )!;
+        const settled = [divider, progress].every(
+          (node) =>
+            node
+              .closest(
+                '[data-slot="conversation-process-motion"], [data-slot="conversation-message-motion"]',
+              )!
+              .getAnimations({ subtree: true }).length === 0,
+        );
+        // Both rectangles must come from the same layout frame.
+        return (
+          settled &&
+          divider.getBoundingClientRect().bottom <=
+            progress.getBoundingClientRect().top
+        );
+      }),
+    )
+    .toBe(true);
   await turn.getByRole("button", { name: "收起执行过程", exact: true }).click();
   await expect(commentary).toBeHidden();
   await expect(
@@ -4016,6 +4229,10 @@ test("operation turn folding keeps final summaries and restores inline progress"
 test("operation summaries keep manual expansion and collapse through streamed command updates", async ({
   page,
 }) => {
+  // This test inspects individual tool controls; process folding is covered separately.
+  await page.addInitScript(() =>
+    localStorage.setItem("codex-workbench.auto-collapse-process", "false"),
+  );
   await openFirst(page);
   await send(page, "operation-summary-updates");
   const turn = page.locator('#main [data-slot="conversation-turn"]').last();
@@ -4023,6 +4240,10 @@ test("operation summaries keep manual expansion and collapse through streamed co
   await expect(summary.locator(":scope > summary")).toHaveText(
     /执行了 3 条命令/,
   );
+  // A pause between commands keeps the batch open; explicit choices take priority.
+  await expect(summary).toHaveAttribute("open", "");
+  await summary.locator(":scope > summary").click();
+  await expect(summary).not.toHaveAttribute("open");
   await summary.locator(":scope > summary").click();
   await expect(summary).toHaveAttribute("open", "");
   const next = turn
@@ -4036,10 +4257,11 @@ test("operation summaries keep manual expansion and collapse through streamed co
   await expect(summary).toHaveAttribute("open", "");
   await summary.locator(":scope > summary").click();
   await expect(summary).not.toHaveAttribute("open");
-  const last = turn
-    .locator('[data-slot="conversation-tool"]')
-    .filter({ hasText: "summary-command-4" });
-  await expect(last).toHaveAttribute("data-status", "inProgress");
+  // A manually collapsed batch keeps the live status in its header.
+  await expect(summary).toHaveAttribute("data-status", "inProgress");
+  await expect(summary.locator(":scope > summary")).toHaveText(
+    /正在执行 5 条命令/,
+  );
   await expect(summary).not.toHaveAttribute("open");
   await expect(summary.locator(":scope > summary")).toHaveText(
     /执行了 5 条命令/,
@@ -4064,9 +4286,13 @@ test("operation summaries keep manual expansion and collapse through streamed co
   ).not.toHaveAttribute("open");
 });
 
-test("operation lifecycle collapses manually opened results and failures, allowing reopening", async ({
+test("operation lifecycle preserves manually opened results and allows reopening failures", async ({
   page,
 }) => {
+  // This test inspects individual tool controls; process folding is covered separately.
+  await page.addInitScript(() =>
+    localStorage.setItem("codex-workbench.auto-collapse-process", "false"),
+  );
   await openFirst(page);
   await send(page, "operation-lifecycle");
   const command = page
@@ -4079,6 +4305,8 @@ test("operation lifecycle collapses manually opened results and failures, allowi
   await expect(command).not.toHaveAttribute("open");
   await command.locator("summary").click();
   await completed(page);
+  await expect(command).toHaveAttribute("open", "");
+  await command.locator("summary").click();
   await expect(command).not.toHaveAttribute("open");
   await command.locator("summary").click();
   await expect(command).toHaveAttribute("open", "");
@@ -4087,9 +4315,14 @@ test("operation lifecycle collapses manually opened results and failures, allowi
     "[data-slot=conversation-tool][data-status=failed]",
   );
   await completed(page);
+  const failedBatch = page
+    .locator('[data-slot="conversation-turn"]')
+    .last()
+    .locator('[data-slot="execution-summary"][data-category="run"]');
+  await expect(failedBatch.locator(":scope > summary")).toBeHidden();
+  await expect(failed).toBeVisible();
   await expect(failed).not.toHaveAttribute("open");
   await failed.locator("summary").click();
-  await expect(failed).toHaveAttribute("open", "");
   await expect(failed).toContainText("模拟命令执行错误");
 });
 
@@ -4241,6 +4474,11 @@ test("revert restores the sent message, preserves unsent text and focuses the co
   await completed(page);
   await input(page).fill("未发送的补充内容");
   await page.locator("[data-rollback]").last().click();
+  const rollbackDialog = page.getByRole("dialog", { name: "确认回滚对话？" });
+  await expect(rollbackDialog).toContainText("已修改的文件会保留");
+  await rollbackDialog
+    .getByRole("button", { name: "确认回滚", exact: true })
+    .click();
   await expect(input(page)).toContainText("需要修改的原消息");
   await expect(input(page)).toContainText("未发送的补充内容");
   await expect(input(page)).toBeFocused();
@@ -4279,41 +4517,52 @@ test("mermaid narrow view stays contained and disables diagram click links", asy
   ).toBeLessThanOrEqual(375);
 });
 
-test("operation history compacts successes while preserving errors and message order", async ({
+test("operation history preserves complete batches, errors and message order", async ({
   page,
 }) => {
+  // This test inspects individual tool controls; process folding is covered separately.
+  await page.addInitScript(() =>
+    localStorage.setItem("codex-workbench.auto-collapse-process", "false"),
+  );
   await openFirst(page);
   await send(page, "operation-history");
   await completed(page);
   await send(page, "继续检查");
   await completed(page);
   const historical = page.locator("[data-slot=conversation-turn]").nth(2);
-  const earlier = historical.locator("[data-slot=earlier-operations]");
-  await expect(earlier).toHaveCount(1);
   await expect(
-    historical
-      .locator("[data-slot=conversation-tool]")
-      .filter({ hasText: "history-command-0" }),
+    historical.locator("[data-slot=earlier-operations]"),
   ).toHaveCount(0);
+  const batch = historical.locator(
+    '[data-slot="execution-summary"][data-category="run"]',
+  );
+  await expect(batch).toContainText("执行了 16 条命令");
+  await expect(batch).toContainText("1 项需关注");
+  await expect(batch).not.toHaveAttribute("open");
+  await batch.locator(":scope > summary").click();
   await expect(historical.locator("[data-status=failed]")).not.toHaveAttribute(
     "open",
   );
   await historical.locator("[data-status=failed] > summary").click();
   await expect(historical).toContainText("保留历史错误原因");
-  await earlier.click();
-  await expect(
-    historical
-      .locator("[data-slot=conversation-tool]")
-      .filter({ hasText: "history-command-0" }),
-  ).toHaveCount(1);
-  await expect(earlier).toHaveAttribute("aria-expanded", "true");
-  await earlier.click();
-  await expect(earlier).toHaveAttribute("aria-expanded", "false");
+  const commands = historical.locator('[data-item-type="commandExecution"]');
+  await expect(commands).toHaveCount(16);
+  await expect(commands.nth(1)).toContainText("history-command-0");
+  await expect(commands.nth(14)).toContainText("history-command-13");
+  await batch.locator(":scope > summary").click();
+  await expect(batch).not.toHaveAttribute("open");
+  await expect(batch).toContainText("1 项需关注");
+  await batch.locator(":scope > summary").click();
+  await expect(commands).toHaveCount(16);
 });
 
 test("nested operation logs hand wheel scrolling to the conversation at both edges", async ({
   page,
 }) => {
+  // This test inspects individual tool controls; process folding is covered separately.
+  await page.addInitScript(() =>
+    localStorage.setItem("codex-workbench.auto-collapse-process", "false"),
+  );
   await openFirst(page);
   await send(
     page,
@@ -4335,6 +4584,11 @@ test("nested operation logs hand wheel scrolling to the conversation at both edg
   await expect(output).toBeVisible();
   await expect(output).toHaveCSS("overscroll-behavior-y", "auto");
   await expect(viewport).toHaveCSS("overscroll-behavior-y", "contain");
+  // Establish a reader position before Playwright scrolls the log into view.
+  // Hover's automatic scroll alone is not a user scroll intent.
+  await viewport.hover();
+  await page.mouse.wheel(0, -180);
+  await expect(page.getByRole("button", { name: /回到底部/ })).toBeVisible();
   await output.hover();
   await output.evaluate((el) => {
     el.scrollTop = 0;
@@ -4358,6 +4612,10 @@ test("nested operation logs hand wheel scrolling to the conversation at both edg
 test("operation rich details show full logs, selectable diffs, MCP progress and media", async ({
   page,
 }) => {
+  // This test inspects individual tool controls; process folding is covered separately.
+  await page.addInitScript(() =>
+    localStorage.setItem("codex-workbench.auto-collapse-process", "false"),
+  );
   await openFirst(page);
   await send(page, "operation-rich");
   await completed(page);
@@ -4368,6 +4626,22 @@ test("operation rich details show full logs, selectable diffs, MCP progress and 
   await expect(command).not.toHaveAttribute("open");
   await command.locator("summary").click();
   await expect(command).toContainText("日志第 100 行");
+  const widths = await command.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      available:
+        element.clientWidth -
+        parseFloat(style.paddingLeft) -
+        parseFloat(style.paddingRight),
+      content: element
+        .querySelector('[data-slot="disclosure-content"]')!
+        .getBoundingClientRect().width,
+      title: element.querySelector("summary")!.getBoundingClientRect().width,
+    };
+  });
+  expect(Math.abs(widths.content - widths.available)).toBeLessThan(1);
+  expect(widths.title).toBeLessThan(widths.content);
+
   await expect(command).toContainText("完整输出末尾");
   await expect(command.getByRole("button", { name: "复制输出" })).toBeVisible();
   await expect(
@@ -4406,9 +4680,13 @@ test("operation rich details show full logs, selectable diffs, MCP progress and 
   await expect(mcp).toContainText("内嵌资源内容");
 });
 
-test("operation parallel items collapse independently and remain manually expandable", async ({
+test("operation parallel items preserve phase expansion and manual choices", async ({
   page,
 }) => {
+  // This test inspects individual tool controls; process folding is covered separately.
+  await page.addInitScript(() =>
+    localStorage.setItem("codex-workbench.auto-collapse-process", "false"),
+  );
   await openFirst(page);
   await send(page, "operation-parallel");
   const turn = page.locator("#main [data-slot=conversation-turn]").nth(2);
@@ -4422,12 +4700,30 @@ test("operation parallel items collapse independently and remain manually expand
   await expect(second).toHaveAttribute("open", "");
   await expect(first).toHaveAttribute("data-status", "completed");
   await expect(second).toHaveAttribute("data-status", "inProgress");
-  await expect(first).not.toHaveAttribute("open");
-  await first.locator("summary").click();
-  await expect(first).toHaveAttribute("open", "");
+  // Completing one command does not end the phase while its peer is running.
+  await expect(first.locator(":scope > summary")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await first.locator(":scope > summary").click();
+  await expect(first.locator(":scope > summary")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await first.locator(":scope > summary").click();
+  await expect(first.locator(":scope > summary")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
   await completed(page);
-  await expect(first).not.toHaveAttribute("open");
+  await expect(first.locator(":scope > summary")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect(first).toHaveAttribute("open", "");
   await expect(second).not.toHaveAttribute("open");
+  await first.locator("summary").click();
+  await expect(first).not.toHaveAttribute("open");
   await first.locator("summary").click();
   await expect(first).toHaveAttribute("open", "");
   await first.locator("summary").click();
@@ -4439,7 +4735,7 @@ test("operation parallel items collapse independently and remain manually expand
     page.getByRole("button", { name: "全部折叠", exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "复制最终总结" }),
+    page.getByRole("button", { name: "复制最终回答", exact: true }).last(),
   ).toBeVisible();
 });
 
@@ -4578,6 +4874,10 @@ test("agent reconnection resynchronizes child state without resuming a child wri
 test("operation collapsing above the reader preserves the visible message position", async ({
   page,
 }) => {
+  // This test inspects individual tool controls; process folding is covered separately.
+  await page.addInitScript(() =>
+    localStorage.setItem("codex-workbench.auto-collapse-process", "false"),
+  );
   await openFirst(page);
   await send(page, "operation-rich");
   await completed(page);
@@ -4587,11 +4887,26 @@ test("operation collapsing above the reader preserves the visible message positi
     .filter({ hasText: "npm run test" });
   await expect(command).not.toHaveAttribute("open");
   await command.locator(":scope > summary").click();
+  // Start reading from the settled expanded layout, then verify the entire collapse.
+  await expect
+    .poll(() =>
+      command
+        .locator('xpath=ancestor::*[@data-slot="conversation-execution"][1]')
+        .evaluate((el) =>
+          [el, ...el.querySelectorAll('[data-slot="disclosure-content"]')].some(
+            (element) => element.getAnimations().length > 0,
+          ),
+        ),
+    )
+    .toBe(false);
   const anchor = turn.locator("article").last();
   const before = await anchor.evaluate((element) => {
     const viewport = element
       .closest("[data-slot=conversation-timeline]")!
       .querySelector("[data-radix-scroll-area-viewport]")!;
+    viewport.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -1, bubbles: true }),
+    );
     viewport.scrollTop +=
       element.getBoundingClientRect().top -
       viewport.getBoundingClientRect().top;
@@ -4680,9 +4995,7 @@ test("initial operation history distinguishes completed thought and image from l
   const emptyThought = turn.locator(
     '[data-expandable="false"][data-status="completed"]',
   );
-  await expect(emptyThought).toHaveText("正在思考");
-  await expect(emptyThought).toHaveClass(/text-subtle/);
-  await expect(emptyThought.locator("summary")).toHaveCount(0);
+  await expect(emptyThought).toHaveCount(0);
   const emptyLive = turn.locator(
     '[data-expandable="false"][data-status="inProgress"]',
   );
@@ -4732,29 +5045,33 @@ test("agent entry previews on hover, pins on click and restores keyboard focus",
 test("execution density summarizes completed commands and keeps errors visible", async ({
   page,
 }) => {
+  // This test inspects individual tool controls; process folding is covered separately.
+  await page.addInitScript(() =>
+    localStorage.setItem("codex-workbench.auto-collapse-process", "false"),
+  );
   await openFirst(page);
   await send(page, "operation-history");
   await completed(page);
   const turn = page.locator("#main [data-slot=conversation-turn]").last();
-  await expect(turn.locator("[data-slot=execution-summary]")).toContainText(
-    "执行了 15 条命令",
+  const batch = turn.locator(
+    '[data-slot="execution-summary"][data-category="run"]',
   );
-  await expect(
-    turn
-      .locator("[data-slot=conversation-tool]")
-      .filter({ hasText: "history-command-0" }),
-  ).toHaveCount(0);
+  await expect(batch).toContainText("执行了 16 条命令");
+  await expect(batch).toContainText("1 项需关注");
+  await expect(batch).not.toHaveAttribute("open");
+  await batch.locator(":scope > summary").click();
   const failed = turn.locator("[data-status=failed]");
   await expect(failed).toBeVisible();
   await expect(failed).not.toHaveAttribute("open");
   await failed.locator(":scope > summary").click();
-  await expect(failed).toHaveAttribute("open", "");
-  await turn.locator("[data-slot=execution-summary] > summary").click();
-  await expect(
-    turn
-      .locator("[data-slot=conversation-tool]")
-      .filter({ hasText: "history-command-0" }),
-  ).toHaveCount(1);
+  await expect(failed).toContainText("保留历史错误原因");
+  await batch.locator(":scope > summary").click();
+  await expect(batch).not.toHaveAttribute("open");
+  await expect(batch).toContainText("1 项需关注");
+  await batch.locator(":scope > summary").click();
+  await expect(turn.locator('[data-item-type="commandExecution"]')).toHaveCount(
+    16,
+  );
 });
 
 test("agent drawer at 375px stays contained and returns to the main composer", async ({
@@ -4929,8 +5246,22 @@ test("additional approvals submit permission subsets and MCP forms safely", asyn
           target: { type: "string", title: "发布目标", minLength: 3 },
           region: { type: "string", title: "发布区域", enum: ["east", "west"] },
           confirmed: { type: "boolean", title: "确认发布" },
+          capabilities: {
+            type: "array",
+            title: "发布能力",
+            items: {
+              anyOf: [
+                { const: "read", title: "读取" },
+                { const: "write", title: "写入" },
+                { const: "", title: "默认" },
+              ],
+            },
+            minItems: 1,
+            maxItems: 2,
+            default: ["read"],
+          },
         },
-        required: ["target", "region", "confirmed"],
+        required: ["target", "region", "confirmed", "capabilities"],
       },
     },
   });
@@ -4942,6 +5273,37 @@ test("additional approvals submit permission subsets and MCP forms safely", asyn
   await page.getByRole("option", { name: "west", exact: true }).click();
   await page.getByRole("combobox", { name: "确认发布", exact: true }).click();
   await page.getByRole("option", { name: "否", exact: true }).click();
+  const capabilities = page.getByRole("button", {
+    name: "发布能力",
+    exact: true,
+  });
+  await expect(capabilities).toHaveText("读取");
+  const capabilitiesWidth = (await capabilities.boundingBox())!.width;
+  await capabilities.click();
+  const choices = page.getByRole("menu", { name: "发布能力", exact: true });
+  expect(
+    Math.abs((await choices.boundingBox())!.width - capabilitiesWidth),
+  ).toBeLessThan(1);
+  await expect(
+    choices.getByRole("menuitemcheckbox", { name: "读取", exact: true }),
+  ).toBeChecked();
+  await choices
+    .getByRole("menuitemcheckbox", { name: "写入", exact: true })
+    .click();
+  await expect(choices).toBeVisible();
+  await choices
+    .getByRole("menuitemcheckbox", { name: "默认", exact: true })
+    .click();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("button", { name: "提交回答", exact: true }),
+  ).toBeDisabled();
+  await capabilities.press("ArrowDown");
+  await choices
+    .getByRole("menuitemcheckbox", { name: "读取", exact: true })
+    .press("Space");
+  await page.keyboard.press("Escape");
+  await expect(capabilities).toHaveText("写入、默认");
   await page.getByRole("button", { name: "提交回答", exact: true }).click();
   await expect
     .poll(
@@ -4951,7 +5313,12 @@ test("additional approvals submit permission subsets and MCP forms safely", asyn
     )
     .toEqual({
       action: "accept",
-      content: { target: "staging", region: "west", confirmed: false },
+      content: {
+        target: "staging",
+        region: "west",
+        confirmed: false,
+        capabilities: ["write", ""],
+      },
       _meta: null,
     });
   fixtureServer.publish({
@@ -5102,6 +5469,8 @@ test("operation auto collapse preference preserves summaries and manual reopenin
     name: "完成后自动收起执行过程",
     exact: true,
   });
+  await expect(toggle).toBeChecked();
+  await toggle.click();
   await expect(toggle).not.toBeChecked();
   await toggle.click();
   await expect(toggle).toBeChecked();
@@ -5136,6 +5505,9 @@ test("operation auto collapse preference preserves summaries and manual reopenin
   await expect(nextProgress).toBeVisible();
   await page.getByRole("button", { name: "停止执行", exact: true }).click();
   await expect(next.locator("footer")).toContainText("已中断");
+  // Interrupted work stays visible so its incomplete state is not hidden.
+  await expect(nextProgress).toBeVisible();
+  await next.getByRole("button", { name: "收起执行过程", exact: true }).click();
   await expect(nextProgress).toBeHidden();
   await next.getByRole("button", { name: "展开执行过程", exact: true }).click();
   await expect(nextProgress).toBeVisible();
@@ -5293,38 +5665,31 @@ for (const width of [375, 1440]) {
   });
 }
 
-test("prompt directory searches, jumps and restores the reading position", async ({
-  page,
-}) => {
+test("prompt dots jump and restore the reading position", async ({ page }) => {
   await openFirst(page);
-  await send(
-    page,
-    Array.from({ length: 65 }, (_, index) => `目录验证 ${index}`).join("\n"),
-  );
+  await send(page, "目录导航验证");
   await completed(page);
+  // The saved scroll position should be measured after automatic folding settles.
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-slot="conversation-timeline"]')
+        .evaluate((el) =>
+          Array.from(
+            el.querySelectorAll('[data-slot="disclosure-content"]'),
+          ).some((body) => body.getAnimations().length > 0),
+        ),
+    )
+    .toBe(false);
   const viewport = page.locator(
     '[data-slot="conversation-timeline"] > [data-radix-scroll-area-viewport]',
   );
   const before = await viewport.evaluate((el) => el.scrollTop);
-  const firstText = await page.locator("[data-prompt-id]").first().innerText();
-  await page.getByRole("button", { name: /^会话目录，/ }).click();
   await page
-    .getByRole("textbox", { name: "搜索用户问题" })
-    .fill("不存在的目录关键词xyz");
-  await expect(
-    page.getByRole("status").filter({ hasText: "没有匹配的用户问题" }),
-  ).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "搜索用户问题" })
-    .fill(firstText.slice(0, 8));
-  await page
-    .getByRole("navigation", { name: "用户问题" })
-    .getByRole("button")
+    .getByRole("navigation", { name: "会话轮次导航" })
+    .locator(".prompt-dot")
     .first()
     .click();
-  await expect
-    .poll(() => viewport.evaluate((el) => el.scrollTop))
-    .toBeLessThan(before);
   await expect(page.locator("[data-prompt-id]").first()).toBeInViewport();
   await page.getByRole("button", { name: "返回阅读位置", exact: true }).click();
   await expect
@@ -5332,13 +5697,4 @@ test("prompt directory searches, jumps and restores the reading position", async
       Math.abs((await viewport.evaluate((el) => el.scrollTop)) - before),
     )
     .toBeLessThan(5);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: /^会话目录，/ }).click();
-  await expect(
-    page.getByRole("textbox", { name: "搜索用户问题" }),
-  ).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(
-    page.getByRole("textbox", { name: "搜索用户问题" }),
-  ).toBeHidden();
 });

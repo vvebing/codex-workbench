@@ -12,12 +12,14 @@ import { conversationCapabilities, draftCommand } from "./capabilities";
 import { commands } from "./Completions";
 import { getDefaultModel, useDefaultModel } from "../settings/model-preference";
 import { composerModel } from "./model";
+import { serviceTierOptions } from "./service-tier";
 import { approvalOptions } from "./approval-policy";
 import { pendingAsyncQuestions } from "../conversation/async-questions";
 
 interface Selection {
   chosenModel: string;
   chosenEffort?: ReasoningEffort;
+  tierChoices?: Record<string, string | undefined>;
   policyChoices?: Record<string, AskForApproval | undefined>;
 }
 type CommandAction = "skills" | "mention" | "model" | "permissions";
@@ -84,6 +86,7 @@ export function useComposerSession(
       id,
       draft,
       thread,
+      threadSettings: state.threadSettings[id],
       access,
       waiting,
       inputRequest,
@@ -189,11 +192,21 @@ export function useComposerSession(
       void Notification.requestPermission().catch(() => {});
     setError("");
     try {
+      if (mode === "steer" && state.capabilities.running)
+        setNotice(
+          "立即引导沿用当前轮次的模型、审批与服务档位；下次发送设置不会应用到本次引导。",
+        );
       await runtime.sendDraft(
         state.id,
         {
           ...(state.modelId ? { model: state.modelId } : {}),
           ...(state.effort ? { effort: state.effort } : {}),
+          ...serviceTierOptions(
+            state.model,
+            selection.tierChoices?.[
+              JSON.stringify([connection.scope, threadId])
+            ],
+          ),
           ...approvalOptions(
             selection.policyChoices?.[
               JSON.stringify([connection.scope, threadId])

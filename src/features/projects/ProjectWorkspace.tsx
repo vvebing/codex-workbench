@@ -9,7 +9,8 @@ import {
 } from "../../components/ui";
 import {
   settingsInputClass,
-  settingsSelectClass,
+  SettingsField,
+  SettingsActions,
 } from "../settings/settings-ui";
 import {
   emptyProject,
@@ -264,9 +265,10 @@ export default function ProjectWorkspace({
         onOpenChange={setSwitchOpen}
         title="切换项目／新建会话"
         description="选择已保存项目或填写服务端目录，继续后确认新建会话。"
+        className="text-sm"
       >
         <form
-          className="space-y-4"
+          className="grid min-w-0 gap-5"
           onSubmit={(event) => {
             event.preventDefault();
             const target = normalizeProjectDirectory(directory);
@@ -282,37 +284,39 @@ export default function ProjectWorkspace({
             });
           }}
         >
-          <SelectField
-            id="saved-project"
-            label="已保存项目"
-            className={settingsSelectClass}
-            value={
-              state.projects.some((item) => item.cwd === directory)
-                ? directory
-                : "__none__"
-            }
-            onValueChange={(value) =>
-              setDirectory(value === "__none__" ? "" : value)
-            }
-            options={[
-              { value: "__none__", label: "选择项目" },
-              ...state.projects.map((item) => ({
-                value: item.cwd,
-                label: item.cwd,
-              })),
-            ]}
-          />
-          <label>
-            项目目录
+          <SettingsField id="saved-project" label="已保存项目">
+            <SelectField
+              id="saved-project"
+              label="已保存项目"
+              size="field"
+              className="w-full"
+              value={
+                state.projects.some((item) => item.cwd === directory)
+                  ? directory
+                  : "__none__"
+              }
+              onValueChange={(value) =>
+                setDirectory(value === "__none__" ? "" : value)
+              }
+              options={[
+                { value: "__none__", label: "选择项目" },
+                ...state.projects.map((item) => ({
+                  value: item.cwd,
+                  label: item.cwd,
+                })),
+              ]}
+            />
+          </SettingsField>
+          <SettingsField id="project-switcher-directory" label="项目目录">
             <input
+              id="project-switcher-directory"
               className={settingsInputClass}
-              aria-label="项目目录"
               placeholder="服务端绝对目录"
               value={directory}
               onChange={(event) => setDirectory(event.target.value)}
             />
-          </label>
-          <div className="flex justify-end gap-2">
+          </SettingsField>
+          <SettingsActions>
             <Button onClick={() => setSwitchOpen(false)}>取消</Button>
             <Button
               variant="primary"
@@ -321,7 +325,7 @@ export default function ProjectWorkspace({
             >
               新建会话
             </Button>
-          </div>
+          </SettingsActions>
         </form>
       </Modal>
     </section>

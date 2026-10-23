@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, SelectField } from "../../components/ui";
+import { Button, SelectField, MultiSelectField } from "../../components/ui";
 import type { PermissionsRequestApprovalParams } from "../../generated/v2/PermissionsRequestApprovalParams";
 import type { PermissionsRequestApprovalResponse } from "../../generated/v2/PermissionsRequestApprovalResponse";
 import type { McpServerElicitationRequestParams } from "../../generated/v2/McpServerElicitationRequestParams";
@@ -205,29 +205,15 @@ export function ElicitationApproval({
                 {hint && <small className="block text-muted">{hint}</small>}
                 {options ? (
                   field.type === "array" ? (
-                    <select
-                      className="my-1 block w-full rounded-lg border border-border bg-elevated p-2"
+                    <MultiSelectField
+                      className="my-1 w-full"
                       disabled={disabled}
-                      aria-label={field.title ?? key}
-                      multiple
+                      label={field.title ?? key}
                       aria-invalid={!!error}
                       value={(values[key] as string[]) ?? []}
-                      onChange={(event) =>
-                        set(
-                          key,
-                          Array.from(
-                            event.target.selectedOptions,
-                            (option) => option.value,
-                          ),
-                        )
-                      }
-                    >
-                      {options.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      onValueChange={(value) => set(key, value)}
+                      options={options}
+                    />
                   ) : (
                     <SelectField
                       className="my-1 w-full"

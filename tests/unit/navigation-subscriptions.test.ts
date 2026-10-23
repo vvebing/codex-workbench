@@ -61,6 +61,7 @@ describe("navigation subscriptions", () => {
       { ...streamed, selectedId: "a" },
       { ...streamed, unreadCompleted: { a: "turn" } },
       { ...streamed, localDrafts: { ...streamed.localDrafts } },
+      { ...streamed, subagentThreadIds: { a: true as const } },
       {
         ...streamed,
         threads: { a: { ...streamed.threads.a, name: "renamed" } },
@@ -109,5 +110,20 @@ describe("navigation subscriptions", () => {
         tokenUsage: { ...state.tokenUsage },
       }),
     ).toBe(true);
+  });
+  it("publishes a task title resolved from loaded history without a metadata change", () => {
+    const state = fixture();
+    state.threads.a.preview = "回答问题：\n版本？\nv1.49.8";
+    const resolved = {
+      ...state,
+      threads: {
+        a: {
+          ...state.threads.a,
+          titleSource: { turnId: "turn", text: "排查 Session 请求与接口 401" },
+        },
+      },
+    };
+    expect(sameSidebarSessions(state, resolved)).toBe(false);
+    expect(sameEnvironmentSessions(state, resolved)).toBe(false);
   });
 });

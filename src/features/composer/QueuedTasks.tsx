@@ -29,7 +29,11 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
   useStore(runtime.sessions);
   const connection = useStore(runtime.connection);
   const requests = useStore(runtime.requests);
-  const queue = runtime.queue.forThread(threadId);
+  const fullQueue = runtime.queue.forThread(threadId);
+  const queue = {
+    ...fullQueue,
+    items: fullQueue.items.filter((item) => !item.question),
+  };
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<{ id: string; draft: Draft }>();

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Popover } from "radix-ui";
+import { ScrollArea } from "../../components/ui";
 import type { ThreadTokenUsage } from "../../generated/v2/ThreadTokenUsage";
 
 const formatTokens = (value: number) =>
@@ -29,7 +30,7 @@ export function ContextUsage({ usage }: { usage?: ThreadTokenUsage }) {
         <button
           type="button"
           className={`flex min-h-[30px] shrink-0 items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta tabular-nums hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent max-[550px]:min-h-10 max-[550px]:px-1 max-[550px]:text-fine ${percent !== null && percent >= 80 ? "text-warning" : "text-muted"}`}
-          aria-label={`上下文使用量：${percent === null ? "待更新" : `${percent}%`}`}
+          aria-label={`上下文：${percent !== null ? `${percent}%` : used === null ? "暂无数据" : `${formatTokens(used)} tokens（上限未知）`}`}
           onClick={(event) => {
             event.preventDefault();
             reveal();
@@ -58,12 +59,18 @@ export function ContextUsage({ usage }: { usage?: ThreadTokenUsage }) {
               />
             )}
           </svg>
-          <span>{percent === null ? "待更新" : `${percent}%`}</span>
+          <span>
+            {percent !== null
+              ? `上下文 ${percent}%`
+              : used === null
+                ? "上下文：暂无数据"
+                : `上下文 ${formatTokens(used)} tokens`}
+          </span>
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
-          className="z-[100] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto w-[min(300px,calc(100vw-24px))] rounded-xl border border-border bg-elevated px-4 py-3.5 text-xs leading-help text-muted shadow-lg"
+          className="z-[100] w-[min(300px,calc(100vw-24px))] overflow-hidden rounded-xl border border-border bg-elevated text-xs leading-help text-muted shadow-lg"
           side="top"
           align="end"
           sideOffset={10}
@@ -75,30 +82,37 @@ export function ContextUsage({ usage }: { usage?: ThreadTokenUsage }) {
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}
         >
-          <strong className="text-control text-foreground">上下文使用量</strong>
-          {known ? (
-            <>
-              <p className="mt-1.5 text-foreground tabular-nums">
-                已用 {formatTokens(used)} / {formatTokens(capacity)} tokens ·{" "}
-                {percent}%
-              </p>
+          <ScrollArea
+            className="max-h-[var(--radix-popover-content-available-height)]"
+            viewportProps={{ className: "px-4 py-3.5" }}
+          >
+            <strong className="text-control text-foreground">
+              上下文使用量
+            </strong>
+            {known ? (
+              <>
+                <p className="mt-1.5 text-foreground tabular-nums">
+                  已用 {formatTokens(used)} / {formatTokens(capacity)} tokens ·{" "}
+                  {percent}%
+                </p>
+                <p className="mt-1.5">
+                  剩余约 {formatTokens(Math.max(0, capacity - used))} tokens
+                </p>
+                {percent !== null && percent >= 80 && (
+                  <p className="mt-1.5 text-warning">上下文接近上限。</p>
+                )}
+              </>
+            ) : (
               <p className="mt-1.5">
-                剩余约 {formatTokens(Math.max(0, capacity - used))} tokens
+                {used === null
+                  ? "等待服务端上报上下文用量。"
+                  : `已用 ${formatTokens(used)} tokens；服务端尚未提供上下文上限。`}
               </p>
-              {percent !== null && percent >= 80 && (
-                <p className="mt-1.5 text-warning">上下文接近上限。</p>
-              )}
-            </>
-          ) : (
-            <p className="mt-1.5">
-              {used === null
-                ? "等待服务端上报上下文用量。"
-                : `已用 ${formatTokens(used)} tokens；服务端尚未提供上下文上限。`}
+            )}
+            <p className="mt-2.5 border-t border-border pt-2.5 text-meta">
+              根据最近一次模型请求的用量更新，包含输入与输出，不代表累计消耗。当前草稿尚未计入。历史会话若没有服务端用量通知，会显示暂无数据；不代表上下文为空。
             </p>
-          )}
-          <p className="mt-2.5 border-t border-border pt-2.5 text-meta">
-            根据最近一次模型请求的用量更新，包含输入与输出，不代表累计消耗。当前草稿尚未计入。
-          </p>
+          </ScrollArea>
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

@@ -60,12 +60,20 @@ export function FileAnchor({
       </ImageFileAnchor>
     );
   const target = href && origin ? parseFileLink(href, origin) : null;
-  if (!target)
+  if (!target) {
+    const url = href ? defaultUrlTransform(href) : href;
+    const external = !!url && /^(?:https?:)?\/\//i.test(url);
     return (
-      <a {...props} href={href ? defaultUrlTransform(href) : href}>
+      <a
+        {...props}
+        href={url}
+        target={external ? "_blank" : props.target}
+        rel={external ? "noopener noreferrer" : props.rel}
+      >
         {children}
       </a>
     );
+  }
   return (
     <a
       {...props}

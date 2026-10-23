@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AppServerOutput } from "../../../server/app-server";
 import { SettingsSection } from "./settings-ui";
+import { ScrollArea } from "../../components/ui";
 
 const labels: Record<AppServerOutput["status"], string> = {
   starting: "正在启动",
@@ -15,7 +16,7 @@ export function AppServerTerminal() {
   const [snapshot, setSnapshot] = useState<AppServerOutput>();
   const [error, setError] = useState("");
   const [follow, setFollow] = useState(true);
-  const output = useRef<HTMLPreElement>(null);
+  const output = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (import.meta.env.DEV) return;
     const controller = new AbortController();
@@ -76,14 +77,19 @@ export function AppServerTerminal() {
               读取失败：{error}
             </p>
           )}
-          <pre
-            ref={output}
-            aria-label="app-server 终端输出"
-            tabIndex={0}
-            className="h-80 overflow-auto rounded-lg border border-border bg-surface p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all select-text"
+          <ScrollArea
+            viewportRef={output}
+            viewportProps={{
+              "aria-label": "app-server 终端输出",
+              tabIndex: 0,
+              className: "p-3",
+            }}
+            className="h-80 rounded-lg border border-border bg-surface"
           >
-            {snapshot?.output || "暂无终端输出。"}
-          </pre>
+            <pre className="m-0 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all select-text">
+              {snapshot?.output || "暂无终端输出。"}
+            </pre>
+          </ScrollArea>
         </>
       )}
     </SettingsSection>

@@ -1,5 +1,10 @@
 import { settingsInputClass } from "../settings/settings-ui";
-import { Button, IconButton, ErrorNotice } from "../../components/ui";
+import {
+  Button,
+  IconButton,
+  ErrorNotice,
+  ScrollArea,
+} from "../../components/ui";
 import { readIgnoredPaths } from "./git-ignore";
 import {
   useEffect,
@@ -470,12 +475,15 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       )}
       <ContextMenu.Root>
         <ContextMenu.Trigger asChild>
-          <div
-            ref={scroll}
-            onScroll={(event) => {
-              cache.scrollTop = event.currentTarget.scrollTop;
+          <ScrollArea
+            viewportRef={scroll}
+            viewportProps={{
+              className: "pb-3",
+              onScroll: (event) => {
+                cache.scrollTop = event.currentTarget.scrollTop;
+              },
             }}
-            className="min-h-24 flex-1 overflow-auto pb-3"
+            className="min-h-24 flex-1"
             onContextMenu={(event) => {
               if (!prepareMenu(event.target as HTMLElement))
                 event.preventDefault();
@@ -513,7 +521,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                 显示前 50 个结果，请细化搜索。
               </p>
             )}
-          </div>
+          </ScrollArea>
         </ContextMenu.Trigger>
         <ContextMenu.Portal>
           <ContextMenu.Content
@@ -587,7 +595,15 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       )}
       {operation && (
         <FileDialog
-          titleId="file-operation-title"
+          title={
+            operation === "file"
+              ? "新建文件"
+              : operation === "directory"
+                ? "新建目录"
+                : operation === "copy"
+                  ? "复制到新路径"
+                  : "永久删除"
+          }
           busy={busy}
           onClose={() => setOperation(undefined)}
         >
@@ -652,15 +668,6 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                 .finally(() => setBusy(false));
             }}
           >
-            <h2 id="file-operation-title">
-              {operation === "file"
-                ? "新建文件"
-                : operation === "directory"
-                  ? "新建目录"
-                  : operation === "copy"
-                    ? "复制到新路径"
-                    : "永久删除"}
-            </h2>
             {(operation === "file" || operation === "directory") && (
               <p>
                 创建位置：{creationDirectory || "项目根目录"}

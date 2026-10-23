@@ -25,21 +25,6 @@
     font-size: var(--text-meta);
   }
 
-  .session-search-scope select {
-    min-width: 0;
-    max-width: 220px;
-    padding: 5px 8px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
-    color: var(--foreground);
-  }
-
-  .session-search-scope select:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-
   .session-search-coverage {
     margin: 5px 22px 8px;
     color: var(--subtle);

@@ -529,3 +529,47 @@ it.each([true, false])(
     expect(runtime.queue.forThread("a").sentAnswers?.question).toBeUndefined();
   },
 );
+
+it("reconciles an uncertain answer when its associated server message eventually arrives", async () => {
+  const { runtime, request, notify } = await fixture();
+  notify({
+    method: "item/completed",
+    params: {
+      threadId: "a",
+      turnId: "working",
+      item: asyncQuestion,
+      completedAtMs: 1000,
+    },
+  });
+  request.mockImplementation((async (method: string) => {
+    if (method === "turn/steer") throw new Error("Request timed out");
+    return {};
+  }) as never);
+  await runtime.queue.addAnswer("a", asyncQuestion, ["B"]);
+  await vi.waitFor(() =>
+    expect(runtime.queue.forThread("a").items[0]?.status).toBe("uncertain"),
+  );
+  const task = runtime.queue.forThread("a").items[0];
+  notify({
+    method: "item/completed",
+    params: {
+      threadId: "a",
+      turnId: "working",
+      completedAtMs: 1001,
+      item: {
+        type: "userMessage",
+        id: "late-answer",
+        clientId: `codex-question:question:${task.id}`,
+        content: task.input,
+      },
+    },
+  });
+  await vi.waitFor(() =>
+    expect(runtime.queue.forThread("a").items).toHaveLength(0),
+  );
+  expect(runtime.queue.forThread("a").paused).toBeNull();
+  expect(runtime.submissions.messages.forThread("a")).toHaveLength(0);
+  expect(
+    request.mock.calls.filter(([method]) => method === "turn/steer"),
+  ).toHaveLength(1);
+});

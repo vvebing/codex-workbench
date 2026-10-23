@@ -2,7 +2,7 @@ import { settingsInputClass } from "../settings/settings-ui";
 import { useEffect, useId, useState } from "react";
 import { Popover } from "radix-ui";
 import { Folder } from "lucide-react";
-import { Button, ErrorNotice } from "../../components/ui";
+import { Button, ErrorNotice, ScrollArea } from "../../components/ui";
 import type { FsReadDirectoryResponse } from "../../generated/v2/FsReadDirectoryResponse";
 import type { FileSearchClient } from "../composer/file-search";
 import {
@@ -195,29 +195,29 @@ export function WorkspacePicker({
                     )
                       event.preventDefault();
                   }}
-                  className="z-[80] w-[var(--radix-popover-trigger-width)] max-h-[var(--radix-popover-content-available-height)] overflow-auto rounded-lg border border-border bg-elevated p-1 text-foreground shadow-xl"
+                  className="z-[80] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded-lg border border-border bg-elevated text-foreground shadow-xl"
                 >
-                  <ul
-                    id={listId}
-                    role="listbox"
-                    aria-label="目录建议"
-                    className="max-h-40 overflow-auto"
+                  <ScrollArea
+                    className="max-h-[min(10rem,var(--radix-popover-content-available-height))]"
+                    viewportProps={{ className: "p-1" }}
                   >
-                    {suggestions.map((name, index) => (
-                      <li
-                        key={name}
-                        id={`${listId}-${index}`}
-                        role="option"
-                        aria-selected={active === index}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => choose(name)}
-                        className="cursor-pointer break-all rounded px-3 py-2 text-caption hover:bg-hover aria-selected:bg-hover"
-                      >
-                        {name}
-                        {separator(completion!.parent)}
-                      </li>
-                    ))}
-                  </ul>
+                    <ul id={listId} role="listbox" aria-label="目录建议">
+                      {suggestions.map((name, index) => (
+                        <li
+                          key={name}
+                          id={`${listId}-${index}`}
+                          role="option"
+                          aria-selected={active === index}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => choose(name)}
+                          className="cursor-pointer break-all rounded px-3 py-2 text-caption hover:bg-hover aria-selected:bg-hover"
+                        >
+                          {name}
+                          {separator(completion!.parent)}
+                        </li>
+                      ))}
+                    </ul>
+                  </ScrollArea>
                 </Popover.Content>
               </Popover.Portal>
             )}
@@ -304,10 +304,7 @@ export function WorkspacePicker({
               刷新
             </Button>
           </div>
-          <div
-            className="max-h-48 overflow-auto"
-            aria-busy={connected && !current}
-          >
+          <ScrollArea className="max-h-48" aria-busy={connected && !current}>
             {!connected ? (
               <p role="status" className="text-caption text-muted">
                 环境已断开，重新连接后可继续浏览。
@@ -338,7 +335,7 @@ export function WorkspacePicker({
                 </button>
               ))
             )}
-          </div>
+          </ScrollArea>
           <div className="mt-3 flex justify-end gap-2">
             <Button
               type="button"

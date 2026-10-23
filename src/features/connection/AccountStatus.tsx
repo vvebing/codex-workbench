@@ -1,5 +1,5 @@
 import { Progress } from "radix-ui";
-import { Button, Modal } from "../../components/ui";
+import { Button, Modal, ScrollArea } from "../../components/ui";
 import { useEffect, useState } from "react";
 import { useStore } from "../../components/hooks";
 import type { ConnectionStore } from "./store";
@@ -359,33 +359,36 @@ export function ConnectionNotices({
   const { notices } = useStore(connection);
   if (!notices.length) return null;
   return (
-    <div
+    <ScrollArea
       role="status"
-      className="max-h-40 shrink-0 space-y-1 overflow-y-auto border-b border-border bg-surface px-4 py-2 text-xs"
+      className="max-h-40 shrink-0 border-b border-border bg-surface text-xs"
+      viewportProps={{ className: "px-4 py-2" }}
     >
-      {notices.map((notice) => (
-        <div
-          key={notice.id}
-          className="flex items-center justify-between gap-3"
-        >
-          <p className="min-w-0 break-words">
-            {notice.message}
-            {notice.threadId && (
-              <span className="text-muted"> · 会话 {notice.threadId}</span>
-            )}
-          </p>
-          <Button
-            variant="quiet"
-            size="sm"
-            type="button"
-            className="shrink-0 text-muted"
-            aria-label="关闭通知"
-            onClick={() => connection.dismissNotice(notice.id)}
+      <div className="space-y-1">
+        {notices.map((notice) => (
+          <div
+            key={notice.id}
+            className="flex items-center justify-between gap-3"
           >
-            关闭
-          </Button>
-        </div>
-      ))}
-    </div>
+            <p className="min-w-0 break-words">
+              {notice.message}
+              {notice.threadId && (
+                <span className="text-muted"> · 会话 {notice.threadId}</span>
+              )}
+            </p>
+            <Button
+              variant="quiet"
+              size="sm"
+              type="button"
+              className="shrink-0 text-muted"
+              aria-label="关闭通知"
+              onClick={() => connection.dismissNotice(notice.id)}
+            >
+              关闭
+            </Button>
+          </div>
+        ))}
+      </div>
+    </ScrollArea>
   );
 }

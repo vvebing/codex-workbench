@@ -26,8 +26,53 @@ const item = {
   delivery: null,
   questions: [{ title: "Preference", options: ["A", "B"] }],
 };
-function render(status?: QueuedTask["status"], sent = false) {
+function render(
+  status?: QueuedTask["status"],
+  sent = false,
+  history?: "pending" | "confirmed" | "question-missing",
+) {
   const runtime = createRuntime();
+  if (history) {
+    const thread = placeholderThread("a");
+    thread.turns = [
+      {
+        id: "turn",
+        rootTurnId: null,
+        status: "completed",
+        itemsView: "full",
+        error: null,
+        startedAt: 1,
+        completedAt: 2,
+        durationMs: 1,
+        items:
+          history === "question-missing"
+            ? []
+            : [
+                item,
+                ...(history === "confirmed"
+                  ? [
+                      {
+                        type: "userMessage" as const,
+                        id: "reply",
+                        clientId: "codex-question:question:delivery",
+                        content: [
+                          {
+                            type: "text" as const,
+                            text: "回答问题：\nPreference\nB",
+                            text_elements: [],
+                          },
+                        ],
+                      },
+                    ]
+                  : []),
+              ],
+      },
+    ];
+    vi.spyOn(runtime.sessions, "getSnapshot").mockReturnValue({
+      ...runtime.sessions.getSnapshot(),
+      threads: { a: thread },
+    });
+  }
   vi.spyOn(runtime.queue, "forThread").mockReturnValue({
     items: status
       ? [
@@ -126,3 +171,33 @@ it.each([false, true])(
     expect(html).not.toContain("<textarea");
   },
 );
+
+it.each(["queued", "uncertain"] as const)(
+  "preserves %s status when the thread is missing",
+  (status) => {
+    const html = render(status);
+    expect(html).toContain(
+      status === "queued" ? "回答已保存" : "系统不会自动重发",
+    );
+    expect(html).not.toContain("此问题已回答或已忽略");
+  },
+);
+it("does not infer confirmation from a loaded history missing the question", () => {
+  const html = render("uncertain", false, "question-missing");
+  expect(html).toContain("系统不会自动重发");
+  expect(html).not.toContain("此问题已回答或已忽略");
+});
+it("requires an associated server history reply before replacing queue status with confirmation", () => {
+  expect(render(undefined, true, "pending")).toContain(
+    "回答已发送，等待会话更新",
+  );
+  const html = render(undefined, true, "confirmed");
+  expect(html).toContain("此问题已回答或已忽略");
+  expect(html).not.toContain("等待会话更新");
+});
+it("shows unknown history as unconfirmed and disables unanswered controls", () => {
+  const html = render();
+  expect(html).toContain("正在核实问题状态");
+  expect(html).toContain("disabled");
+  expect(html).not.toContain("此问题已回答或已忽略");
+});

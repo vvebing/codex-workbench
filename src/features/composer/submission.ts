@@ -50,6 +50,9 @@ export class DraftSubmissionStore extends Store<Record<string, boolean>> {
   ) {
     super({});
     this.messages = new LocalMessagesStore(sessions);
+    queue.subscribe(() =>
+      this.messages.syncQuestionQueue(queue.getSnapshot().threads),
+    );
     let epoch = connection.getSnapshot().epoch;
     let scope = connection.getSnapshot().scope;
     connection.subscribe(() => {

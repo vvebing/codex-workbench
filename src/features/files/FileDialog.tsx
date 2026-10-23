@@ -1,37 +1,34 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { Modal } from "../../components/ui";
 
 export function FileDialog({
   children,
-  titleId,
+  title,
   busy,
   onClose,
 }: {
   children: ReactNode;
-  titleId: string;
+  title: string;
   busy: boolean;
   onClose: () => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const previous = window.document.activeElement;
-    const node = dialog.current!;
-    node.showModal();
-    return () => {
-      node.close();
-      if (previous instanceof HTMLElement) previous.focus();
-    };
-  }, []);
+  const [returnFocus] = useState(() =>
+    typeof document !== "undefined" &&
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+  );
   return (
-    <dialog
-      className="file-modal"
-      ref={dialog}
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        event.preventDefault();
-        if (!busy) onClose();
+    <Modal
+      open
+      title={title}
+      dismissible={!busy}
+      returnFocusElement={returnFocus}
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
     >
       {children}
-    </dialog>
+    </Modal>
   );
 }

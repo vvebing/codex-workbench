@@ -1,3 +1,4 @@
+import { responseSettings } from "./state";
 import { saveLocalSessions, restoreLocalSessions } from "./draft-storage";
 import type { RpcCall, RpcParams } from "../../lib/rpc";
 import { managementError } from "./management";
@@ -22,6 +23,7 @@ import { conversationExecuting } from "../conversation/activity";
 import { ROOT_THREAD_SOURCES } from "./list";
 import { Polling } from "./polling";
 import { pruneHistoryCache } from "./history-cache";
+import { ThreadTitleCache } from "./title-cache";
 import {
   initialState,
   descendantIds,
@@ -45,13 +47,17 @@ export class TurnBusyError extends Error {
   }
 }
 export class SessionsStore extends Store<SessionsState> {
+  private titleCache = new ThreadTitleCache();
   private persistenceScope = "";
   activateDraftScope(scope: string): void {
     if (scope === this.persistenceScope) return;
     this.persistenceScope = scope;
+    this.titleCache.activateScope(scope);
     this.update(restoreLocalSessions(scope, this.state));
   }
   protected override update(state: SessionsState, deferred = false): void {
+    const threads = this.titleCache.apply(state.threads);
+    if (threads !== state.threads) state = { ...state, threads };
     if (
       this.persistenceScope &&
       (state.localDrafts !== this.state.localDrafts ||
@@ -325,9 +331,15 @@ export class SessionsStore extends Store<SessionsState> {
         this.setAccess(id, "activating");
         const project = this.trackProjectRead(id);
         try {
-          const { thread } = await this.connection.client.request<{
+          const settingsBefore = this.state.threadSettings;
+          const response = await this.connection.client.request<{
             thread: Thread;
+            approvalPolicy?: import("../../generated/v2/AskForApproval").AskForApproval;
+            serviceTier?: string | null;
           }>("thread/resume", { threadId: id, excludeTurns: true });
+          const { thread } = response;
+          if (this.current(epoch))
+            this.update(responseSettings(this.state, settingsBefore, response));
           if (
             !this.current(epoch) ||
             this.state.threadAccess[id] !== "activating"
@@ -1092,8 +1104,11 @@ export class SessionsStore extends Store<SessionsState> {
     const creating = Symbol(id);
     this.creatingDrafts.add(creating);
     try {
-      const { thread } = await this.connection.client.request<{
+      const settingsBefore = this.state.threadSettings;
+      const response = await this.connection.client.request<{
         thread: Thread;
+        approvalPolicy?: import("../../generated/v2/AskForApproval").AskForApproval;
+        serviceTier?: string | null;
       }>("thread/start", {
         ...draft.options,
         ...(options.model ? { model: options.model } : {}),
@@ -1101,6 +1116,9 @@ export class SessionsStore extends Store<SessionsState> {
           ? { approvalPolicy: options.approvalPolicy }
           : {}),
       });
+      const { thread } = response;
+      if (this.current(epoch))
+        this.update(responseSettings(this.state, settingsBefore, response));
       if (!this.current(epoch)) throw new Error("连接已改变，消息未发送。");
       this.update({
         ...this.state,
@@ -1154,12 +1172,18 @@ export class SessionsStore extends Store<SessionsState> {
       this.historySync.stop();
       const generation = ++this.selectionGeneration;
       return this.perform(async (epoch) => {
-        const { thread } = await this.connection.client.request<{
+        const settingsBefore = this.state.threadSettings;
+        const response = await this.connection.client.request<{
           thread: Thread;
+          approvalPolicy?: import("../../generated/v2/AskForApproval").AskForApproval;
+          serviceTier?: string | null;
         }>("thread/fork", {
           threadId: id,
           ...(lastTurnId ? { lastTurnId } : {}),
         });
+        const { thread } = response;
+        if (this.current(epoch))
+          this.update(responseSettings(this.state, settingsBefore, response));
         this.hydrate(thread, epoch);
         if (this.current(epoch) && generation === this.selectionGeneration)
           this.update({ ...this.state, selectedId: thread.id });

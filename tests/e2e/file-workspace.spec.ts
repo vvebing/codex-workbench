@@ -5,18 +5,24 @@ import { createMockServer } from "../fixtures/app-server";
 let server: ReturnType<typeof createMockServer>;
 let url: string;
 let directoryDelay = 0;
+let writeDelay = 0;
 const root = "/demo/atlas-web";
 const original = "# Demo project\nProject file preview.\n";
 
 test.beforeEach(async ({ page }) => {
   directoryDelay = 0;
+  writeDelay = 0;
   server = createMockServer({
     base64Files: {
       "/demo/atlas-web/screenshot.png":
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
     },
     responseDelayMs: (method) =>
-      method === "fs/readDirectory" ? directoryDelay : 0,
+      method === "fs/readDirectory"
+        ? directoryDelay
+        : method === "fs/writeFile"
+          ? writeDelay
+          : 0,
     initialGitFiles: test.info().title.startsWith("Git file actions")
       ? [
           ["src/app.ts", ".M"],
@@ -129,6 +135,96 @@ test("unsaved file edits survive reload without writing to disk", async ({
           .length,
     )
     .toBe(1);
+});
+
+test("file discard confirmations use shared dialogs and preserve drafts when cancelled", async ({
+  page,
+}) => {
+  const nativeDialogs: string[] = [];
+  page.on("dialog", (dialog) => {
+    nativeDialogs.push(dialog.type());
+    void dialog.dismiss();
+  });
+  const { workspace } = await openReadme(page);
+  await edit(page, "Unsaved confirmation draft");
+  const reload = workspace.getByRole("button", {
+    name: "重新加载",
+    exact: true,
+  });
+  await reload.click();
+  const confirmation = page.getByRole("dialog", {
+    name: "重新加载文件",
+    exact: true,
+  });
+  await expect(confirmation).toHaveAttribute("data-slot", "modal");
+  await expect(confirmation).toContainText(`${root}/README.md`);
+  await confirmation.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(reload).toBeFocused();
+  await expect(workspace.locator(".view-lines")).toContainText(
+    "Unsaved confirmation draft",
+  );
+  await reload.click();
+  await page.keyboard.press("Escape");
+  await expect(confirmation).toBeHidden();
+  await expect(workspace.locator(".view-lines")).toContainText(
+    "Unsaved confirmation draft",
+  );
+  await reload.click();
+  await confirmation
+    .getByRole("button", { name: "放弃修改并重新加载", exact: true })
+    .click();
+  await expect(workspace.locator(".view-lines")).toContainText("Demo project");
+  await edit(page, "Another unsaved draft");
+  const close = workspace.getByRole("button", {
+    name: `关闭 ${root}/README.md`,
+    exact: true,
+  });
+  await close.click();
+  const closing = page.getByRole("dialog", { name: "关闭文件", exact: true });
+  await closing.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(workspace.locator(".view-lines")).toContainText(
+    "Another unsaved draft",
+  );
+  await close.click();
+  await closing
+    .getByRole("button", { name: "放弃修改并关闭", exact: true })
+    .click();
+  await expect(workspace).toBeHidden();
+  expect(nativeDialogs).toEqual([]);
+  expect(server.fileText(`${root}/README.md`)).toBe(original);
+  expect(
+    server.requestLog.some((request) => request.method === "fs/writeFile"),
+  ).toBe(false);
+});
+
+test("save-as uses the shared modal and cannot dismiss an in-flight file operation", async ({
+  page,
+}) => {
+  const { workspace } = await openReadme(page);
+  await edit(page, "Preserved file copy");
+  server.setFile(`${root}/README.md`, "# External version\n");
+  await expect(
+    workspace.getByRole("alert").filter({ hasText: "磁盘文件已改变" }),
+  ).toBeVisible();
+  await workspace.getByRole("button", { name: "另存为", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "另存为新文件",
+    exact: true,
+  });
+  await expect(dialog).toHaveAttribute("data-slot", "modal");
+  await dialog.getByLabel("新文件绝对路径").fill(`${root}/preserved-copy.md`);
+  writeDelay = 1000;
+  await dialog.getByRole("button", { name: "创建副本", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "关闭", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toBeHidden();
+  expect(server.fileText(`${root}/preserved-copy.md`)).toBe(
+    "Preserved file copy",
+  );
+  expect(server.fileText(`${root}/README.md`)).toBe("# External version\n");
 });
 
 test("image tabs render inline and preserve text undo history", async ({
@@ -558,9 +654,12 @@ test("Monaco async diff lifecycle survives file switches mode changes and close 
     await replaceLargeDocument(
       jsonBaseline.replace('"baseline"', `"closing-${revision}"`),
     );
-    page.once("dialog", (dialog) => dialog.accept());
     await workspace
       .getByRole("button", { name: `关闭 ${root}/package.json`, exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "关闭文件", exact: true })
+      .getByRole("button", { name: "放弃修改并关闭", exact: true })
       .click();
     await expect(
       workspace.getByRole("tab", { name: /package\.json$/ }),

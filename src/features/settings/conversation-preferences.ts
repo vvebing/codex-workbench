@@ -45,9 +45,9 @@ export function useRunningSendMode() {
 
 export function getAutoCollapseProcess(): boolean {
   try {
-    return localStorage.getItem(AUTO_COLLAPSE_STORAGE_KEY) === "true";
+    return localStorage.getItem(AUTO_COLLAPSE_STORAGE_KEY) !== "false";
   } catch {
-    return false;
+    return true;
   }
 }
 export function setAutoCollapseProcess(enabled: boolean): void {
@@ -55,5 +55,5 @@ export function setAutoCollapseProcess(enabled: boolean): void {
   for (const listener of listeners) listener();
 }
 export function useAutoCollapseProcess() {
-  return useSyncExternalStore(subscribe, getAutoCollapseProcess, () => false);
+  return useSyncExternalStore(subscribe, getAutoCollapseProcess, () => true);
 }

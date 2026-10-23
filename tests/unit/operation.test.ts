@@ -4,10 +4,8 @@ import type { ThreadItem } from "../../src/generated/v2/ThreadItem";
 import {
   commandTitle,
   operationStatus,
-  partitionOperationGroup,
-  operationSummaryExpansion,
+  isInstantOperation,
 } from "../../src/features/conversation/operation";
-import { executionSegments } from "../../src/features/conversation/execution-presentation";
 
 const reasoning: ThreadItem = {
   type: "reasoning",
@@ -30,6 +28,37 @@ const command: Extract<ThreadItem, { type: "commandExecution" }> = {
   exitCode: null,
   durationMs: null,
 };
+
+describe("instant operation motion", () => {
+  it.each([0, 1, 49])(
+    "skips motion for %i ms displayed as 0.0 seconds",
+    (durationMs) => {
+      expect(isInstantOperation({ ...command, durationMs })).toBe(true);
+    },
+  );
+  it.each([50, 100, 1000, null])(
+    "keeps motion for a nonzero or unknown duration (%s)",
+    (durationMs) => {
+      expect(isInstantOperation({ ...command, durationMs })).toBe(false);
+    },
+  );
+  it("keeps motion for operations without timing information", () => {
+    expect(isInstantOperation(reasoning)).toBe(false);
+  });
+  it.each(["inProgress", "completed", "failed", "declined"] as const)(
+    "keeps %s file changes static without inventing a duration",
+    (status) => {
+      expect(
+        isInstantOperation({
+          type: "fileChange",
+          id: "patch",
+          status,
+          changes: [],
+        }),
+      ).toBe(true);
+    },
+  );
+});
 
 describe("operation lifecycle", () => {
   it("keeps a statusless operation running until its own completion", () => {
@@ -126,193 +155,13 @@ describe("command titles", () => {
   });
   it("preserves compound or unknown commands without guessing intent", () => {
     const action = { type: "unknown" as const, command: command.command };
-    expect(commandTitle(command)).toBe(command.command);
+    expect(commandTitle(command)).toBe(`执行命令 · ${command.command}`);
     expect(commandTitle({ ...command, commandActions: [action] })).toBe(
-      command.command,
+      `执行命令 · ${command.command}`,
     );
     expect(commandTitle({ ...command, commandActions: [action, action] })).toBe(
-      command.command,
+      `执行命令 · ${command.command}`,
     );
-  });
-});
-
-describe("historical operation compaction", () => {
-  const context = {
-    historical: true,
-    threadId: "thread",
-    turnId: "turn",
-    turnStatus: "completed" as const,
-  };
-  const success = (id: string): ThreadItem => ({
-    ...command,
-    id,
-    status: "completed",
-  });
-  it("hides the oldest successes while preserving visible ordering", () => {
-    const failed: ThreadItem = { ...command, id: "failed", status: "failed" };
-    const items = [success("1"), failed, success("2"), success("3")];
-    const result = partitionOperationGroup(items, context, 1);
-    expect(result.hidden.map((item) => item.id)).toEqual(["1", "2"]);
-    expect(result.visible.map((item) => item.id)).toEqual(["failed", "3"]);
-  });
-  it("keeps parallel live, rejected, interrupted and approval operations visible", () => {
-    const items: ThreadItem[] = [
-      success("1"),
-      command,
-      { ...command, id: "rejected", status: "declined" },
-      { ...reasoning, id: "unfinished" },
-      success("approval"),
-    ];
-    const result = partitionOperationGroup(
-      items,
-      { ...context, turnStatus: "interrupted", waitingItems: ["approval"] },
-      0,
-    );
-    expect(result.hidden.map((item) => item.id)).toEqual(["1"]);
-    expect(result.visible.map((item) => item.id)).toEqual([
-      "c",
-      "rejected",
-      "unfinished",
-      "approval",
-    ]);
-  });
-  it("does not count reasoning, plans or messages toward operation limit", () => {
-    const items: ThreadItem[] = [
-      success("1"),
-      reasoning,
-      { type: "plan", id: "plan", text: "check" },
-      { type: "userMessage", id: "message", clientId: null, content: [] },
-      success("2"),
-    ];
-    const result = partitionOperationGroup(items, context, 1);
-    expect(result.hidden.map((item) => item.id)).toEqual(["1"]);
-    expect(result.visible.map((item) => item.id)).toEqual([
-      "r",
-      "plan",
-      "message",
-      "2",
-    ]);
-  });
-  it("keeps all current-turn operations visible", () => {
-    expect(
-      partitionOperationGroup(
-        [success("1")],
-        { ...context, historical: false },
-        0,
-      ).hidden,
-    ).toEqual([]);
-    expect(
-      partitionOperationGroup(
-        [success("1")],
-        { ...context, turnStatus: "inProgress" },
-        0,
-      ).hidden,
-    ).toEqual([]);
-  });
-  it("keeps manually expanded successes visible when the turn becomes historical", () => {
-    const expanded = [success("1"), success("2"), success("3")];
-    const items = [...expanded, success("4"), success("5")];
-    const result = partitionOperationGroup(
-      items,
-      { ...context, expandedItems: expanded.map((item) => item.id) },
-      1,
-    );
-    expect(result.visible.map((item) => item.id)).toEqual(["1", "2", "3", "5"]);
-    expect(result.hidden.map((item) => item.id)).toEqual(["4"]);
-    expect(
-      partitionOperationGroup(items, context, 1).visible.map((item) => item.id),
-    ).toEqual(["5"]);
-  });
-  it("uses scoped completion markers independently for statusless operations", () => {
-    const item: ThreadItem = {
-      type: "imageView",
-      id: "image",
-      path: "/image.png",
-    };
-    expect(
-      partitionOperationGroup(
-        [item],
-        {
-          ...context,
-          turnStatus: "failed",
-          completedItems: {
-            [JSON.stringify(["other", "turn", "image"])]: true,
-          },
-        },
-        0,
-      ).hidden,
-    ).toEqual([]);
-    expect(
-      partitionOperationGroup(
-        [item],
-        {
-          ...context,
-          turnStatus: "failed",
-          completedItems: {
-            [JSON.stringify(["thread", "turn", "image"])]: true,
-          },
-        },
-        0,
-      ).hidden,
-    ).toEqual([item]);
-  });
-});
-
-describe("manual operation summary expansion", () => {
-  const commands = ["1", "2", "3"].map((id) => ({
-    ...command,
-    id,
-    status: "completed" as const,
-  }));
-  const opened = Object.fromEntries(
-    commands.map((item) => [item.id, { open: true, version: 1 }]),
-  );
-  it("preserves a manual choice when more successful commands join the batch", () => {
-    const growing = [
-      ...commands,
-      { ...command, id: "4", status: "completed" as const },
-    ];
-    expect(operationSummaryExpansion(growing, opened)).toEqual({
-      open: true,
-      version: 1,
-    });
-  });
-  it("preserves expansion when an earlier live command finishes and changes the segment key", () => {
-    const live = { ...command, id: "earlier" };
-    const resolve = (item: ThreadItem) =>
-      operationStatus(item, "inProgress", false, false);
-    const before = executionSegments([live, ...commands], resolve);
-    const after = executionSegments(
-      [{ ...live, status: "completed" }, ...commands],
-      resolve,
-    );
-    expect(before[1]).toMatchObject({ kind: "summary", id: "1" });
-    expect(after[0]).toMatchObject({ kind: "summary", id: "earlier" });
-    const summary = after[0];
-    if (summary.kind !== "summary") throw new Error("missing summary");
-    expect(operationSummaryExpansion(summary.items, opened)).toEqual({
-      open: true,
-      version: 1,
-    });
-  });
-  it("uses the latest explicit choice when separately controlled batches merge", () => {
-    const choices = { ...opened, "4": { open: false, version: 2 } };
-    expect(
-      operationSummaryExpansion(
-        [...commands, { ...command, id: "4" }],
-        choices,
-      ),
-    ).toEqual({ open: false, version: 2 });
-    expect(operationSummaryExpansion(commands, choices)).toEqual({
-      open: true,
-      version: 1,
-    });
-  });
-  it("does not apply a batch choice to unrelated operation IDs", () => {
-    expect(
-      operationSummaryExpansion([{ ...command, id: "other" }], opened),
-    ).toBeUndefined();
-    expect(operationSummaryExpansion(commands, {})).toBeUndefined();
   });
 });
 

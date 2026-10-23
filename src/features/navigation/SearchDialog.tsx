@@ -10,7 +10,13 @@ import {
 import { navigationTitle } from "./navigation-title";
 import { navigationEnvironmentKey, navigationState } from "./navigation-state";
 import type { Thread } from "../../generated/v2/Thread";
-import { ScrollArea, Modal, Button, ErrorNotice } from "../../components/ui";
+import {
+  ScrollArea,
+  Modal,
+  Button,
+  ErrorNotice,
+  SelectField,
+} from "../../components/ui";
 import {
   useStore,
   titleOf,
@@ -288,22 +294,25 @@ function SearchContent({
           autoFocus
         />
       </div>
-      <div className="session-search-scope">
+      <div
+        className="session-search-scope"
+        onKeyDown={(event) => event.stopPropagation()}
+      >
         <label htmlFor="session-search-scope">搜索范围</label>
-        <select
+        <SelectField
           id="session-search-scope"
+          label="搜索范围"
+          className="max-w-[220px] min-h-8 bg-surface px-2 py-1 text-meta"
           value={selectedScope}
-          onChange={(event) => setScope(event.target.value)}
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          {state.entries.map((entry) => (
-            <option key={entry.id} value={entry.id}>
-              {entry.name}
-              {entry.id === state.activeId ? "（当前环境）" : ""}
-            </option>
-          ))}
-          <option value="all">全部环境</option>
-        </select>
+          onValueChange={setScope}
+          options={[
+            ...state.entries.map((entry) => ({
+              value: entry.id,
+              label: `${entry.name}${entry.id === state.activeId ? "（当前环境）" : ""}`,
+            })),
+            { value: "all", label: "全部环境" },
+          ]}
+        />
         {selectedScope !== "all" && state.entries.length > 1 && (
           <Button variant="quiet" size="sm" onClick={() => setScope("all")}>
             扩大到全部环境

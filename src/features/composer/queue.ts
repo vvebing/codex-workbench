@@ -21,7 +21,7 @@ export interface QueuedTask {
   input: UserInput[];
   options: SendOptions;
   status: "queued" | "sending" | "uncertain";
-  question?: { itemId: string; answers: string[] };
+  question?: { itemId: string; answers: string[]; expired?: boolean };
 }
 export interface TaskQueue {
   items: QueuedTask[];
@@ -29,6 +29,7 @@ export interface TaskQueue {
   editingId?: string;
   /** Confirmed answers remain visible until their user message arrives. */
   sentAnswers?: Record<string, string[]>;
+  sentAnswerTasks?: Record<string, QueuedTask>;
 }
 interface QueueState {
   threads: Record<string, TaskQueue>;
@@ -99,7 +100,41 @@ export class MessageQueueStore extends Store<QueueState> {
       epoch = state.epoch;
       this.schedule();
     });
-    sessions.subscribe(() => this.schedule());
+    sessions.subscribe(() => {
+      this.schedule();
+      const delivered = (id: string, task: QueuedTask) =>
+        task.question &&
+        sessions
+          .getSnapshot()
+          .threads[id]?.turns.some((turn) =>
+            turn.items.some(
+              (item) =>
+                item.type === "userMessage" &&
+                item.clientId ===
+                  asyncAnswerClientId(task.question!.itemId, task.id),
+            ),
+          );
+      if (
+        Object.entries(this.state.threads).some(([id, queue]) =>
+          queue.items.some((task) => delivered(id, task)),
+        )
+      )
+        void this.exclusive(async (queues) => {
+          for (const [id, queue] of Object.entries(queues)) {
+            const remaining = queue.items.filter(
+              (task) => !delivered(id, task),
+            );
+            if (remaining.length === queue.items.length) continue;
+            queue.items = remaining;
+            if (!queue.items.length) {
+              queue.paused = null;
+              this.stopping.delete(id);
+            }
+          }
+        })
+          .then(() => this.schedule())
+          .catch(() => {});
+    });
     requests.subscribe(() => this.schedule());
     connection.client.onNotification((event) => {
       if (
@@ -150,7 +185,15 @@ export class MessageQueueStore extends Store<QueueState> {
           pendingAsyncQuestions(thread).map((item) => item.id),
         );
         for (const itemId of Object.keys(queue.sentAnswers))
-          if (!pending.has(itemId)) delete queue.sentAnswers[itemId];
+          if (
+            !pending.has(itemId) &&
+            thread.turns.some((turn) =>
+              turn.items.some((item) => item.id === itemId),
+            )
+          ) {
+            delete queue.sentAnswers[itemId];
+            if (queue.sentAnswerTasks) delete queue.sentAnswerTasks[itemId];
+          }
       }
       const result = await work(queues, publish);
       if (write) await publish();
@@ -442,7 +485,9 @@ export class MessageQueueStore extends Store<QueueState> {
             (item) => item.id === task.question!.itemId,
           )
         ) {
-          queue.items = queue.items.filter((item) => item !== task);
+          task.question.expired = true;
+          queue.paused =
+            "问题已结束，本次回答未发送。内容已保留，可复制后继续补充。";
           return;
         }
         if (!this.available(id, true)) return;
@@ -491,10 +536,13 @@ export class MessageQueueStore extends Store<QueueState> {
           );
         if (this.connection.getSnapshot().epoch !== epoch)
           throw new Error("连接已改变，请核实消息是否已发送。");
-        if (task.question)
+        if (task.question) {
+          (queue.sentAnswerTasks ??= {})[task.question.itemId] =
+            structuredClone(task);
           (queue.sentAnswers ??= {})[task.question.itemId] = [
             ...task.question.answers,
           ];
+        }
         queue.items = queue.items.filter((item) => item !== task);
       } catch (error) {
         if (

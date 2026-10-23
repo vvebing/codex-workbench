@@ -84,6 +84,7 @@ export function createNavigationDataSource(environments: Environment[]) {
         environment,
         environmentKey: navigationEnvironmentKey(environment),
         sessions: current.sessions,
+        messages: current.messages,
         connected: current.connection.status === "connected",
         tasks: environmentTasks(environment.runtime),
       };

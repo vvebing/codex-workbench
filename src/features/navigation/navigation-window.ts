@@ -71,7 +71,7 @@ export function navigationWindow(
   );
   return { ...layout, start, end };
 }
-/** Preserve the first visible surviving row, even if the previous anchor was removed. */
+/** Stay at the top, otherwise preserve the first visible surviving row. */
 export function navigationAnchor(
   previousRows: NavigationListRow[],
   previous: NavigationLayout,
@@ -79,6 +79,8 @@ export function navigationAnchor(
   top: number,
   height: number,
 ) {
+  // At the top the reader follows the latest order, rather than a particular row.
+  if (top <= 1) return 0;
   const anchor = lowerBound(
     previousRows.length,
     (index) => previous.offsets[index] + previousRows[index].height <= top,

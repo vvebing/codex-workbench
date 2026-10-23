@@ -32,13 +32,13 @@ import { QueuedTasks } from "./QueuedTasks";
 
 import type { ReasoningEffort } from "../../generated/ReasoningEffort";
 import type { AskForApproval } from "../../generated/v2/AskForApproval";
-import { approvalOptions } from "./approval-policy";
+import { serviceTierLabel, serviceTierOptions } from "./service-tier";
+import { approvalLabel, approvalOptions } from "./approval-policy";
 const policies = [
   {
     value: "inherit",
-    name: "继承会话策略",
-    description:
-      "来源：服务端会话配置；新会话使用服务端默认。当前有效策略未核实。",
+    name: "沿用当前审批设置",
+    description: "不发送新的覆盖，也不会撤销此前已发送的审批设置。",
   },
   {
     value: "on-request",
@@ -76,6 +76,9 @@ export const Composer = memo(function Composer({
   const [policyChoices, setPolicyChoices] = useState<
     Record<string, AskForApproval | undefined>
   >({});
+  const [tierChoices, setTierChoices] = useState<
+    Record<string, string | undefined>
+  >({});
   const [reading, setReading] = useState(false);
   const {
     runtime,
@@ -83,6 +86,7 @@ export const Composer = memo(function Composer({
     sessions,
     draft,
     thread,
+    threadSettings,
     localDraft,
     access,
     connected,
@@ -103,11 +107,12 @@ export const Composer = memo(function Composer({
     stop,
   } = useComposerSession(
     threadId,
-    { chosenModel, chosenEffort, policyChoices },
+    { chosenModel, chosenEffort, policyChoices, tierChoices },
     reading,
   );
   const policyKey = JSON.stringify([connection.scope, threadId]);
   const policy = policyChoices[policyKey];
+  const tier = serviceTierOptions(model, tierChoices[policyKey]).serviceTier;
   const { running, executing, hasContent } = capabilities;
   const showStop = capabilities.showStop && !inputRequest;
   function goToQuestion() {
@@ -580,19 +585,26 @@ export const Composer = memo(function Composer({
               >
                 <ShieldCheck size={15} />
                 <span>
-                  {policies.find((p) => p.value === policy)?.name ??
-                    "继承会话策略"}
+                  {policy &&
+                  JSON.stringify(policy) !==
+                    JSON.stringify(threadSettings?.approvalPolicy)
+                    ? `下次：${approvalLabel(policy)}`
+                    : `审批：${approvalLabel(threadSettings?.approvalPolicy)}`}
                 </span>
                 <ChevronDown size={12} />
               </button>
             }
           >
-            <MenuLabel>审批策略 · 当前会话</MenuLabel>
+            <MenuLabel>审批策略 · 下次发送设置</MenuLabel>
+            <div className="max-w-80 px-3 py-2 text-fine text-muted">
+              当前会话（服务端）：
+              {approvalLabel(threadSettings?.approvalPolicy)}
+            </div>
             <div className="max-w-80 px-3 py-2 text-fine text-muted">
               {policy
-                ? "来源：本地显式选择。发送新轮次时覆盖当前及后续轮次；排队任务保留入队时的选择。"
-                : "不发送审批覆盖；沿用服务端会话策略。继承不会撤销此前已发送的覆盖。"}
-              追加到执行中的轮次沿用该轮策略。沙箱仍由服务端控制。
+                ? "来源：本地持续显式选择（即使已与服务端值一致仍保留）。发送新轮次时覆盖当前及后续轮次；排队任务保留入队时的选择。"
+                : "不发送审批覆盖；沿用服务端会话策略。沿用不会撤销此前已发送的覆盖。"}
+              立即引导沿用该轮策略；问题卡片回答沿用会话设置，不使用此处未发送的选择。此菜单不控制沙箱。
             </div>
             <DropdownMenu.RadioGroup
               value={typeof policy === "string" ? policy : "inherit"}
@@ -735,6 +747,73 @@ export const Composer = memo(function Composer({
                   ))}
                 </DropdownMenu.RadioGroup>
               </>
+            )}
+          </Menu>
+          <Menu
+            label="服务档位"
+            trigger={
+              <button
+                type="button"
+                data-slot="service-tier-choice"
+                disabled={readOnly}
+                className="flex min-h-[30px] max-w-[180px] min-w-0 items-center gap-1 rounded-[7px] px-[7px] text-meta text-muted hover:bg-hover disabled:opacity-40 @max-[550px]/conversation:min-h-11 @max-[550px]/conversation:max-w-[150px]"
+              >
+                <span className="truncate">
+                  {tier && tier !== threadSettings?.serviceTier
+                    ? `下次：${serviceTierLabel(model, tier)}`
+                    : `档位：${serviceTierLabel(model, threadSettings?.serviceTier)}`}
+                </span>
+                <ChevronDown size={12} />
+              </button>
+            }
+          >
+            <MenuLabel>服务档位 · 下次发送设置</MenuLabel>
+            <div className="max-w-80 px-3 py-2 text-fine text-muted">
+              当前会话（服务端）：
+              {serviceTierLabel(model, threadSettings?.serviceTier)}
+              。模型目录默认：
+              {serviceTierLabel(model, model?.defaultServiceTier)}。
+              新轮次发送后应用到会话及后续轮次；排队任务保留入队时设置。立即引导不改变当前轮次档位。
+              沿用不会撤销此前已发送的覆盖。问题卡片回答沿用会话设置，不使用此处未发送的选择。
+            </div>
+            {tier && (
+              <div className="max-w-80 px-3 py-2 text-fine text-muted">
+                本地持续显式选择：{serviceTierLabel(model, tier)}
+                。即使服务端已确认同值，后续新轮次仍会发送此设置。
+              </div>
+            )}
+            <DropdownMenu.RadioGroup
+              value={tier ?? "inherit"}
+              onValueChange={(value) =>
+                setTierChoices((choices) => ({
+                  ...choices,
+                  [policyKey]: value === "inherit" ? undefined : value,
+                }))
+              }
+            >
+              <DropdownMenu.RadioItem value="inherit">
+                沿用当前服务档位
+              </DropdownMenu.RadioItem>
+              {model?.serviceTiers?.map((item) => (
+                <DropdownMenu.RadioItem key={item.id} value={item.id}>
+                  <span>
+                    <strong>{item.name}</strong>
+                    <small>{item.description}</small>
+                  </span>
+                </DropdownMenu.RadioItem>
+              ))}
+            </DropdownMenu.RadioGroup>
+            {!model?.serviceTiers?.length && (
+              <div className="max-w-80 px-3 py-2 text-fine text-muted">
+                {model
+                  ? "当前模型未声明可选服务档位。"
+                  : "尚未获取模型服务档位。"}
+              </div>
+            )}
+            {tierChoices[policyKey] && !tier && (
+              <div className="max-w-80 px-3 py-2 text-fine text-warning">
+                之前选择的档位不适用于当前模型，本次将沿用会话设置。
+              </div>
             )}
           </Menu>
           <div className="flex-1" />

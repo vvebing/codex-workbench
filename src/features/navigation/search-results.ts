@@ -1,4 +1,7 @@
-import type { Thread } from "../../generated/v2/Thread";
+import {
+  threadTitle,
+  type TitledThread as Thread,
+} from "../sessions/thread-title";
 
 export type SearchMatchSource =
   "Session ID" | "标题" | "摘要" | "工作区" | "已加载对话" | "历史标题";
@@ -69,7 +72,7 @@ export function matchLoadedThread(
   const terms = normalized(query.trim()).split(" ").filter(Boolean);
   if (!terms.length) return null;
   const fields: { source: SearchMatchSource; text: string }[] = [
-    { source: "标题", text: thread.name || "" },
+    { source: "标题", text: thread.name || thread.titleSource?.text || "" },
     { source: "摘要", text: thread.preview },
     { source: "工作区", text: thread.cwd },
     ...loadedMessageText(thread).map((text) => ({
@@ -120,7 +123,7 @@ export function combineSearchResults(
   }
   const needle = normalized(query.trim());
   const relevance = (match: ThreadSearchMatch) => {
-    const title = normalized(match.thread.name?.trim() || match.thread.preview);
+    const title = normalized(threadTitle(match.thread));
     if (title === needle) return 0;
     if (title.includes(needle)) return 1;
     return match.sources.some((source) => ["标题", "历史标题"].includes(source))

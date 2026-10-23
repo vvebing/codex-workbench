@@ -4,4 +4,5 @@ src/generated
 package-lock.json
 playwright-report
 test-results
+output
 coverage

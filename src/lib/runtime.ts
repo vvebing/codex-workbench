@@ -14,7 +14,14 @@ export function createRuntime(
 ) {
   const connection = new ConnectionStore(options);
   const files = new FileWorkspaceStore(connection, draftScope, initialEndpoint);
-  const requests = new RequestsStore(connection);
+  const requests: RequestsStore = new RequestsStore(
+    connection,
+    (threadId, turnId) =>
+      sessions
+        .getSnapshot()
+        .threads[threadId]?.turns.find((turn) => turn.id === turnId)
+        ?.items.at(-1)?.id,
+  );
   const drafts = new DraftsStore();
   const sessions = new SessionsStore(
     connection,

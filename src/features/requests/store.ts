@@ -17,6 +17,8 @@ export interface SubmittedAnswer {
   id: RpcId;
   epoch: number;
   threadId: string;
+  turnId?: string;
+  afterItemId?: string;
   answers: { question: string; answer: string }[];
   status: "submitted" | "resolved" | "uncertain";
 }
@@ -124,7 +126,13 @@ export function validApprovalResponse(
 }
 export class RequestsStore extends Store<RequestsState> {
   private answered = new Set<RpcId>();
-  constructor(private connection: ConnectionStore) {
+  constructor(
+    private connection: ConnectionStore,
+    private answerAnchor?: (
+      threadId: string,
+      turnId: string,
+    ) => string | undefined,
+  ) {
     super({
       pending: [],
       respondingIds: [],
@@ -225,40 +233,56 @@ export class RequestsStore extends Store<RequestsState> {
       });
       return false;
     }
-    const sent = this.reply(id, () =>
-      this.connection.client.respond(id, result),
+    const afterItemId =
+      request.method === "item/tool/requestUserInput"
+        ? this.answerAnchor?.(request.params.threadId, request.params.turnId)
+        : undefined;
+    return this.reply(
+      id,
+      () => this.connection.client.respond(id, result),
+      () => {
+        if (request.method === "item/tool/requestUserInput") {
+          const answers = (
+            result as { answers: Record<string, { answers: string[] }> }
+          ).answers;
+          this.update({
+            ...this.state,
+            pending: this.state.pending.filter((entry) => entry.id !== id),
+            respondingIds: this.state.respondingIds.filter(
+              (entry) => entry !== id,
+            ),
+            submittedAnswers: [
+              ...this.state.submittedAnswers,
+              {
+                id,
+                epoch: this.connection.getSnapshot().epoch,
+                threadId: request.params.threadId,
+                turnId: request.params.turnId,
+                afterItemId,
+                status: "submitted",
+                answers: request.params.questions.map((question) => ({
+                  question: question.question,
+                  answer: question.isSecret
+                    ? "（私密回答已隐藏）"
+                    : answers[question.id].answers.join("\n"),
+                })),
+              },
+            ],
+          });
+        }
+      },
     );
-    if (sent && request.method === "item/tool/requestUserInput") {
-      const answers = (
-        result as { answers: Record<string, { answers: string[] }> }
-      ).answers;
-      this.update({
-        ...this.state,
-        submittedAnswers: [
-          ...this.state.submittedAnswers,
-          {
-            id,
-            epoch: this.connection.getSnapshot().epoch,
-            threadId: request.params.threadId,
-            status: "submitted",
-            answers: request.params.questions.map((question) => ({
-              question: question.question,
-              answer: question.isSecret
-                ? "（私密回答已隐藏）"
-                : answers[question.id].answers.join("\n"),
-            })),
-          },
-        ],
-      });
-    }
-    return sent;
   }
   reject(id: RpcId, message = "Declined by user"): boolean {
     return this.reply(id, () =>
       this.connection.client.respondError(id, -32000, message),
     );
   }
-  private reply(id: RpcId, send: () => void): boolean {
+  private reply(
+    id: RpcId,
+    send: () => void,
+    recordAnswer?: () => void,
+  ): boolean {
     if (
       !this.state.pending.some((request) => request.id === id) ||
       this.state.respondingIds.includes(id)
@@ -272,6 +296,9 @@ export class RequestsStore extends Store<RequestsState> {
     try {
       send();
       this.answered.add(id);
+      // Record the receipt before removing the request so subscribers never see
+      // a frame with neither the question nor its submitted answer.
+      recordAnswer?.();
       this.remove(id);
       return true;
     } catch (error) {

@@ -21,7 +21,10 @@ export const MOCK_WORKSPACES = [
   "/demo/api-service",
 ];
 export interface MockOptions {
+  models?: import("../../src/generated/v2/Model.js").Model[];
   threadCount?: number;
+  historicalTurnTimes?: boolean;
+  diagnosticTitlePreviews?: boolean;
   commandExec?: (params: {
     command: string[];
     cwd: string;
@@ -32,6 +35,7 @@ export interface MockOptions {
   imageInput?: boolean;
   paginatedHistory?: boolean;
   initialActiveOperations?: boolean;
+  initialOperationItems?: ThreadItem[];
   mermaidAnswer?: string;
   subagentSessions?: boolean;
   gitStatus?: string | ((cwd: string) => string);
@@ -48,6 +52,7 @@ export interface MockOptions {
   rejectEmptyThreadRead?: boolean;
   failThreadStartOnce?: boolean;
   failFirstTurnOnce?: boolean;
+  delayedUserEchoMs?: number;
   externalActivity?: boolean;
   staleActiveAfterCompletion?: boolean;
   modelDefaultReasoningEffort?: "low" | "medium" | "high";
@@ -224,6 +229,29 @@ export function createMockServer(options: MockOptions = {}) {
   const threads = Array.from({ length: options.threadCount ?? 90 }, (_, i) =>
     makeThread(i),
   );
+  if (options.diagnosticTitlePreviews) {
+    const previews = [
+      "回答问题：\n旧 websocket-server 的镜像 tag 是什么？\nv1.49.8",
+      "[ crs-example | DB0 ] # EXISTS sess:example\n1\n[ crs-example | DB0 ] # TTL sess:example\n85451",
+    ];
+    for (const [index, preview] of previews.entries()) {
+      const thread = threads[index];
+      thread.name = null;
+      thread.preview = preview;
+      thread.turns = [
+        makeTurn(
+          index ? "请分析接口 401 与安全更新的关系" : "请分析 Session 频繁请求",
+        ),
+        makeTurn(preview),
+      ];
+    }
+  }
+  if (options.historicalTurnTimes)
+    for (const thread of threads)
+      for (const turn of thread.turns) {
+        turn.startedAt = thread.updatedAt - 1;
+        turn.completedAt = thread.updatedAt;
+      }
   if (options.initialImageMessage) {
     const items = threads[0].turns[0].items;
     const user = items.find((item) => item.type === "userMessage");
@@ -333,7 +361,15 @@ export function createMockServer(options: MockOptions = {}) {
     };
     initialLifecycleItems.add(live.id);
     initialLifecycleItems.add(emptyLive.id);
-    turn.items = [turn.items[0], thought, image, emptyThought, emptyLive, live];
+    turn.items = [
+      turn.items[0],
+      ...(options.initialOperationItems ?? []),
+      thought,
+      image,
+      emptyThought,
+      emptyLive,
+      live,
+    ];
   }
   const answerText = options.mermaidAnswer ?? answer;
   if (options.subagentSessions)
@@ -464,7 +500,14 @@ export function createMockServer(options: MockOptions = {}) {
       const { id, method } = msg;
       requestLog.push({
         method,
-        ...(method === "thread/list" ? { params: msg.params } : {}),
+        ...([
+          "thread/list",
+          "thread/start",
+          "turn/start",
+          "turn/steer",
+        ].includes(method)
+          ? { params: msg.params }
+          : {}),
         ...(method.startsWith("fs/")
           ? {
               params: msg.params,
@@ -1108,7 +1151,7 @@ export function createMockServer(options: MockOptions = {}) {
           return reply(
             id,
             {
-              data: [
+              data: options.models ?? [
                 {
                   id: "mock-codex",
                   model: "mock-codex",
@@ -2077,6 +2120,19 @@ export function createMockServer(options: MockOptions = {}) {
               threadId: t.id,
               turn: { ...turn, items: [] },
             });
+            if (options.delayedUserEchoMs) {
+              completeItem({
+                type: "reasoning",
+                id: `early-${turn.id}`,
+                summary: ["先到达的执行进度"],
+                content: [],
+              });
+              later(() => {
+                notify("item/completed", { ...base, item: user });
+                run();
+              }, options.delayedUserEchoMs);
+              return;
+            }
             notify("item/completed", { ...base, item: turn.items[0] });
             if (/approval|审批/.test(text)) {
               const requestId = `${turn.id}-approval`;
@@ -2190,6 +2246,11 @@ export function createMockServer(options: MockOptions = {}) {
   return Object.assign(server, {
     requestLog,
     responseLog,
+    setThreadName(threadId: string, name: string | null) {
+      const thread = threads.find((entry) => entry.id === threadId);
+      if (!thread) throw Error(`Unknown mock thread ${threadId}`);
+      thread.name = name;
+    },
     setProject(threadId: string, projectId: string | null) {
       const thread = threads.find((thread) => thread.id === threadId);
       if (!thread) throw Error(`Unknown mock thread ${threadId}`);

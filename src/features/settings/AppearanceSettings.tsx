@@ -166,7 +166,7 @@ export function AppearanceSettings() {
           aria-label="字体预览"
         >
           <p className="text-body">文字预览：让阅读和工作更舒适。Aa 0123</p>
-          <p className="overflow-x-auto font-mono text-code leading-code">
+          <p className="break-words font-mono text-code leading-code">
             const greeting = "你好，世界";
           </p>
         </div>

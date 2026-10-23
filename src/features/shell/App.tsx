@@ -654,7 +654,7 @@ function AppView() {
                         runtime.revert(thread.id, turnId, messageId)
                     : undefined
                 }
-                key={`timeline:${environment.id}:${thread.id}`}
+                key={`timeline:${environment.id}:${runtime.submissions.messages.threadIdentity(thread.id)}`}
                 completedItems={sessions.completedItems}
                 startedItems={sessions.startedItems}
                 toolProgress={sessions.toolProgress}
@@ -704,9 +704,13 @@ function AppView() {
             )}
           </>
         ) : (
-          <div
+          <ScrollArea
             data-slot="welcome"
-            className="m-auto max-h-full overflow-y-auto px-6 pt-[30px] pb-[90px] text-center max-[550px]:pb-[55px]"
+            className="m-auto max-h-full"
+            viewportProps={{
+              className:
+                "px-6 pt-[30px] pb-[90px] text-center max-[550px]:pb-[55px]",
+            }}
           >
             <ProductIcon className="mx-auto mb-[25px] size-16" />
             <span className="text-fine font-semibold tracking-[1.1px] text-muted">
@@ -733,7 +737,7 @@ function AppView() {
                 从左侧选择历史会话，或按 <kbd>⌘ K</kbd> 搜索
               </div>
             )}
-          </div>
+          </ScrollArea>
         )}
       </ConversationWorkspace>
     </main>
@@ -812,6 +816,7 @@ function AppView() {
         open={narrow && mobileNav}
         onOpenChange={setMobileNav}
         title="工作区导航"
+        returnFocusSelector='button[aria-label="打开导航"]'
         variant="drawer"
       >
         {navigation}

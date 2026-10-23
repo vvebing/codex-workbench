@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Command } from "cmdk";
 import { File, Search } from "lucide-react";
-import { Modal } from "../../components/ui";
+import { Modal, ScrollArea } from "../../components/ui";
 import { useStore } from "../../components/hooks";
 import { useRuntime } from "../../lib/runtime-context";
 import type { Thread } from "../../generated/v2/Thread";
@@ -102,49 +102,48 @@ export function QuickOpen({
         <p className="px-5 py-2 text-xs text-muted" title={thread.cwd}>
           {thread.cwd} · {term ? "项目文件" : "已打开的文件"}
         </p>
-        <Command.List
-          aria-label="文件搜索结果"
-          className="max-h-[50dvh] overflow-auto p-2"
-        >
-          {paths.map((path) => (
-            <Command.Item
-              key={path}
-              value={path}
-              className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm data-[selected=true]:bg-selected"
-              onSelect={() => {
-                setError("");
-                void files
-                  .open({
-                    path: workspacePath(root, path),
-                    cwd: thread.cwd,
-                    threadId: thread.id,
-                    line: location
-                      ? Math.max(1, Number(location[1]))
-                      : undefined,
-                    column: location?.[2]
-                      ? Math.max(1, Number(location[2]))
-                      : undefined,
-                  })
-                  .then(onClose)
-                  .catch((cause: unknown) => setError(String(cause)));
-              }}
-            >
-              <File size={15} className="shrink-0 text-muted" />
-              <span className="truncate" title={path}>
-                {path}
-              </span>
-            </Command.Item>
-          ))}
-          {!paths.length && !loading && !error && (
-            <p className="p-3 text-sm text-muted">
-              {state.status !== "connected"
-                ? "连接环境后可搜索项目文件。"
-                : term
-                  ? "没有匹配的文件"
-                  : "输入文件名或路径开始查找。"}
-            </p>
-          )}
-        </Command.List>
+        <ScrollArea className="max-h-[50dvh]">
+          <Command.List aria-label="文件搜索结果" className="p-2">
+            {paths.map((path) => (
+              <Command.Item
+                key={path}
+                value={path}
+                className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm data-[selected=true]:bg-selected"
+                onSelect={() => {
+                  setError("");
+                  void files
+                    .open({
+                      path: workspacePath(root, path),
+                      cwd: thread.cwd,
+                      threadId: thread.id,
+                      line: location
+                        ? Math.max(1, Number(location[1]))
+                        : undefined,
+                      column: location?.[2]
+                        ? Math.max(1, Number(location[2]))
+                        : undefined,
+                    })
+                    .then(onClose)
+                    .catch((cause: unknown) => setError(String(cause)));
+                }}
+              >
+                <File size={15} className="shrink-0 text-muted" />
+                <span className="truncate" title={path}>
+                  {path}
+                </span>
+              </Command.Item>
+            ))}
+            {!paths.length && !loading && !error && (
+              <p className="p-3 text-sm text-muted">
+                {state.status !== "connected"
+                  ? "连接环境后可搜索项目文件。"
+                  : term
+                    ? "没有匹配的文件"
+                    : "输入文件名或路径开始查找。"}
+              </p>
+            )}
+          </Command.List>
+        </ScrollArea>
         {loading && (
           <p role="status" className="px-5 py-2 text-xs text-muted">
             正在查找文件…

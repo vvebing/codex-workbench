@@ -1,6 +1,7 @@
 import type { SessionsState } from "../sessions/state";
 import { conversationExecuting } from "../conversation/activity";
 import { pinnedOf } from "../sessions/management";
+import { threadTitle } from "../sessions/thread-title";
 
 export function visibleSidebarThreads(sessions: SessionsState) {
   return [...Object.keys(sessions.localDrafts), ...sessions.listIds]
@@ -28,6 +29,8 @@ export function sameSidebarSessions(a: SessionsState, b: SessionsState) {
     a.error !== b.error ||
     a.sectionFilter !== b.sectionFilter ||
     a.localDrafts !== b.localDrafts ||
+    a.threadAccess !== b.threadAccess ||
+    a.subagentThreadIds !== b.subagentThreadIds ||
     a.unreadCompleted !== b.unreadCompleted
   )
     return false;
@@ -45,7 +48,10 @@ export function sameSidebarSessions(a: SessionsState, b: SessionsState) {
           thread.projectId === other.projectId &&
           thread.name === other.name &&
           thread.preview === other.preview &&
+          threadTitle(thread) === threadTitle(other) &&
+          thread.createdAt === other.createdAt &&
           thread.updatedAt === other.updatedAt &&
+          thread.recencyAt === other.recencyAt &&
           thread.section === other.section &&
           pinnedOf(thread) === pinnedOf(other) &&
           thread.status.type === other.status.type &&

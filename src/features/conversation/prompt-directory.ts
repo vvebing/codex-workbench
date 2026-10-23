@@ -1,5 +1,4 @@
 import type { Thread } from "../../generated/v2/Thread";
-
 export function promptEntries(turns: Thread["turns"]) {
   return turns.flatMap((turn, turnIndex) =>
     turn.items.flatMap((item) => {

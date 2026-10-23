@@ -76,7 +76,7 @@ codex app-server generate-ts --out /tmp/codex-workbench-protocol --experimental
 
 ## 界面与样式
 
-布局、间距和交互状态优先使用 Tailwind utility；重复控件复用 `src/components/ui.tsx` 中的 Button、IconButton、Modal、Menu 和 SelectField。入口 `src/main.tsx` 必须先导入 `src/styles.css`，再导入 App 和功能模块，确保生产打包时先声明 Tailwind 层顺序，避免基础重置覆盖组件样式。输入框内边距使用 `px-4 pt-4 pb-2`，窄屏用 `px-3 pt-3`，遵循四像素间距单位。设计变量集中在 `src/theme.css`，`src/styles.css` 负责导入、基础样式和移动端视口保护。主题使用 `bg-surface`、`text-muted`、`border-border` 等语义 token；局部 CSS 读取同一组变量，不再单独定义颜色或固定字号。
+布局、间距和交互状态优先使用 Tailwind utility；重复控件复用 `src/components/ui.tsx` 中的 Button、IconButton、Modal、Menu、SelectField 和 MultiSelectField。单选、多选与应用内弹窗统一使用这些 Radix 组件；多选菜单支持连续勾选和键盘操作，保留选项原始值与表单校验。嵌套在命令面板中的选择器需隔离键盘事件，避免误触搜索结果。文件操作弹窗通过 Modal 的 `dismissible` 在提交期间阻止关闭；放弃文件编辑通过站内确认弹窗处理，浏览器离页保护仍使用 `beforeunload`。入口 `src/main.tsx` 必须先导入 `src/styles.css`，再导入 App 和功能模块，确保生产打包时先声明 Tailwind 层顺序，避免基础重置覆盖组件样式。输入框内边距使用 `px-4 pt-4 pb-2`，窄屏用 `px-3 pt-3`，遵循四像素间距单位。设计变量集中在 `src/theme.css`，`src/styles.css` 负责导入、基础样式和移动端视口保护。主题使用 `bg-surface`、`text-muted`、`border-border` 等语义 token；局部 CSS 读取同一组变量，不再单独定义颜色或固定字号。
 
 字号使用已有的 `text-xs/sm/base/lg` 或命名角色：`text-fine`（10px 提示）、`text-meta`（11px 元信息）、`text-caption`（12px 辅助说明）、`text-control`（13px 控件）、`text-body`（14px 正文）、`text-prose`（15px Markdown）、`text-code`（13px 代码）。品牌和标题保留独立角色，避免重构改变现有层级。命名角色默认继承行高；标准字号保留 Tailwind 原有行高。正文、代码等特殊行高使用 `leading-copy/prose/code`。不要新增 `text-[13px]` 等重复定义；确有新层级时先扩展 token。
 
@@ -86,9 +86,11 @@ Monaco 和 Mermaid 通过 `src/lib/appearance.ts` 读取同一组变量；字号
 
 设置弹窗由 `SettingsDialog.tsx` 组合分类导航和独立滚动内容，包含通用、工作环境、已归档会话与终端输出四个分类；通用包含显示与执行中发送偏好；工作环境先选择设备，再切换连接与账户、模型与权限、工具与集成、配置迁移。浏览器模型偏好与服务端模型配置放在同一页，分别标明作用范围。表单状态保留在弹窗的职责 hook 中，连接表单和浏览器模型偏好在切换分类时保留普通未保存字段，设备工具表单随页面或设备切换重置；Token 在关闭、切换分类、子页面或环境时清空。环境选择器仅用于工作环境与归档，浏览器模型偏好是当前浏览器的全局偏好；跟随设备默认的新草稿首发不指定模型和非显式推理强度，由服务端解析有效配置。设置内使用四像素间距单位，控件、卡片和弹窗圆角分别为 8、12、16 像素；圆角变量限定在设置弹窗，避免受根字体大小影响。
 
+侧栏环境筛选由 `EnvironmentFilter` 根据完整标签的实际尺寸决定展示标签或公共 `SelectField`，不使用环境数量或窗口宽度作为切换条件。`ResizeObserver` 同时观察自身容器与不可交互的测量内容，因此拖动侧栏、修改名称与字号均会重新判断；展开保留 8px 余量，两个模式保持同一行高。下拉打开期间保留当前控件，关闭后恢复选中项焦点，切换不修改筛选值。
+
 命令汇总的手动展开／折叠选择保存在现有 `OperationGroup`，按汇总成员和会话／轮次身份关联；命令追加和历史压缩保留用户选择；操作结束统一收起，之后可手动重开。最终总结保持可见。
 
-菜单、编辑器和 Markdown 等复杂或第三方节点排版使用作用域明确的局部 CSS，保持 `@layer components` 和低优先级选择器。样式类只负责展示，测试定位使用可访问名称或 `data-slot`。Radix 负责弹窗和菜单焦点，面板库负责尺寸调整。
+菜单、编辑器和 Markdown 等复杂或第三方节点排版使用作用域明确的局部 CSS，保持 `@layer components` 和低优先级选择器。样式类只负责展示，测试定位使用可访问名称或 `data-slot`。Radix 负责弹窗和菜单焦点，面板库负责尺寸调整。受限高度／宽度的内容滚动复用公共 `ScrollArea`，尺寸上限仍由布局约束；滚动引用与事件放在 `viewportRef`／`viewportProps`，内容间距放在视口或内部容器，避免出现双重滚动条。Monaco 与可编辑输入区域保留各自的滚动管理。`IconButton` 通过 `highlighted` 设置高亮，避免同时叠加互相覆盖的默认颜色和高亮颜色。
 
 是否保留局部 CSS 取决于第三方 DOM、结构选择器和组件内部关联状态，不以类名长度作为唯一依据。简单布局直接写 utility，重复控件优先抽组件/变体，不批量使用 `@apply` 隐藏重复。utility 层优先于 components 层，给通用控件设置选中状态时应使用 `aria-pressed:*` 等变体。动态宽度、树缩进与图表缩放可保留内联数值。`styles.css` 中视口安全区和移动输入框保护有意不分层，以覆盖工具类和第三方样式。
 

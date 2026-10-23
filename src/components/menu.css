@@ -1,6 +1,11 @@
-/* Radix menu items share presentation across action and radio groups. */
+/* Radix menu items share presentation across actions, radio and checkbox groups. */
 @layer components {
-  .menu-content :where([role="menuitem"], [role="menuitemradio"]) {
+  .menu-content
+    :where(
+      [role="menuitem"],
+      [role="menuitemradio"],
+      [role="menuitemcheckbox"]
+    ) {
     display: flex;
     align-items: center;
     gap: 9px;
@@ -34,7 +39,12 @@
   }
 
   @media (width < 900px) {
-    .menu-content :where([role="menuitem"], [role="menuitemradio"]) {
+    .menu-content
+      :where(
+        [role="menuitem"],
+        [role="menuitemradio"],
+        [role="menuitemcheckbox"]
+      ) {
       min-height: 44px;
     }
   }

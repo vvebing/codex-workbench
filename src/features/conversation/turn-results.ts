@@ -1,6 +1,31 @@
 import type { Turn } from "../../generated/v2/Turn";
 import { mergeFileChanges } from "./model";
 
+/** Header lines are metadata, not added or removed source lines. */
+export function diffLineKind(
+  line: string,
+): "added" | "removed" | "header" | "context" {
+  if (
+    /^(diff --git |--- |\+\+\+ |@@|index |new file |deleted file |rename )/.test(
+      line,
+    )
+  )
+    return "header";
+  if (line.startsWith("+")) return "added";
+  if (line.startsWith("-")) return "removed";
+  return "context";
+}
+export function diffLineCounts(diff: string) {
+  let added = 0,
+    removed = 0;
+  for (const line of diff.split("\n")) {
+    const kind = diffLineKind(line);
+    if (kind === "added") added++;
+    if (kind === "removed") removed++;
+  }
+  return { added, removed };
+}
+
 /** A server turn diff is authoritative, including an explicitly empty diff.
  * Without it, preserve completed patches as operation records, never as a net diff.
  */

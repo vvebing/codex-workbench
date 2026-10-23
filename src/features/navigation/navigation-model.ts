@@ -2,6 +2,7 @@ import type { Thread } from "../../generated/v2/Thread";
 import type { Environment } from "../connection/environments";
 import type { SessionsState } from "../sessions/state";
 import type { TaskEntry } from "../task-center/model";
+import type { LocalMessage } from "../composer/local-messages";
 import { folderOf } from "../../components/hooks";
 import { conversationExecuting } from "../conversation/activity";
 import {
@@ -18,6 +19,7 @@ export interface NavigationEnvironment {
   tasks: TaskEntry[];
   connected: boolean;
   environmentKey: string;
+  messages?: Pick<LocalMessage, "threadId" | "status">[];
 }
 export interface NavigationThread {
   key: string;
@@ -27,6 +29,7 @@ export interface NavigationThread {
   waiting: "待审批" | "待回答" | "队列已暂停" | null;
   failed: boolean;
   running: boolean;
+  initializing: string | null;
   unread: boolean;
   visited: number;
 }
@@ -40,12 +43,21 @@ export interface NavigationProject {
   attention: number;
   latestActivityAt: number;
 }
+export function navigationActivityAt(
+  thread: Pick<Thread, "createdAt" | "updatedAt" | "recencyAt">,
+) {
+  return Math.max(thread.createdAt, thread.updatedAt, thread.recencyAt ?? 0);
+}
 export function navigationThreads(
   sources: NavigationEnvironment[],
   visits: Record<string, number>,
 ): NavigationThread[] {
   return sources.flatMap((source) => {
     const byId = new Map<string, TaskEntry[]>();
+    const pending = new Map<string, "creating" | "sending">();
+    for (const message of source.messages ?? [])
+      if (message.status === "creating" || message.status === "sending")
+        pending.set(message.threadId, message.status);
     for (const task of source.tasks)
       if (task.threadId)
         byId.set(task.threadId, [...(byId.get(task.threadId) || []), task]);
@@ -61,6 +73,14 @@ export function navigationThreads(
       ).values(),
     ].map((thread) => {
       const tasks = byId.get(thread.id) || [];
+      const running = conversationExecuting(thread);
+      const delivery = [
+        thread.id,
+        source.sessions.localDrafts[thread.id]?.serverId,
+        source.sessions.draftOrigins[thread.id],
+      ]
+        .map((id) => (id ? pending.get(id) : undefined))
+        .find(Boolean);
       return {
         key: navigationVisitKey(source.environmentKey, thread.id),
         thread,
@@ -82,7 +102,19 @@ export function navigationThreads(
           tasks.some((task) => task.category === "失败或待核实") ||
           thread.status.type === "systemError" ||
           thread.turns.at(-1)?.status === "failed",
-        running: conversationExecuting(thread),
+        running,
+        initializing:
+          source.sessions.openingId === thread.id
+            ? "正在打开"
+            : !source.connected
+              ? null
+              : !running && delivery === "creating"
+                ? "正在创建会话"
+                : source.sessions.threadAccess[thread.id] === "activating"
+                  ? "正在初始化"
+                  : !running && delivery === "sending"
+                    ? "正在发送"
+                    : null,
         unread: !!source.sessions.unreadCompleted[thread.id],
         visited:
           visits[navigationVisitKey(source.environmentKey, thread.id)] || 0,
@@ -129,7 +161,7 @@ export function navigationProjects(
       (item) => item.waiting || item.failed,
     ).length;
     project.latestActivityAt = Math.max(
-      ...project.threads.map((item) => item.thread.updatedAt),
+      ...project.threads.map((item) => navigationActivityAt(item.thread)),
     );
   }
   return [...projects.values()].sort(

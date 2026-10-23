@@ -129,16 +129,19 @@ export function IconButton({
   children,
   className = "",
   size = "default",
+  highlighted = false,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   label: string;
   size?: "default" | "sm" | "composer";
+  highlighted?: boolean;
 }) {
   return (
     <button
       type="button"
       data-slot="icon-button"
-      className={`inline-flex shrink-0 items-center justify-center rounded-[7px] border-0 bg-transparent text-muted hover:bg-hover hover:text-foreground ${size === "composer" ? "size-[34px] max-[900px]:size-11" : size === "sm" ? "size-6 max-[900px]:size-10" : "size-8 max-[900px]:size-11"} ${className}`}
+      data-highlighted={highlighted || undefined}
+      className={`inline-flex shrink-0 items-center justify-center rounded-[7px] border-0 ${highlighted ? "bg-selected text-accent hover:bg-selected hover:text-accent" : "bg-transparent text-muted hover:bg-hover hover:text-foreground"} ${size === "composer" ? "size-[34px] max-[900px]:size-11" : size === "sm" ? "size-6 max-[900px]:size-10" : "size-8 max-[900px]:size-11"} ${className}`}
       title={label}
       aria-label={label}
       {...props}
@@ -168,6 +171,8 @@ export function Modal({
   className = "",
   variant = "default",
   returnFocusSelector,
+  returnFocusElement,
+  dismissible = true,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -177,6 +182,8 @@ export function Modal({
   className?: string;
   variant?: keyof typeof modalVariants;
   returnFocusSelector?: string;
+  returnFocusElement?: HTMLElement | null;
+  dismissible?: boolean;
 }) {
   const returnFocus = useRef<HTMLElement | null>(null);
   const drawer = variant === "drawer" || variant === "details";
@@ -197,7 +204,7 @@ export function Modal({
         </Dialog.Title>
         {!drawer && (
           <Dialog.Close asChild>
-            <IconButton label="关闭">
+            <IconButton label="关闭" disabled={!dismissible}>
               <X size={18} />
             </IconButton>
           </Dialog.Close>
@@ -218,13 +225,24 @@ export function Modal({
     </>
   );
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (next || dismissible) onOpenChange(next);
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-overlay backdrop-blur-[3px]" />
         <Dialog.Content
           data-slot="modal"
           data-variant={variant}
           className={`fixed z-50 border border-border bg-elevated text-foreground shadow-2xl ${modalVariants[variant]} ${className}`}
+          onEscapeKeyDown={(event) => {
+            if (!dismissible) event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (!dismissible) event.preventDefault();
+          }}
           onOpenAutoFocus={() => {
             returnFocus.current =
               document.activeElement instanceof HTMLElement
@@ -233,13 +251,24 @@ export function Modal({
           }}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            const target = returnFocus.current;
+            const target = returnFocusElement ?? returnFocus.current;
             requestAnimationFrame(() => {
               // A drawer can close while opening settings. The new dialog owns focus.
-              if (document.querySelector('[role="dialog"][data-state="open"]'))
+              if (
+                document.querySelector('[data-slot="modal"][data-state="open"]')
+              )
                 return;
               const preferred = returnFocusSelector
-                ? document.querySelector<HTMLElement>(returnFocusSelector)
+                ? [
+                    ...document.querySelectorAll<HTMLElement>(
+                      returnFocusSelector,
+                    ),
+                  ].find(
+                    (element) =>
+                      element.isConnected &&
+                      element.checkVisibility() &&
+                      !element.closest('[inert], [aria-hidden="true"]'),
+                  )
                 : null;
               if (preferred?.getClientRects().length) preferred.focus();
               else if (target?.isConnected && target.getClientRects().length)
@@ -279,12 +308,16 @@ export function Menu({
   label,
   open,
   onOpenChange,
+  matchTriggerWidth = false,
+  align = "end",
 }: {
   trigger: ReactNode;
   children: ReactNode;
   label: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  matchTriggerWidth?: boolean;
+  align?: "start" | "center" | "end";
 }) {
   return (
     <DropdownMenu.Root open={open} onOpenChange={onOpenChange}>
@@ -293,10 +326,10 @@ export function Menu({
         <DropdownMenu.Content
           aria-label={label}
           data-slot="menu"
-          className="menu-content z-[60] max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[205px] max-w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-[11px] border border-border bg-elevated text-foreground shadow-xl"
+          className={`menu-content z-[60] max-h-[var(--radix-dropdown-menu-content-available-height)] ${matchTriggerWidth ? "min-w-[var(--radix-dropdown-menu-trigger-width)] max-w-[calc(100vw-24px)]" : "min-w-[205px] max-w-[min(360px,calc(100vw-24px))]"} overflow-hidden rounded-[11px] border border-border bg-elevated text-foreground shadow-xl`}
           sideOffset={8}
           collisionPadding={12}
-          align="end"
+          align={align}
         >
           <ScrollArea className="max-h-[calc(var(--radix-dropdown-menu-content-available-height)-2px)]">
             <div className="p-[5px]">{children}</div>
@@ -338,8 +371,10 @@ export function SelectField({
   value,
   onValueChange,
   onOpenChange,
+  onCloseAutoFocus,
   options,
   disabled,
+  size = "default",
   className = "",
 }: {
   id?: string;
@@ -350,10 +385,16 @@ export function SelectField({
   value: string;
   onValueChange: (value: string) => void;
   onOpenChange?: (open: boolean) => void;
-  options: { value: string; label: string }[];
+  onCloseAutoFocus?: ComponentPropsWithoutRef<
+    typeof Select.Content
+  >["onCloseAutoFocus"];
+  options: { value: string; label: string; icon?: ReactNode }[];
   disabled?: boolean;
+  size?: "default" | "field";
   className?: string;
 }) {
+  const typography =
+    size === "field" ? "text-sm max-[900px]:text-base" : "text-caption";
   return (
     <Select.Root
       value={value}
@@ -363,7 +404,7 @@ export function SelectField({
     >
       <Select.Trigger
         id={id}
-        className={`inline-flex min-h-9 min-w-0 max-w-full items-center justify-between max-[900px]:min-h-11 [&>span:first-child]:truncate gap-2 rounded-lg border border-border bg-elevated px-3 py-2 text-caption hover:bg-hover data-[state=open]:bg-hover ${className}`}
+        className={`inline-flex ${size === "field" ? "min-h-10" : "min-h-9"} min-w-0 max-w-full items-center justify-between max-[900px]:min-h-11 [&>span:first-child]:truncate gap-2 rounded-lg border border-border bg-elevated px-3 py-2 ${typography} hover:bg-hover data-[state=open]:bg-hover ${className}`}
         aria-label={label}
         aria-describedby={descriptionId}
         aria-invalid={invalid}
@@ -376,6 +417,7 @@ export function SelectField({
       </Select.Trigger>
       <Select.Portal>
         <Select.Content
+          onCloseAutoFocus={onCloseAutoFocus}
           className="z-[70] max-h-[var(--radix-select-content-available-height)] min-w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-24px)] overflow-hidden rounded-lg border border-border bg-elevated p-1 text-foreground shadow-lg"
           position="popper"
           collisionPadding={12}
@@ -387,11 +429,21 @@ export function SelectField({
           <Select.Viewport>
             {options.map((option) => (
               <Select.Item
-                className="flex cursor-pointer items-center justify-between gap-4 rounded px-3 py-2 text-caption [overflow-wrap:anywhere] outline-none data-[highlighted]:bg-hover data-[state=checked]:text-accent max-[900px]:min-h-11"
+                className={`flex cursor-pointer items-center justify-between gap-4 rounded px-3 py-2 ${typography} [overflow-wrap:anywhere] outline-none data-[highlighted]:bg-hover data-[state=checked]:text-accent max-[900px]:min-h-11`}
                 key={option.value}
                 value={option.value}
+                textValue={option.label}
               >
-                <Select.ItemText>{option.label}</Select.ItemText>
+                <Select.ItemText className="min-w-0">
+                  {option.icon ? (
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span aria-hidden="true">{option.icon}</span>
+                      <span className="truncate">{option.label}</span>
+                    </span>
+                  ) : (
+                    option.label
+                  )}
+                </Select.ItemText>
                 <Select.ItemIndicator>
                   <Check size={14} />
                 </Select.ItemIndicator>
@@ -404,5 +456,79 @@ export function SelectField({
         </Select.Content>
       </Select.Portal>
     </Select.Root>
+  );
+}
+
+export function MultiSelectField({
+  label,
+  value,
+  onValueChange,
+  options,
+  disabled,
+  className = "",
+  "aria-invalid": invalid,
+  "aria-describedby": descriptionId,
+}: {
+  label: string;
+  value: string[];
+  onValueChange: (value: string[]) => void;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+  className?: string;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
+}) {
+  const selected = new Set(value);
+  const summary = options
+    .filter((option) => selected.has(option.value))
+    .map((option) => option.label)
+    .join("、");
+  return (
+    <Menu
+      label={label}
+      align="start"
+      matchTriggerWidth
+      trigger={
+        <button
+          type="button"
+          aria-label={label}
+          aria-invalid={invalid}
+          aria-describedby={descriptionId}
+          disabled={disabled}
+          className={`inline-flex min-h-9 min-w-0 max-w-full items-center justify-between gap-2 rounded-lg border border-border bg-elevated px-3 py-2 text-caption hover:bg-hover data-[state=open]:bg-hover disabled:opacity-50 max-[900px]:min-h-11 ${className}`}
+        >
+          <span className="min-w-0 truncate" title={summary || undefined}>
+            {summary || "请选择（可多选）"}
+          </span>
+          <ChevronDown size={15} className="shrink-0" aria-hidden="true" />
+        </button>
+      }
+    >
+      {options.map((option) => (
+        <DropdownMenu.CheckboxItem
+          key={option.value}
+          disabled={disabled}
+          checked={selected.has(option.value)}
+          onSelect={(event) => event.preventDefault()}
+          onCheckedChange={(checked) => {
+            const next = new Set(value);
+            if (checked) next.add(option.value);
+            else next.delete(option.value);
+            onValueChange(
+              options
+                .filter((entry) => next.has(entry.value))
+                .map((entry) => entry.value),
+            );
+          }}
+        >
+          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+            {option.label}
+          </span>
+          <DropdownMenu.ItemIndicator>
+            <Check size={14} aria-hidden="true" />
+          </DropdownMenu.ItemIndicator>
+        </DropdownMenu.CheckboxItem>
+      ))}
+    </Menu>
   );
 }

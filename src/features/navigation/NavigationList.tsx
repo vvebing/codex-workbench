@@ -27,6 +27,9 @@ export function NavigationList<T extends NavigationListRow>({
   selectedKey,
   selectionRevision,
   selectionLoading = false,
+  revealSelection = false,
+  onSelectionRevealed,
+  onSelectionVisibilityChange,
   focusKey,
   onFocusKey,
   onKeyDown,
@@ -37,6 +40,9 @@ export function NavigationList<T extends NavigationListRow>({
   selectedKey?: string;
   selectionRevision?: number | string;
   selectionLoading?: boolean;
+  revealSelection?: boolean;
+  onSelectionRevealed?: () => void;
+  onSelectionVisibilityChange?: (visible: boolean) => void;
   focusKey?: string;
   onFocusKey: (key: string) => void;
   onKeyDown?: (event: KeyboardEvent, key: string) => void;
@@ -75,6 +81,18 @@ export function NavigationList<T extends NavigationListRow>({
     [rows],
   );
   const sticky = navigationStickyProject(rows, layout, projects, position.top);
+  const selectedIndex = selectedKey
+    ? layout.indices.get(selectedKey)
+    : undefined;
+  const selectionVisible =
+    selectedIndex !== undefined &&
+    layout.offsets[selectedIndex] >=
+      position.top + (sticky ? rows[sticky.index].height : 0) - 1 &&
+    layout.offsets[selectedIndex] + rows[selectedIndex].height <=
+      position.top + position.height + 1;
+  useLayoutEffect(() => {
+    onSelectionVisibilityChange?.(selectionVisible);
+  }, [selectionVisible, onSelectionVisibilityChange]);
   const projectHeights = useMemo(
     () =>
       new Map(
@@ -232,6 +250,11 @@ export function NavigationList<T extends NavigationListRow>({
         followingSelection.current = !!selectedKey;
       }
     }
+    // Explicit location also works when remounting a previously scrolled scope.
+    if (revealSelection && selectedKey) {
+      pendingSelection.current = selectedKey;
+      followingSelection.current = true;
+    }
     // Additional summary pages can insert rows above a newly opened session.
     // Follow that target through discovery until the user scrolls or it finishes.
     if (followingSelection.current) pendingSelection.current = selectedKey;
@@ -253,11 +276,14 @@ export function NavigationList<T extends NavigationListRow>({
       element.scrollTop = top + rows[index].height - element.clientHeight;
     measure(element);
     navigationState.saveScroll(scope, element.scrollTop);
+    if (revealSelection) onSelectionRevealed?.();
     if (!selectionLoading) followingSelection.current = false;
   }, [
     selectedKey,
     selectionRevision,
     selectionLoading,
+    revealSelection,
+    onSelectionRevealed,
     rows,
     scope,
     layout,

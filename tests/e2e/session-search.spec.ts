@@ -52,10 +52,16 @@ test("session search defaults to the current environment, expands scope, and fin
         .toBe(true);
 
     await page.keyboard.press("Control+k");
-    const dialog = page.getByRole("dialog", { name: "搜索会话" });
-    await expect(dialog.getByLabel("搜索范围", { exact: true })).toHaveValue(
-      "local",
-    );
+    const dialog = page.getByRole("dialog", {
+      name: "搜索会话",
+      includeHidden: true,
+    });
+    const scope = dialog.getByRole("combobox", {
+      name: "搜索范围",
+      exact: true,
+      includeHidden: true,
+    });
+    await expect(scope).toHaveText("本机（当前环境）");
     await expect(dialog.locator(".session-search-group")).toHaveCount(1);
     const search = dialog.getByPlaceholder("搜索标题、摘要或工作区…");
     const results = dialog
@@ -74,10 +80,42 @@ test("session search defaults to the current environment, expands scope, and fin
       false,
     );
 
+    const dialogBox = (await dialog.boundingBox())!;
+    await scope.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(scope).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      page.getByRole("option", { name: "远程测试", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("option", { name: "本机（当前环境）", exact: true }),
+    ).toBeFocused();
+    expect((await dialog.boundingBox())!.height).toBe(dialogBox.height);
+    await page.keyboard.press("End");
+    await expect(
+      page.getByRole("option", { name: "全部环境", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(
+      page.getByRole("option", { name: "远程测试", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(scope).toHaveText("远程测试");
+    await expect(dialog).toBeVisible();
+    await expect(results).toHaveCount(1);
+    expect(
+      fixtures.some((fixture) =>
+        fixture.requestLog.some((request) => request.method === "thread/read"),
+      ),
+    ).toBe(false);
+    await scope.click();
+    await page.keyboard.press("Escape");
+    await expect(scope).toHaveAttribute("aria-expanded", "false");
+    await expect(dialog).toBeVisible();
+    await expect(scope).toBeFocused();
+
     await dialog.getByRole("button", { name: "扩大到全部环境" }).click();
-    await expect(dialog.getByLabel("搜索范围", { exact: true })).toHaveValue(
-      "all",
-    );
+    await expect(scope).toHaveText("全部环境");
     await expect(results).toHaveCount(2);
     await expect
       .poll(() =>
@@ -101,9 +139,7 @@ test("session search defaults to the current environment, expands scope, and fin
     ).toBeVisible();
 
     await page.keyboard.press("Control+k");
-    await expect(dialog.getByLabel("搜索范围", { exact: true })).toHaveValue(
-      "local",
-    );
+    await expect(scope).toHaveText("本机（当前环境）");
     await expect(
       dialog.getByPlaceholder("搜索标题、摘要或工作区…"),
     ).toHaveValue("");

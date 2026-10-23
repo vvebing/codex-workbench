@@ -200,7 +200,7 @@ test("draft reload restores unsent text and send policy inherits until explicitl
     ),
   ).toHaveLength(0);
   await expect(page.locator('[data-slot="policy-choice"]')).toContainText(
-    "继承会话策略",
+    "审批：尚未获取",
   );
   await page.locator('[data-slot="composer-action"]').click();
   await expect

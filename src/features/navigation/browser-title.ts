@@ -19,7 +19,7 @@ export function browserTitle({
 }): string {
   const brand = "Codex 工作台";
   if (!thread || draft) return brand;
-  // Use the same label as the sidebar, including preview for unnamed sessions.
+  // Use the same task title as the sidebar for unnamed sessions.
   const name = titleOf(thread).replace(/\s+/g, " ").trim() || "新会话";
   const waiting =
     pendingRequests.some((request) => requestThreadId(request) === thread.id) ||

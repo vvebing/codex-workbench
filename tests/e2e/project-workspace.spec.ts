@@ -119,6 +119,103 @@ test("workspace follows each session cwd and only explicitly runs its current co
   expect(executions()).toHaveLength(1);
 });
 
+for (const width of [320, 390, 1440]) {
+  test(`project switcher at ${width}px keeps field spacing, type and actions consistent outside the workspace portal`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() =>
+      document.documentElement.style.setProperty(
+        "--font-scale",
+        "1.1428571428571428",
+      ),
+    );
+    await openWorkspace(page);
+    const panel = workspace(page);
+    await panel
+      .getByRole("textbox", { name: "test 命令", exact: true })
+      .fill("printf fixture");
+    await panel
+      .getByRole("button", { name: "切换项目／新建会话", exact: true })
+      .click();
+    const switcher = page.getByRole("dialog", {
+      name: "切换项目／新建会话",
+      exact: true,
+    });
+    const selector = switcher.getByRole("combobox", {
+      name: "已保存项目",
+      exact: true,
+    });
+    const directory = switcher.getByRole("textbox", {
+      name: "项目目录",
+      exact: true,
+    });
+    const savedLabel = switcher.locator('label[for="saved-project"]');
+    const directoryLabel = switcher.locator(
+      'label[for="project-switcher-directory"]',
+    );
+    await expect(savedLabel).toHaveText("已保存项目");
+    await expect(directoryLabel).toHaveText("项目目录");
+    const fontSize = await directory.evaluate(
+      (element) => getComputedStyle(element).fontSize,
+    );
+    await expect(selector).toHaveCSS("font-size", fontSize);
+    for (const [label, field] of [
+      [savedLabel, selector],
+      [directoryLabel, directory],
+    ]) {
+      const title = (await label.boundingBox())!;
+      const control = (await field.boundingBox())!;
+      expect(control.y - title.y - title.height).toBeGreaterThanOrEqual(7.5);
+    }
+    const selectionBounds = (await selector.boundingBox())!;
+    const inputBounds = (await directory.boundingBox())!;
+    expect(Math.abs(selectionBounds.x - inputBounds.x)).toBeLessThan(1);
+    expect(Math.abs(selectionBounds.width - inputBounds.width)).toBeLessThan(1);
+    const cancel = switcher.getByRole("button", { name: "取消", exact: true });
+    expect(
+      (await cancel.boundingBox())!.y - inputBounds.y - inputBounds.height,
+    ).toBeGreaterThanOrEqual(16);
+    await selector.click();
+    const option = page.getByRole("option", {
+      name: "/demo/atlas-web",
+      exact: true,
+    });
+    await expect(option).toHaveCSS("font-size", fontSize);
+    await option.click();
+    await expect(directory).toHaveValue("/demo/atlas-web");
+    await directory.fill(`/demo/${"long-project-directory-".repeat(15)}`);
+    await expect
+      .poll(() =>
+        switcher.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth,
+        ),
+      )
+      .toBe(true);
+    await page.setViewportSize({ width, height: 420 });
+    await expect
+      .poll(async () => {
+        const bounds = await switcher.boundingBox();
+        return (
+          !!bounds &&
+          bounds.x >= 0 &&
+          bounds.y >= 0 &&
+          bounds.x + bounds.width <= width &&
+          bounds.y + bounds.height <= 420
+        );
+      })
+      .toBe(true);
+    await cancel.scrollIntoViewIfNeeded();
+    await expect(cancel).toBeInViewport();
+    await cancel.click();
+    await expect(switcher).toBeHidden();
+    expect(executions()).toHaveLength(0);
+    expect(
+      fixture.requestLog.filter((request) => request.method === "thread/start"),
+    ).toHaveLength(0);
+  });
+}
+
 test("switching projects is staged until new-session confirmation and cancellation preserves the active session", async ({
   page,
 }) => {

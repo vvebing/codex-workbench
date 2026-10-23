@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import {
   initialState,
   isSubagentThread,
+  reconcileNotifications,
   sessionNotification,
   shouldNotifyThread,
 } from "../../src/features/sessions/state";
@@ -188,6 +189,29 @@ const activity: ThreadItem = {
   model: null,
   reasoningEffort: null,
 };
+it("keeps the root visible and notifiable when a child reports root activity", () => {
+  const parent = { ...placeholderThread("parent"), source: "vscode" as const };
+  const child = {
+    ...placeholderThread("child"),
+    parentThreadId: "parent",
+    turns: [
+      {
+        ...completedTurn,
+        items: [{ ...activity, agentThreadId: "parent", agentPath: "/root" }],
+      },
+    ],
+  };
+  const state = reconcileNotifications(initialState(), {
+    ...initialState(),
+    threads: { parent, child },
+    listIds: ["parent"],
+    unreadCompleted: { parent: "done", child: "done" },
+  });
+  expect(state.subagentThreadIds).toEqual({ child: true });
+  expect(state.unreadCompleted).toEqual({ parent: "done" });
+  expect(shouldNotifyThread(state, "parent")).toBe(true);
+  expect(shouldNotifyThread(state, "child")).toBe(false);
+});
 for (const item of [spawn, activity]) {
   it(`uses native ${item.type} references before child metadata arrives`, () => {
     let state = sessionNotification(

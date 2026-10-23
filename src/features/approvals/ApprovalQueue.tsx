@@ -1,3 +1,5 @@
+import { QuestionPresence } from "../conversation/QuestionPresence";
+import { useStableQuestionCard } from "../conversation/use-stable-question-card";
 import { settingsInputClass } from "../settings/settings-ui";
 import {
   questionDraftKey,
@@ -31,13 +33,19 @@ function ApprovalCard({
   title,
   children,
   requestId,
+  receipt = false,
 }: {
   title: ReactNode;
   children: ReactNode;
   requestId?: string;
+  receipt?: boolean;
 }) {
+  const stable = useStableQuestionCard(receipt);
   return (
     <section
+      ref={stable.ref}
+      style={{ minHeight: stable.minHeight }}
+      onSubmitCapture={stable.preserve}
       data-question-request-id={requestId}
       tabIndex={requestId ? -1 : undefined}
       className="mb-2.5 rounded-[10px] border border-border bg-elevated p-4 text-control"
@@ -231,13 +239,16 @@ function Approval({
   request,
   disabled,
 }: {
-  request: RpcRequest;
+  request?: RpcRequest;
   disabled: boolean;
 }) {
   const runtime = useRuntime();
   const respond = (result: unknown) => {
-    return runtime.requests.respond(request.id, result);
+    if (!request) return false;
+    const sent = runtime.requests.respond(request.id, result);
+    return sent;
   };
+  if (!request) return null;
   if (request.method === "item/permissions/requestApproval")
     return (
       <ApprovalCard title="权限审批">
@@ -372,56 +383,24 @@ export function ApprovalQueue({ threadId }: { threadId: string }) {
   const pending = requests.pending.filter(
     (request) => requestThreadId(request) === threadId,
   );
-  const submitted = requests.submittedAnswers.filter(
-    (answer) => answer.threadId === threadId,
-  );
-  if (!pending.length && !submitted.length) return null;
   return (
-    <div
-      className="mx-auto max-w-[840px] px-4 py-2 sm:px-6 sm:py-3"
-      aria-label="待处理请求"
-    >
+    <div className="mx-auto max-w-[840px] px-4 sm:px-6" aria-label="待处理请求">
       {requests.error && <ErrorNotice>{requests.error}</ErrorNotice>}
-      {submitted.map((entry) => (
-        <ApprovalCard
-          key={`answer-${entry.epoch}-${entry.id}`}
-          title="你的回答"
-        >
-          <dl className="space-y-2">
-            {entry.answers.map((answer, index) => (
-              <div key={index}>
-                <dt className="font-semibold">{answer.question}</dt>
-                <dd className="whitespace-pre-wrap">{answer.answer}</dd>
-              </div>
-            ))}
-          </dl>
-          <p role="status" className="mt-2 text-muted">
-            {entry.status === "uncertain"
-              ? "连接已中断，提交结果待确认，请核实会话。系统不会自动重发。"
-              : entry.status === "resolved"
-                ? "请求已处理。"
-                : "回答已提交，等待服务端处理。"}
-          </p>
-          <Button
-            variant="quiet"
-            onClick={() =>
-              runtime.requests.dismissAnswer(entry.id, entry.epoch)
-            }
-          >
-            关闭回答摘要
-          </Button>
-        </ApprovalCard>
-      ))}
-      {pending.map((request) => (
-        <Approval
-          key={`${connection.url}-${connection.epoch}-${request.id}`}
-          request={request}
-          disabled={
-            connection.status !== "connected" ||
-            requests.respondingIds.includes(request.id)
-          }
-        />
-      ))}
+      <QuestionPresence
+        entries={pending.map((request) => ({
+          id: `${connection.url}-${connection.epoch}-${request.id}`,
+          answerFor: `tool:${connection.epoch}:${request.id}`,
+          content: (
+            <Approval
+              request={request}
+              disabled={
+                connection.status !== "connected" ||
+                requests.respondingIds.includes(request.id)
+              }
+            />
+          ),
+        }))}
+      />
     </div>
   );
 }

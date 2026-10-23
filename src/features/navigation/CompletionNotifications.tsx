@@ -8,7 +8,7 @@ import { RuntimeContext, useRuntime } from "../../lib/runtime-context";
 import { environments, type Environment } from "../connection/environments";
 import { EnvironmentIcon } from "../connection/EnvironmentIcon";
 import { titleOf, useStore } from "../../components/hooks";
-import { IconButton } from "../../components/ui";
+import { IconButton, ScrollArea } from "../../components/ui";
 import { productIconUrl } from "../../components/ProductIcon";
 function CompletionNotice({
   id,
@@ -295,15 +295,19 @@ function EnvironmentNotifications({
 export function CompletionNotifications() {
   const state = useStore(environments);
   return (
-    <div className="fixed top-[68px] right-4 z-70 grid max-h-[calc(100dvh-84px)] w-[min(320px,calc(100vw-32px))] gap-2 overflow-y-auto">
-      {state.entries.map((environment) => (
-        <RuntimeContext.Provider
-          key={environment.id}
-          value={environment.runtime}
-        >
-          <EnvironmentNotifications environment={environment} />
-        </RuntimeContext.Provider>
-      ))}
+    <div className="fixed top-[68px] right-4 z-70 w-[min(320px,calc(100vw-32px))]">
+      <ScrollArea className="max-h-[calc(100dvh-84px)]">
+        <div className="grid gap-2">
+          {state.entries.map((environment) => (
+            <RuntimeContext.Provider
+              key={environment.id}
+              value={environment.runtime}
+            >
+              <EnvironmentNotifications environment={environment} />
+            </RuntimeContext.Provider>
+          ))}
+        </div>
+      </ScrollArea>
     </div>
   );
 }

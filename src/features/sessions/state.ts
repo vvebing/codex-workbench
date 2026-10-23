@@ -17,7 +17,7 @@ export interface SessionsState extends ConversationState {
   sectionFilter: string;
   threadSettings: Record<
     string,
-    import("../../generated/v2/ThreadSettings").ThreadSettings
+    Partial<import("../../generated/v2/ThreadSettings").ThreadSettings>
   >;
   threadAccess: Record<string, ThreadAccess>;
   /** Archived current conversations keep their loaded reading context, without write access. */
@@ -266,7 +266,10 @@ export function reconcileNotifications(
       if (oldTurns.get(turn.id) === turn) continue;
       for (const item of turn.items) {
         if (item.type === "subAgentActivity") {
-          if (item.agentThreadId !== thread.id) remember(item.agentThreadId);
+          // Activity in a child can refer back to the root agent.
+          // A reference alone does not make that root a subagent.
+          if (item.agentThreadId !== thread.id && item.agentPath !== "/root")
+            remember(item.agentThreadId);
         } else if (
           item.type === "collabAgentToolCall" &&
           item.tool === "spawnAgent" &&
@@ -414,4 +417,31 @@ export function sessionNotification(
     };
 
   return next;
+}
+
+/** Cache only response fields actually supplied; a newer settings notification wins. */
+export function responseSettings(
+  state: SessionsState,
+  before: SessionsState["threadSettings"],
+  response: {
+    thread: Thread;
+    approvalPolicy?: import("../../generated/v2/AskForApproval").AskForApproval;
+    serviceTier?: string | null;
+  },
+): SessionsState {
+  const id = response.thread.id;
+  if (state.threadSettings[id] !== before[id]) return state;
+  const settings = {
+    ...state.threadSettings[id],
+    ...(response.approvalPolicy !== undefined
+      ? { approvalPolicy: response.approvalPolicy }
+      : {}),
+    ...(response.serviceTier !== undefined
+      ? { serviceTier: response.serviceTier }
+      : {}),
+  };
+  return {
+    ...state,
+    threadSettings: { ...state.threadSettings, [id]: settings },
+  };
 }

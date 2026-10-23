@@ -81,7 +81,6 @@
     flex: 1;
     min-width: 0;
     min-height: 0;
-    overflow: auto;
     white-space: pre;
     margin: 0;
     padding: 12px;
@@ -176,22 +175,9 @@
     flex: 1;
   }
   .file-dialog {
-    background: var(--elevated);
-    color: var(--foreground);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: var(--shadow-dialog);
-    padding: 24px;
-    width: min(100%, 480px);
     display: flex;
     flex-direction: column;
     gap: 16px;
-    max-height: calc(100dvh - 40px);
-    overflow-y: auto;
-  }
-  .file-dialog :where(h2) {
-    font-size: var(--text-base);
-    font-weight: 600;
   }
   .file-dialog :where(label) {
     font-size: var(--text-control);
@@ -237,20 +223,6 @@
       border-left: 0;
       border-top: 1px solid var(--border);
     }
-  }
-
-  .file-modal {
-    padding: 0;
-    border: 0;
-    border-radius: 12px;
-    max-width: calc(100vw - 40px);
-    max-height: calc(100dvh - 40px);
-    background: transparent;
-    color: inherit;
-    margin: auto;
-  }
-  .file-modal::backdrop {
-    background: var(--overlay-file);
   }
 
   .file-git-diff-engine {

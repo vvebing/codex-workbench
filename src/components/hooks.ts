@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { threadTitle } from "../features/sessions/thread-title";
 export function useStore<T>(store: {
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => T;
@@ -52,8 +53,7 @@ export function useNarrow() {
   }, []);
   return narrow;
 }
-export const titleOf = (t?: { name?: string | null; preview?: string }) =>
-  t?.name || t?.preview || "新会话";
+export const titleOf = threadTitle;
 export const folderOf = (path: string) =>
   path.split("/").filter(Boolean).at(-1) || "工作区";
 export function relativeTime(timestamp: number, now = Date.now()) {

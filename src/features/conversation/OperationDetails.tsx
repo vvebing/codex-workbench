@@ -1,9 +1,24 @@
 import { ConversationImage } from "../../components/ImagePreview";
 import { OpenCurrentFile } from "../files/FileLinkContext";
 import { useState } from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, ChevronRight } from "lucide-react";
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
-import { IconButton, ScrollArea } from "../../components/ui";
+import { ErrorNotice, IconButton, ScrollArea } from "../../components/ui";
+import { ToolText } from "./ToolText";
+import { LocalMessageImage } from "./MessageImage";
+import { executionStatusLabel } from "./model";
+import { AnimatedDisclosure } from "./AnimatedDisclosure";
+
+function StructuredResult({ value }: { value: unknown }) {
+  return (
+    <ScrollArea scrollChaining className="mt-2 max-h-48">
+      <ToolText
+        text={JSON.stringify(value, null, 2) ?? ""}
+        mimeType="application/json"
+      />
+    </ScrollArea>
+  );
+}
 
 function mediaUrl(value: unknown, kind: "image" | "audio"): string | undefined {
   if (typeof value !== "string") return;
@@ -19,11 +34,7 @@ function linkUrl(value: unknown): string | undefined {
 }
 function MediaContent({ value }: { value: unknown }) {
   if (!value || typeof value !== "object" || Array.isArray(value))
-    return (
-      <pre className="whitespace-pre-wrap text-xs">
-        {JSON.stringify(value, null, 2)}
-      </pre>
-    );
+    return <ToolText text={JSON.stringify(value, null, 2) ?? ""} />;
   const part = value as Record<string, unknown>;
   if (
     part.type === "text" ||
@@ -31,9 +42,10 @@ function MediaContent({ value }: { value: unknown }) {
     part.type === "input_text"
   )
     return (
-      <pre className="whitespace-pre-wrap text-xs [overflow-wrap:anywhere]">
-        {String(part.text ?? "")}
-      </pre>
+      <ToolText
+        text={String(part.text ?? "")}
+        mimeType={typeof part.mimeType === "string" ? part.mimeType : undefined}
+      />
     );
   if (
     part.type === "image" ||
@@ -107,7 +119,10 @@ function MediaContent({ value }: { value: unknown }) {
   ) {
     const resource = part.resource as Record<string, unknown>;
     const url = linkUrl(resource.uri);
-    const mime = typeof resource.mimeType === "string" ? resource.mimeType : "";
+    const mime =
+      typeof resource.mimeType === "string"
+        ? resource.mimeType.split(";")[0].trim().toLowerCase()
+        : "";
     const resourceMedia =
       typeof resource.blob === "string" &&
       (mime.startsWith("image/") || mime.startsWith("audio/"))
@@ -118,7 +133,7 @@ function MediaContent({ value }: { value: unknown }) {
           }
         : null;
     return (
-      <div className="space-y-2 text-xs">
+      <div className="min-w-0 space-y-2 text-xs [overflow-wrap:anywhere]">
         {url ? (
           <a
             href={url}
@@ -134,9 +149,7 @@ function MediaContent({ value }: { value: unknown }) {
         {resourceMedia ? (
           <MediaContent value={resourceMedia} />
         ) : typeof resource.text === "string" ? (
-          <pre className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-            {resource.text}
-          </pre>
+          <ToolText text={resource.text} mimeType={mime} />
         ) : (
           <p className="text-muted">
             二进制资源 · {String(resource.mimeType ?? "未知类型")}
@@ -145,26 +158,45 @@ function MediaContent({ value }: { value: unknown }) {
       </div>
     );
   }
-  return (
-    <pre className="whitespace-pre-wrap text-xs [overflow-wrap:anywhere]">
-      {JSON.stringify(value, null, 2)}
-    </pre>
-  );
+  return <ToolText text={JSON.stringify(value, null, 2)} />;
+}
+
+/** Build the full copy only on demand, including results returned with errors. */
+function contentText(value: unknown): string {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const part = value as Record<string, unknown>;
+    if (typeof part.text === "string") return part.text;
+    if (
+      part.type === "resource" &&
+      part.resource &&
+      typeof part.resource === "object"
+    ) {
+      const resource = part.resource as Record<string, unknown>;
+      if (typeof resource.text === "string")
+        return `${JSON.stringify({ ...part, resource: { ...resource, text: undefined } }, null, 2)}\n${resource.text}`;
+    }
+  }
+  return JSON.stringify(value, null, 2) ?? "";
 }
 
 export function OperationDetails({
   item,
+  status,
   content,
   progress,
   output,
 }: {
   item: ThreadItem;
+  status: string;
   content: string;
   progress?: string[];
   output?: string;
 }) {
   const [copyState, setCopyState] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [structuredOpen, setStructuredOpen] = useState(false);
+  const [progressOpen, setProgressOpen] = useState(false);
+  const tool = item.type === "mcpToolCall" || item.type === "dynamicToolCall";
   const changes = item.type === "fileChange" ? item.changes : [];
   const selected =
     changes.find((change) => change.path === selectedPath) ?? changes[0];
@@ -175,45 +207,39 @@ export function OperationDetails({
         ? item.contentItems
         : item.type === "functionCallOutput" && Array.isArray(item.output)
           ? item.output
-          : item.type === "imageGeneration" && item.result
-            ? [
-                {
-                  type: "inputImage",
-                  imageUrl:
-                    mediaUrl(item.result, "image") ??
-                    (/^[A-Za-z0-9+/=\r\n]+$/.test(item.result) &&
-                    item.result.length > 64
-                      ? `data:image/png;base64,${item.result}`
-                      : (item.savedPath ?? item.result)),
-                },
-              ]
-            : null;
-  const inlineContent =
-    item.type === "mcpToolCall" || item.type === "dynamicToolCall"
-      ? `参数\n${JSON.stringify(item.arguments, null, 2)}${item.type === "mcpToolCall" && item.error ? `\n\n${item.error.message}` : ""}`
-      : media?.length
-        ? item.type === "imageGeneration"
-          ? (item.revisedPrompt ?? item.savedPath ?? item.status)
-          : "返回结果"
-        : content;
-  const allContent = [
-    content,
-    output,
-    item.type === "functionCallOutput" || item.type === "imageGeneration"
-      ? `返回数据\n${JSON.stringify(item.type === "functionCallOutput" ? item.output : item.result, null, 2)}`
-      : null,
-    item.type === "mcpToolCall" && item.result?.structuredContent != null
-      ? `结构化结果\n${JSON.stringify(item.result.structuredContent, null, 2)}`
-      : null,
-    item.type === "dynamicToolCall" &&
-    item.contentItems?.some((part) => part.type !== "inputText")
-      ? `媒体结果\n${JSON.stringify(item.contentItems, null, 2)}`
-      : null,
-    progress?.length ? `进度\n${progress.join("\n")}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+          : null;
+  const error =
+    item.type === "mcpToolCall"
+      ? item.error?.message
+      : item.type === "dynamicToolCall" && status === "failed"
+        ? "工具执行失败"
+        : null;
+  const structured =
+    item.type === "mcpToolCall" ? item.result?.structuredContent : null;
+  const richText =
+    item.type === "functionCallOutput" ||
+    item.type === "enteredReviewMode" ||
+    item.type === "exitedReviewMode" ||
+    item.type === "hookPrompt";
   const copy = () => {
+    const allContent = [
+      tool ? `参数\n${JSON.stringify(item.arguments, null, 2)}` : content,
+      media?.map(contentText).join("\n\n"),
+      error,
+      output,
+      item.type === "imageGeneration"
+        ? `返回数据\n${JSON.stringify({ result: item.result, savedPath: item.savedPath, failure: item.failure }, null, 2)}`
+        : null,
+      structured != null
+        ? `结构化结果\n${JSON.stringify(structured, null, 2)}`
+        : null,
+      item.type === "webSearch"
+        ? `搜索数据\n${JSON.stringify({ action: item.action, results: item.results }, null, 2)}`
+        : null,
+      progress?.length ? `进度\n${progress.join("\n")}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     void Promise.resolve()
       .then(() => navigator.clipboard.writeText(allContent))
       .then(
@@ -222,7 +248,7 @@ export function OperationDetails({
       );
   };
   return (
-    <div className="relative space-y-3 py-3">
+    <div className="relative min-w-0 space-y-3 py-3 text-foreground [overflow-wrap:anywhere]">
       <div className="absolute top-4 right-1 flex items-center gap-2 z-1">
         <span role="status" className="text-xs text-muted">
           {copyState}
@@ -236,26 +262,66 @@ export function OperationDetails({
           className="rounded-md bg-surface p-3 text-xs text-muted"
           aria-live="polite"
         >
-          <p>{progress.at(-1)}</p>
-          <details>
-            <summary className="cursor-pointer">
-              查看进度记录 ({progress.length})
-            </summary>
+          <p className="pr-12">{progress.at(-1)}</p>
+          <AnimatedDisclosure
+            open={progressOpen}
+            summary={
+              <summary
+                aria-expanded={progressOpen}
+                className="flex cursor-pointer list-none items-center gap-1 [&::-webkit-details-marker]:hidden"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setProgressOpen((open) => !open);
+                }}
+              >
+                <ChevronRight
+                  size={14}
+                  aria-hidden="true"
+                  className={`shrink-0 transition-transform duration-200 motion-reduce:transition-none ${progressOpen ? "rotate-90" : ""}`}
+                />
+                查看进度记录 ({progress.length})
+              </summary>
+            }
+          >
             <ScrollArea className="mt-2 max-h-40">
               <pre className="whitespace-pre-wrap [overflow-wrap:anywhere]">
                 {progress.join("\n")}
               </pre>
             </ScrollArea>
-          </details>
+          </AnimatedDisclosure>
         </div>
       ) : null}
-      {changes.length ? (
+      {tool ? (
+        <section className="space-y-2">
+          <p className="flex min-h-6 items-center pr-10 text-xs text-muted max-[900px]:min-h-10">
+            参数
+          </p>
+          <ScrollArea scrollChaining className="max-h-40">
+            <ToolText
+              text={JSON.stringify(item.arguments, null, 2)}
+              mimeType="application/json"
+            />
+          </ScrollArea>
+          {error && <ErrorNotice>{error}</ErrorNotice>}
+          {!media?.length && structured == null && !error && (
+            <p className="text-xs text-muted">
+              {status === "inProgress" ||
+              status === "in_progress" ||
+              status === "waiting"
+                ? "等待工具返回结果"
+                : status === "failed"
+                  ? "工具执行失败，未返回详细信息"
+                  : "工具未返回内容"}
+            </p>
+          )}
+        </section>
+      ) : changes.length ? (
         <div
           data-slot="operation-diff"
           className="rounded-md border border-border"
         >
           <div
-            className="flex flex-wrap gap-1 border-b border-border p-2"
+            className="flex flex-wrap gap-1 border-b border-border p-2 pr-12"
             aria-label="修改文件"
           >
             {changes.map((change) => (
@@ -264,7 +330,7 @@ export function OperationDetails({
                 key={change.path}
                 onClick={() => setSelectedPath(change.path)}
                 aria-pressed={selected?.path === change.path}
-                className={`rounded px-2 py-1 text-xs ${selected?.path === change.path ? "bg-hover text-foreground" : "text-muted"}`}
+                className={`min-w-0 max-w-full rounded px-2 py-1 text-left text-xs [overflow-wrap:anywhere] ${selected?.path === change.path ? "bg-hover text-foreground" : "text-muted"}`}
               >
                 {change.path}
               </button>
@@ -295,21 +361,110 @@ export function OperationDetails({
             </pre>
           </ScrollArea>
         </div>
+      ) : item.type === "collabAgentToolCall" ? (
+        <div className="space-y-3">
+          {item.prompt && (
+            <section className="space-y-2">
+              <p className="flex min-h-6 items-center pr-10 text-xs text-muted max-[900px]:min-h-10">
+                任务
+              </p>
+              <ScrollArea scrollChaining className="max-h-48">
+                <ToolText text={item.prompt} />
+              </ScrollArea>
+            </section>
+          )}
+          {Object.entries(item.agentsStates).map(([id, state]) => (
+            <section key={id} className="space-y-2">
+              <p className="flex min-h-6 items-center pr-10 text-xs text-muted max-[900px]:min-h-10">
+                {id} · {executionStatusLabel(state?.status ?? "unknown")}
+              </p>
+              {state?.message && (
+                <ScrollArea scrollChaining className="max-h-48">
+                  <ToolText text={state.message} />
+                </ScrollArea>
+              )}
+            </section>
+          ))}
+        </div>
+      ) : item.type === "imageView" || item.type === "imageGeneration" ? (
+        <section className="space-y-2 pr-10">
+          {item.type === "imageView" ? (
+            <>
+              <p className="text-xs text-muted">{item.path}</p>
+              <LocalMessageImage path={item.path} name="工具查看图片" />
+            </>
+          ) : (
+            <>
+              {item.revisedPrompt && (
+                <ScrollArea scrollChaining className="max-h-40">
+                  <ToolText text={item.revisedPrompt} />
+                </ScrollArea>
+              )}
+              {item.failure ? (
+                <ErrorNotice>
+                  图片生成额度已用尽（{item.failure.limitId}）
+                  {item.failure.resetsAt != null
+                    ? `，重置时间：${new Date(item.failure.resetsAt * 1000).toLocaleString()}`
+                    : ""}
+                </ErrorNotice>
+              ) : item.result || item.savedPath ? (
+                mediaUrl(item.result, "image") ? (
+                  <ConversationImage src={item.result} name="工具生成图片" />
+                ) : /^[A-Za-z0-9+/=\r\n]+$/.test(item.result) &&
+                  item.result.length > 64 ? (
+                  <ConversationImage
+                    src={`data:image/png;base64,${item.result}`}
+                    name="工具生成图片"
+                  />
+                ) : (
+                  <LocalMessageImage
+                    path={item.savedPath || item.result}
+                    name="工具生成图片"
+                  />
+                )
+              ) : (
+                <p className="text-xs text-muted">
+                  {status === "failed"
+                    ? "图片生成失败"
+                    : status === "inProgress" || status === "in_progress"
+                      ? "正在生成图片"
+                      : "未返回图片"}
+                </p>
+              )}
+              {item.savedPath && (
+                <p className="text-xs text-muted">{item.savedPath}</p>
+              )}
+            </>
+          )}
+        </section>
       ) : (
-        <ScrollArea
-          scrollChaining
-          orientation="both"
-          className="max-h-40"
-          viewportProps={
-            {
-              "data-slot": "operations-output",
-            } as React.HTMLAttributes<HTMLDivElement>
-          }
-        >
-          <pre className="rounded-md bg-surface p-3 font-mono text-xs leading-code whitespace-pre-wrap [overflow-wrap:anywhere]">
-            {inlineContent || "暂无内容"}
-          </pre>
-        </ScrollArea>
+        !media?.length && (
+          <div className="space-y-2">
+            {richText && (
+              <p className="flex min-h-6 items-center pr-10 text-xs text-muted max-[900px]:min-h-10">
+                返回结果
+              </p>
+            )}
+            <ScrollArea
+              scrollChaining
+              orientation="both"
+              className="max-h-40"
+              viewportProps={
+                {
+                  "data-slot": "operations-output",
+                } as React.HTMLAttributes<HTMLDivElement>
+              }
+            >
+              {richText ? (
+                <ToolText text={content || "工具未返回内容"} />
+              ) : (
+                <pre className="rounded-md bg-surface p-3 pr-10 font-mono text-xs leading-code whitespace-pre-wrap [overflow-wrap:anywhere]">
+                  {content || "暂无内容"}
+                </pre>
+              )}
+            </ScrollArea>
+          </div>
+        )
       )}
       {output && (
         <ScrollArea
@@ -327,33 +482,65 @@ export function OperationDetails({
           </pre>
         </ScrollArea>
       )}
-      {media?.map((part, index) => (
-        <ScrollArea
-          scrollChaining
-          key={index}
-          orientation="both"
-          className="max-h-48"
-        >
-          <MediaContent value={part} />
-        </ScrollArea>
-      ))}
+      {!!media?.length && (
+        <section className="space-y-2">
+          <p className="flex min-h-6 items-center pr-10 text-xs text-muted max-[900px]:min-h-10">
+            返回结果
+          </p>
+          {media.map((part, index) => (
+            <ScrollArea scrollChaining key={index} className="max-h-48">
+              <MediaContent value={part} />
+            </ScrollArea>
+          ))}
+        </section>
+      )}
+      {item.type === "webSearch" && !!item.results?.length && (
+        <section className="space-y-2">
+          <p className="text-xs text-muted">搜索结果</p>
+          <ScrollArea scrollChaining className="max-h-48">
+            <ToolText
+              text={JSON.stringify(item.results, null, 2)}
+              mimeType="application/json"
+            />
+          </ScrollArea>
+        </section>
+      )}
       {item.type === "mcpToolCall" &&
-        item.result?.structuredContent != null && (
-          <ScrollArea
-            scrollChaining
-            orientation="both"
-            className="max-h-40"
-            viewportProps={
-              {
-                "data-slot": "operations-output",
-              } as React.HTMLAttributes<HTMLDivElement>
+        item.result?.structuredContent != null &&
+        (media?.length ? (
+          <AnimatedDisclosure
+            open={structuredOpen}
+            summary={
+              <summary
+                aria-expanded={structuredOpen}
+                className="flex cursor-pointer list-none items-center gap-1 text-xs text-muted [&::-webkit-details-marker]:hidden"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setStructuredOpen((open) => !open);
+                }}
+              >
+                <ChevronRight
+                  size={14}
+                  aria-hidden="true"
+                  className={`shrink-0 transition-transform duration-200 motion-reduce:transition-none ${structuredOpen ? "rotate-90" : ""}`}
+                />
+                结构化结果
+              </summary>
             }
           >
-            <pre className="whitespace-pre-wrap p-3 text-xs [overflow-wrap:anywhere]">
-              {JSON.stringify(item.result.structuredContent, null, 2)}
-            </pre>
-          </ScrollArea>
-        )}
+            <StructuredResult value={item.result.structuredContent} />
+          </AnimatedDisclosure>
+        ) : (
+          <section className="space-y-2">
+            <p className="text-xs text-muted">返回结果</p>
+            <ScrollArea scrollChaining className="max-h-48">
+              <ToolText
+                text={JSON.stringify(item.result.structuredContent, null, 2)}
+                mimeType="application/json"
+              />
+            </ScrollArea>
+          </section>
+        ))}
     </div>
   );
 }

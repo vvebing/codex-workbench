@@ -89,7 +89,9 @@ export function SettingsDialog({
       }}
       title="连接与设置"
       variant="settings"
-      returnFocusSelector='[data-settings-trigger], button[aria-label="打开导航"]'
+      returnFocusSelector={
+        narrow ? 'button[aria-label="打开导航"]' : "[data-settings-trigger]"
+      }
       description="管理通用偏好、工作环境、已归档会话与终端输出。"
     >
       <Tabs.Root

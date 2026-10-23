@@ -147,6 +147,25 @@ it("preserves the visible session's screen offset when earlier pages or favorite
   );
 });
 
+it("keeps the top pinned through repeated activity reordering but anchors a scrolled reader", () => {
+  let list = rows(100);
+  for (const key of ["session-90", "session-89", "session-88", "session-90"]) {
+    const before = navigationLayout(list);
+    const nextRows = [
+      list.find((row) => row.key === key)!,
+      ...list.filter((row) => row.key !== key),
+    ];
+    const next = navigationLayout(nextRows);
+    for (const top of [-1, 0, 0.5, 1])
+      expect(navigationAnchor(list, before, next, top, 600)).toBe(0);
+    const reader = list[20].key;
+    const top = before.offsets[20] + 5;
+    const anchored = navigationAnchor(list, before, next, top, 600);
+    expect(next.offsets[next.indices.get(reader)!] - anchored).toBe(-5);
+    list = nextRows;
+  }
+});
+
 it("uses the next surviving session when an archived anchor is removed", () => {
   const list = rows(1000);
   const before = navigationLayout(list);

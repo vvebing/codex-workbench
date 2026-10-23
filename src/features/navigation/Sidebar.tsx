@@ -8,9 +8,10 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   CircleAlert,
+  CircleCheck,
   CircleHelp,
-  Circle,
   LoaderCircle,
+  LocateFixed,
   MoreHorizontal,
   PanelLeftClose,
   Pin,
@@ -36,7 +37,6 @@ import {
 } from "../../components/hooks";
 import { ProductIcon } from "../../components/ProductIcon";
 import { environments } from "../connection/environments";
-import { EnvironmentIcon } from "../connection/EnvironmentIcon";
 import { ThreadMenu } from "./ThreadMenu";
 import { SectionControls } from "./SectionControls";
 import { NavigationList, type NavigationListRow } from "./NavigationList";
@@ -48,6 +48,7 @@ import {
 import {
   navigationProjects,
   navigationThreads,
+  navigationActivityAt,
   matchesNavigationStatus,
   recentDateLabel,
   threadStatus,
@@ -57,6 +58,7 @@ import {
 import { navigationTitle } from "./navigation-title";
 import { useNavigationData } from "./use-navigation-data";
 import { historyLoading } from "./history-loading";
+import { EnvironmentFilter } from "./EnvironmentFilter";
 
 type SidebarProps = {
   onSearch: () => void;
@@ -105,10 +107,11 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
   const [focusKey, setFocusKey] = useState<string>();
   const [expandedProjects, setExpandedProjects] = useState(new Set<string>());
   const [selectionReveal, setSelectionReveal] = useState(0);
+  const [locateRequested, setLocateRequested] = useState(false);
+  const [selectionVisible, setSelectionVisible] = useState(false);
   const expansionSelection = useRef("");
   const [showSections, setShowSections] = useState(false);
   const [now, setNow] = useState(Date.now);
-  const stableRecency = useRef(new Map<string, number>());
   const [openError, setOpenError] = useState("");
   const loadingScope = visible
     .map((source) =>
@@ -148,12 +151,6 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
   }, []);
 
   const items = navigationThreads(visible, preferences.visits);
-  for (const item of items)
-    if (!stableRecency.current.has(item.key))
-      stableRecency.current.set(
-        item.key,
-        item.thread.recencyAt || item.thread.updatedAt,
-      );
   const allProjects = navigationProjects(items);
   const selected = items.find(
     (item) =>
@@ -181,18 +178,24 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
     items.filter((item) => matchesNavigationStatus(item, status)).length;
   const compareThreads = (a: NavigationThread, b: NavigationThread) =>
     Number(isThreadPinned(b)) - Number(isThreadPinned(a)) ||
-    (stableRecency.current.get(b.key) || 0) -
-      (stableRecency.current.get(a.key) || 0) ||
+    navigationActivityAt(b.thread) - navigationActivityAt(a.thread) ||
     a.key.localeCompare(b.key);
-  const threadDescription = (item: NavigationThread, nested: boolean) =>
-    item.source.sessions.localDrafts[item.thread.id]
+  const projectNames = new Map(
+    allProjects.map((project) => [project.key, project.name]),
+  );
+  const threadDescription = (item: NavigationThread, nested: boolean) => {
+    const statusLabel = threadStatus(item);
+    const status = item.source.sessions.localDrafts[item.thread.id]
       ? "草稿 · 未发送"
       : !item.source.connected && !item.thread.turns.length
         ? "离线 · 正文未缓存"
-        : threadStatus(item) ||
-          (nested
-            ? ""
-            : `${folderOf(item.thread.cwd)}${props.filter === "all" ? ` · ${item.source.environment.name}` : ""}`);
+        : statusLabel === "运行中"
+          ? ""
+          : statusLabel;
+    if (nested) return status;
+    const location = `${projectNames.get(item.projectKey) ?? folderOf(item.thread.cwd)} · ${item.source.environment.name}`;
+    return status ? `${location} · ${status}` : location;
+  };
   const rows: Row[] = [];
   if (preferences.view === "projects") {
     for (const project of projects) {
@@ -236,20 +239,12 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
       }
     }
   } else {
-    const sorted = [...filtered].sort(
-      (a, b) =>
-        Number(isThreadPinned(b)) - Number(isThreadPinned(a)) ||
-        (b.visited || (stableRecency.current.get(b.key) || 0) * 1000) -
-          (a.visited || (stableRecency.current.get(a.key) || 0) * 1000) ||
-        a.key.localeCompare(b.key),
-    );
+    const sorted = [...filtered].sort(compareThreads);
     let previousLabel = "";
     for (const item of sorted) {
       const label = isThreadPinned(item)
         ? "收藏会话"
-        : recentDateLabel(
-            item.visited || (stableRecency.current.get(item.key) || 0) * 1000,
-          );
+        : recentDateLabel(navigationActivityAt(item.thread) * 1000);
       if (label !== previousLabel) {
         rows.push({
           kind: "label",
@@ -315,10 +310,17 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
     (source) => source.sessions.sectionFilter !== "all",
   );
   const allCollapsed = projects.length > 0 && projects.every(isCollapsed);
-  const hiddenCurrent =
-    active?.sessions.selectedId &&
-    !active.sessions.archivedIds[active.sessions.selectedId] &&
+  const canLocateCurrent =
+    !!active?.sessions.selectedId &&
+    !active.sessions.archivedIds[active.sessions.selectedId];
+  const outsideCurrentScope =
+    canLocateCurrent &&
     (!selected || !matchesNavigationStatus(selected, preferences.status));
+  const hiddenCurrent =
+    canLocateCurrent &&
+    (outsideCurrentScope ||
+      !rows.some((row) => row.key === selectedKey) ||
+      !selectionVisible);
   const scopeKey = JSON.stringify([
     props.filter,
     preferences.view,
@@ -337,8 +339,10 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           .catch(() => {});
   }
   function revealCurrent() {
-    props.onFilterChange(state.activeId);
-    clearFilters();
+    if (!canLocateCurrent) return;
+    if (props.filter !== "all" && props.filter !== state.activeId)
+      props.onFilterChange(state.activeId);
+    if (outsideCurrentScope) navigationState.setStatus("all");
     if (
       active.environment.runtime.sessions.getSnapshot().sectionFilter !== "all"
     )
@@ -356,6 +360,8 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
         ]),
         false,
       );
+    expansionSelection.current = "";
+    setLocateRequested(true);
   }
   function keyboard(event: KeyboardEvent, key: string) {
     const row = rows.find((row) => row.key === key);
@@ -448,33 +454,11 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
         )}
       </div>
       <div className="shrink-0 px-3 pb-3">
-        <Tabs.Root value={props.filter} onValueChange={props.onFilterChange}>
-          <Tabs.List
-            aria-label="按工作环境筛选会话"
-            className="navigation-environments flex gap-1 overflow-x-auto rounded-lg bg-hover p-1"
-          >
-            {state.entries.length > 1 && (
-              <Tabs.Trigger value="all" className="navigation-environment">
-                全部
-              </Tabs.Trigger>
-            )}
-            {state.entries.map((environment) => (
-              <Tabs.Trigger
-                className="navigation-environment"
-                value={environment.id}
-                aria-label={environment.name}
-                key={environment.id}
-              >
-                <EnvironmentIcon
-                  environment={environment}
-                  connection={environment.runtime.connection.getSnapshot()}
-                  focusable={false}
-                />
-                <span className="truncate">{environment.name}</span>
-              </Tabs.Trigger>
-            ))}
-          </Tabs.List>
-        </Tabs.Root>
+        <EnvironmentFilter
+          entries={state.entries}
+          value={props.filter}
+          onValueChange={props.onFilterChange}
+        />
       </div>
       <div className="shrink-0 px-3 pb-2">
         <div className="mb-2 flex items-center gap-1">
@@ -494,6 +478,24 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
               </Tabs.Trigger>
             </Tabs.List>
           </Tabs.Root>
+          <IconButton
+            size="sm"
+            label="定位当前会话"
+            title={
+              outsideCurrentScope
+                ? "当前会话不在此范围 · 定位当前会话"
+                : hiddenCurrent
+                  ? "当前会话不在可见区域 · 定位当前会话"
+                  : "定位当前会话"
+            }
+            data-slot="locate-current-session"
+            disabled={!canLocateCurrent}
+            highlighted={hiddenCurrent}
+            className="disabled:opacity-40"
+            onClick={revealCurrent}
+          >
+            <LocateFixed size={14} aria-hidden="true" />
+          </IconButton>
           {preferences.view === "projects" && (
             <IconButton
               size="sm"
@@ -576,14 +578,6 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           </div>
         )}
       </div>
-      {hiddenCurrent && (
-        <button
-          className="mx-3 mb-2 rounded-md bg-selected px-2 py-2 text-left text-fine text-accent"
-          onClick={revealCurrent}
-        >
-          当前会话不在此范围 · 定位当前会话
-        </button>
-      )}
       {rows.length > 0 ? (
         <NavigationList
           rows={rows}
@@ -591,6 +585,9 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           selectedKey={selectedKey}
           selectionRevision={`${selected?.visited || 0}:${selectionReveal}`}
           selectionLoading={anyHistoryLoading}
+          revealSelection={locateRequested}
+          onSelectionRevealed={() => setLocateRequested(false)}
+          onSelectionVisibilityChange={setSelectionVisible}
           focusKey={focusKey}
           onFocusKey={setFocusKey}
           onKeyDown={keyboard}
@@ -719,48 +716,64 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
               description = threadDescription(item, row.nested),
               selected = item.key === selectedKey;
             const pinned = isThreadPinned(item);
+            const activityAt = navigationActivityAt(thread);
             const updated = !item.running && (
               <time
-                dateTime={new Date(thread.updatedAt * 1000).toISOString()}
+                dateTime={new Date(activityAt * 1000).toISOString()}
+                title={`最近活动：${new Date(activityAt * 1000).toLocaleString("zh-CN")}`}
                 className="shrink-0 text-fine text-subtle"
               >
-                {relativeTime(thread.updatedAt, now)}
+                {relativeTime(activityAt, now)}
               </time>
             );
-            const icon =
-              !source.connected && item.running ? (
-                <CircleAlert
-                  size={13}
-                  className="text-subtle"
-                  aria-label="状态待同步"
-                />
-              ) : item.waiting || status === "待核实" ? (
-                <CircleHelp
-                  size={13}
-                  className="text-warning"
-                  aria-label={item.waiting || "待核实"}
-                />
-              ) : item.failed ? (
-                <CircleAlert
-                  size={13}
-                  className="text-danger"
-                  aria-label="执行失败"
-                />
-              ) : item.running ? (
-                <LoaderCircle
-                  data-slot="running-indicator"
-                  size={13}
-                  className="animate-spin text-accent"
-                  role="img"
-                  aria-label="运行中"
-                />
-              ) : (
-                <Circle
-                  size={5}
-                  className="fill-current text-subtle/50"
-                  aria-hidden
-                />
-              );
+            const icon = item.initializing ? (
+              <LoaderCircle
+                data-slot="initializing-indicator"
+                size={14}
+                className="animate-spin text-accent"
+                role="img"
+                aria-label={item.initializing}
+              >
+                <title>{item.initializing}</title>
+              </LoaderCircle>
+            ) : !source.connected && item.running ? (
+              <CircleAlert
+                size={13}
+                className="text-subtle"
+                aria-label="状态待同步"
+              />
+            ) : item.waiting || status === "待核实" ? (
+              <CircleHelp
+                size={13}
+                className="text-warning"
+                aria-label={item.waiting || "待核实"}
+              />
+            ) : item.failed ? (
+              <CircleAlert
+                size={13}
+                className="text-danger"
+                aria-label="执行失败"
+              />
+            ) : item.running ? (
+              <LoaderCircle
+                data-slot="running-indicator"
+                size={13}
+                className="animate-spin text-accent"
+                role="img"
+                aria-label="运行中"
+              />
+            ) : item.unread ? (
+              <CircleCheck
+                data-slot="thread-completion-indicator"
+                size={14}
+                strokeWidth={2.5}
+                className="shrink-0 text-success"
+                role="img"
+                aria-label="已完成，结果未读"
+              >
+                <title>已完成，结果未读</title>
+              </CircleCheck>
+            ) : null;
             return (
               <RuntimeContext.Provider value={source.environment.runtime}>
                 <div
@@ -799,19 +812,16 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                           );
                       }}
                     >
-                      <span className="flex size-3.5 shrink-0 items-center justify-center">
-                        {source.sessions.openingId === thread.id ? (
-                          <LoaderCircle
-                            size={13}
-                            className="animate-spin"
-                            aria-label="正在打开"
-                          />
-                        ) : (
-                          icon
-                        )}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5">
+                      <span className="min-w-0 flex-1 pl-1">
+                        <span className="relative flex min-w-0 items-center gap-1.5">
+                          {icon && (
+                            <span
+                              data-slot="thread-status"
+                              className="absolute -left-4.5 top-1/2 flex size-3.5 -translate-y-1/2 items-center justify-center"
+                            >
+                              {icon}
+                            </span>
+                          )}
                           <span
                             data-slot="thread-title"
                             className="min-w-0 flex-1 truncate text-xs"
@@ -819,13 +829,6 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                             {navigationTitle(thread)}
                           </span>
                           {pinned && <Pin size={10} aria-label="已收藏" />}
-                          {item.unread && (
-                            <span
-                              className="size-1.5 shrink-0 rounded-full bg-accent"
-                              role="img"
-                              aria-label="有未读结果"
-                            />
-                          )}
                           {!description && updated}
                         </span>
                         {description && (
@@ -834,7 +837,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                             className="mt-0.5 flex min-w-0 items-center gap-1 text-fine text-subtle"
                           >
                             <span
-                              className={`min-w-0 flex-1 truncate ${item.waiting || status === "待核实" ? "text-warning" : item.failed ? "text-danger" : item.running && source.connected ? "text-accent" : ""}`}
+                              className={`min-w-0 flex-1 truncate ${item.waiting || status === "待核实" ? "text-warning" : item.failed ? "text-danger" : ""}`}
                             >
                               {description}
                             </span>

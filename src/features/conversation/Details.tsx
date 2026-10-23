@@ -3,6 +3,7 @@ import { ThreadTools } from "./ThreadTools";
 import { useStore, useStoreSelector } from "../../components/hooks";
 import { useRuntime } from "../../lib/runtime-context";
 import { ResourceScrollArea } from "./ResourceScrollArea";
+import { ScrollArea } from "../../components/ui";
 import { useWorkspaceGitStatus } from "../shell/workspace-git";
 import type { ProjectTab } from "./project-panel-state";
 export type { ProjectTab } from "./project-panel-state";
@@ -172,9 +173,9 @@ function GitResource({
   // Wait for canonical identity before touching the shared scroll entry.
   if (!root)
     return (
-      <div className="min-w-0 overflow-auto p-4">
+      <ScrollArea className="flex-1" viewportProps={{ className: "p-4" }}>
         <GitPanel cwd={cwd} onSelectWorktree={onSelectWorktree} />
-      </div>
+      </ScrollArea>
     );
   return (
     <ResourceScrollArea

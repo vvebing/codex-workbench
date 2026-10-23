@@ -1,9 +1,11 @@
+import { QuestionPresence } from "./QuestionPresence";
+import { useStableQuestionCard } from "./use-stable-question-card";
 import { settingsInputClass } from "../settings/settings-ui";
 import type { Thread } from "../../generated/v2/Thread";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRuntime } from "../../lib/runtime-context";
 import { useStore } from "../../components/hooks";
-import { Button, ErrorNotice } from "../../components/ui";
+import { Button, ErrorNotice, ScrollArea } from "../../components/ui";
 import { pendingAsyncQuestions, type QuestionMessage } from "./async-questions";
 
 import {
@@ -60,10 +62,17 @@ export function AsyncQuestions({
   const lock = useRef(false);
   const [error, setError] = useState("");
   const thread = sessions.threads[threadId];
-  const pending =
-    !!thread &&
-    pendingAsyncQuestions(thread).some((message) => message.id === item.id) &&
-    !runtime.questionDismissals.isIgnored(threadId, item.id);
+  const unresolved = thread ? pendingAsyncQuestions(thread) : [];
+  const questionPresent = !!thread?.turns.some((turn) =>
+    turn.items.some(
+      (entry) => entry.type === "agentMessage" && entry.id === item.id,
+    ),
+  );
+  // Absence from an unloaded/partial history cannot confirm an answer.
+  const confirmed =
+    questionPresent && !unresolved.some((entry) => entry.id === item.id);
+  const ignored = runtime.questionDismissals.isIgnored(threadId, item.id);
+  const pending = unresolved.some((entry) => entry.id === item.id) && !ignored;
   const occupied =
     sessions.threadAccess[threadId] === "occupied" ||
     (!!runtime.sessions.activeTurn(threadId) &&
@@ -73,7 +82,7 @@ export function AsyncQuestions({
       "threadId" in request.params && request.params.threadId === threadId,
   );
   const archived = !!sessions.archivedIds[threadId];
-  const inputDisabled = archived || sending || !!task || !!sent || !pending;
+  const inputDisabled = archived || sending || !!saved || !pending;
   const disabled = inputDisabled || !queueState.ready;
   const selection = (index: number) => {
     if (!saved) return answers[index];
@@ -84,13 +93,16 @@ export function AsyncQuestions({
     answers[index] === "custom"
       ? (custom[index] ?? "")
       : (item.questions?.[index].options?.[Number(answers[index])] ?? "");
+  const stable = useStableQuestionCard(!!saved || confirmed, sending);
   if (archived) return <ArchivedQuestions items={[item]} />;
   return (
     <form
+      ref={stable.ref as React.Ref<HTMLFormElement>}
+      style={{ minHeight: stable.minHeight }}
       data-async-question-id={item.id}
       tabIndex={-1}
-      className="mt-4 rounded-xl border border-border bg-elevated p-4 text-control"
-      aria-label="回答异步问题"
+      className="mt-4 mb-3 rounded-xl border border-border bg-elevated p-4 text-control"
+      aria-label={!confirmed && !ignored ? "回答异步问题" : undefined}
       onSubmit={async (event) => {
         event.preventDefault();
         if (
@@ -100,15 +112,13 @@ export function AsyncQuestions({
           !item.questions?.every((_, index) => answer(index).trim())
         )
           return;
+        stable.preserve();
         lock.current = true;
         setSending(true);
         setError("");
         try {
-          await runtime.queue.addAnswer(
-            threadId,
-            item,
-            item.questions.map((_, index) => answer(index)),
-          );
+          const submitted = item.questions.map((_, index) => answer(index));
+          await runtime.queue.addAnswer(threadId, item, submitted);
           clearQuestionDraft(draftKey);
         } catch (error) {
           setError(
@@ -123,9 +133,9 @@ export function AsyncQuestions({
       }}
     >
       <p className="mb-3 font-semibold">
-        {saved || sending ? "你的回答" : "需要你的回答"}
+        {saved ? "你的回答" : "需要你的回答"}
       </p>
-      {(saved || sending) && (
+      {saved && (
         <dl className="mb-3 space-y-2">
           {item.questions?.map((question, index) => (
             <div key={index}>
@@ -138,7 +148,6 @@ export function AsyncQuestions({
         </dl>
       )}
       {!saved &&
-        !sending &&
         item.questions?.map((question, index) => (
           <fieldset
             key={index}
@@ -191,11 +200,11 @@ export function AsyncQuestions({
           </fieldset>
         ))}
       {error && <ErrorNotice>{error}</ErrorNotice>}
-      {sent ? (
+      {sent && !confirmed ? (
         <p role="status" className="text-muted">
           回答已发送，等待会话更新。
         </p>
-      ) : task ? (
+      ) : task && !confirmed ? (
         <>
           <p role="status" className="mb-2 text-muted">
             {task.status === "sending"
@@ -291,12 +300,16 @@ export function AsyncQuestions({
               )}
           </div>
         </>
-      ) : sending ? (
-        <p role="status" className="text-muted">
-          正在保存回答…
-        </p>
+      ) : confirmed || ignored ? (
+        <>
+          <p className="text-muted">
+            此问题已回答或已忽略，可在会话中继续补充。
+          </p>
+        </>
       ) : !pending ? (
-        <p className="text-muted">此问题已回答或已忽略，可在会话中继续补充。</p>
+        <p role="status" className="text-muted">
+          正在核实问题状态，请等待会话记录加载。
+        </p>
       ) : (
         <>
           {occupied && (
@@ -347,22 +360,30 @@ export function AsyncQuestions({
 export function AsyncQuestionPanel({ thread }: { thread: Thread }) {
   const runtime = useRuntime();
   useStore(runtime.questionDismissals);
+  useStore(runtime.queue);
   const connection = useStore(runtime.connection);
   const sessions = useStore(runtime.sessions);
-  const all = pendingAsyncQuestions(thread);
+  const active = useMemo(() => pendingAsyncQuestions(thread), [thread]);
+  const sent = runtime.queue.forThread(thread.id).sentAnswers;
+  const queued = runtime.queue.forThread(thread.id).items;
+  const all = active.filter(
+    (item) =>
+      !sent?.[item.id] &&
+      !queued.some((task) => task.question?.itemId === item.id),
+  );
   const ignored = all.filter((item) =>
     runtime.questionDismissals.isIgnored(thread.id, item.id),
   );
   const pending = all.filter(
     (item) => !runtime.questionDismissals.isIgnored(thread.id, item.id),
   );
-  if (!all.length) return null;
   if (sessions.archivedIds[thread.id]) return <ArchivedQuestions items={all} />;
   return (
-    <section
+    <ScrollArea
+      role="region"
       aria-label="待回答问题"
       data-slot="async-question-panel"
-      className="conversation-content max-h-[45vh] shrink-0 overflow-y-auto pb-3"
+      className="conversation-content max-h-[45vh] shrink-0"
     >
       {ignored.length > 0 && (
         <Button
@@ -377,22 +398,23 @@ export function AsyncQuestionPanel({ thread }: { thread: Thread }) {
           恢复已忽略问题（{ignored.length}）
         </Button>
       )}
-      {pending.map((item) => (
-        <AsyncQuestions
-          key={JSON.stringify([connection.url, thread.id, item.id])}
-          item={item}
-          threadId={thread.id}
-        />
-      ))}
-    </section>
+      <QuestionPresence
+        entries={pending.map((item) => ({
+          id: JSON.stringify([connection.url, thread.id, item.id]),
+          answerFor: item.id,
+          content: <AsyncQuestions item={item} threadId={thread.id} />,
+        }))}
+      />
+    </ScrollArea>
   );
 }
 
 function ArchivedQuestions({ items }: { items: QuestionMessage[] }) {
   return (
-    <section
+    <ScrollArea
+      role="region"
       aria-label="已归档会话中的问题"
-      className="conversation-content max-h-[45vh] shrink-0 overflow-y-auto pb-3 text-control"
+      className="conversation-content max-h-[45vh] shrink-0 text-control"
     >
       <p className="mb-2 text-xs text-muted">
         会话已归档，问题仅供查看。恢复会话后可回答。
@@ -414,6 +436,6 @@ function ArchivedQuestions({ items }: { items: QuestionMessage[] }) {
           ))}
         </dl>
       ))}
-    </section>
+    </ScrollArea>
   );
 }

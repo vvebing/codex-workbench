@@ -1,6 +1,12 @@
 import { settingsInputClass } from "../settings/settings-ui";
 import { useEffect, useState } from "react";
-import { Button, Modal, SelectField, ErrorNotice } from "../../components/ui";
+import {
+  Button,
+  Modal,
+  SelectField,
+  ErrorNotice,
+  ScrollArea,
+} from "../../components/ui";
 import { useStore } from "../../components/hooks";
 import type { Environment } from "../connection/environments";
 
@@ -213,143 +219,145 @@ function SectionEditor({ environment }: { environment: Environment }) {
         {state.sectionsError && (
           <ErrorNotice className="mb-2">{state.sectionsError}</ErrorNotice>
         )}
-        <div
-          className="max-h-[36dvh] space-y-2 overflow-y-auto"
+        <ScrollArea
+          className="max-h-[36dvh]"
           aria-busy={pending || state.sectionsLoading}
         >
-          {state.sections.length === 0 && (
-            <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-caption text-muted">
-              {state.sectionsLoading
-                ? "正在加载分区…"
-                : state.sectionsError
-                  ? "暂时无法加载分区，请重试。"
-                  : "还没有分区，创建第一个分区来整理会话。"}
-            </div>
-          )}
-          {state.sections.map((section) => (
-            <div
-              key={section.id}
-              className="rounded-xl border border-border p-3"
-            >
-              {editing === section.id ? (
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (!busy && editName.trim())
-                      void action(
-                        () => sessions.saveSection(editName, section.id),
-                        "分区名称已更新",
-                      );
-                  }}
-                >
-                  <label
-                    className="mb-2 block text-caption text-muted"
-                    htmlFor="section-edit-name"
-                  >
-                    分区新名称
-                  </label>
-                  <input
-                    id="section-edit-name"
-                    autoFocus
-                    className={`${settingsInputClass} w-full`}
-                    value={editName}
-                    maxLength={100}
-                    disabled={busy}
-                    onChange={(event) => setEditName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape" && !pending) {
-                        event.stopPropagation();
-                        setEditing(undefined);
-                      }
-                    }}
-                  />
-                  <div className="mt-2 flex justify-end gap-2">
-                    <Button
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => setEditing(undefined)}
-                    >
-                      取消
-                    </Button>
-                    <Button
-                      size="sm"
-                      type="submit"
-                      variant="primary"
-                      disabled={busy || !editName.trim()}
-                    >
-                      保存名称
-                    </Button>
-                  </div>
-                </form>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 break-all text-control font-medium">
-                    {section.name}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="quiet"
-                    disabled={busy}
-                    onClick={() => {
-                      setEditing(section.id);
-                      setEditName(section.name);
-                      setDeleting(undefined);
-                      setError("");
-                      setNotice("");
-                    }}
-                  >
-                    重命名
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="quiet"
-                    disabled={busy}
-                    onClick={() => {
-                      setDeleting(section.id);
-                      setEditing(undefined);
-                      setError("");
-                      setNotice("");
-                    }}
-                  >
-                    删除
-                  </Button>
-                </div>
-              )}
-              {deleting === section.id && (
-                <div
-                  className="mt-3 rounded-lg bg-danger-soft p-3"
-                  role="alert"
-                >
-                  <p className="text-caption leading-relaxed">
-                    确认删除「{section.name}」？其中的会话会保留并移至未分区。
-                  </p>
-                  <div className="mt-3 flex justify-end gap-2">
-                    <Button
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => setDeleting(undefined)}
-                    >
-                      取消
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      disabled={busy}
-                      onClick={() =>
+          <div className="space-y-2">
+            {state.sections.length === 0 && (
+              <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-caption text-muted">
+                {state.sectionsLoading
+                  ? "正在加载分区…"
+                  : state.sectionsError
+                    ? "暂时无法加载分区，请重试。"
+                    : "还没有分区，创建第一个分区来整理会话。"}
+              </div>
+            )}
+            {state.sections.map((section) => (
+              <div
+                key={section.id}
+                className="rounded-xl border border-border p-3"
+              >
+                {editing === section.id ? (
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (!busy && editName.trim())
                         void action(
-                          () => sessions.deleteSection(section.id),
-                          "分区已删除，会话已保留",
-                        )
-                      }
+                          () => sessions.saveSection(editName, section.id),
+                          "分区名称已更新",
+                        );
+                    }}
+                  >
+                    <label
+                      className="mb-2 block text-caption text-muted"
+                      htmlFor="section-edit-name"
                     >
-                      确认删除分区
+                      分区新名称
+                    </label>
+                    <input
+                      id="section-edit-name"
+                      autoFocus
+                      className={`${settingsInputClass} w-full`}
+                      value={editName}
+                      maxLength={100}
+                      disabled={busy}
+                      onChange={(event) => setEditName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape" && !pending) {
+                          event.stopPropagation();
+                          setEditing(undefined);
+                        }
+                      }}
+                    />
+                    <div className="mt-2 flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        disabled={pending}
+                        onClick={() => setEditing(undefined)}
+                      >
+                        取消
+                      </Button>
+                      <Button
+                        size="sm"
+                        type="submit"
+                        variant="primary"
+                        disabled={busy || !editName.trim()}
+                      >
+                        保存名称
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 break-all text-control font-medium">
+                      {section.name}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="quiet"
+                      disabled={busy}
+                      onClick={() => {
+                        setEditing(section.id);
+                        setEditName(section.name);
+                        setDeleting(undefined);
+                        setError("");
+                        setNotice("");
+                      }}
+                    >
+                      重命名
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="quiet"
+                      disabled={busy}
+                      onClick={() => {
+                        setDeleting(section.id);
+                        setEditing(undefined);
+                        setError("");
+                        setNotice("");
+                      }}
+                    >
+                      删除
                     </Button>
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+                )}
+                {deleting === section.id && (
+                  <div
+                    className="mt-3 rounded-lg bg-danger-soft p-3"
+                    role="alert"
+                  >
+                    <p className="text-caption leading-relaxed">
+                      确认删除「{section.name}」？其中的会话会保留并移至未分区。
+                    </p>
+                    <div className="mt-3 flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        disabled={pending}
+                        onClick={() => setDeleting(undefined)}
+                      >
+                        取消
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        disabled={busy}
+                        onClick={() =>
+                          void action(
+                            () => sessions.deleteSection(section.id),
+                            "分区已删除，会话已保留",
+                          )
+                        }
+                      >
+                        确认删除分区
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
       </div>
       {error && <ErrorNotice>{error}</ErrorNotice>}
       <p role="status" className="text-caption text-muted">

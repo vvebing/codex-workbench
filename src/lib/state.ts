@@ -1,5 +1,5 @@
 import type { HydratedThread } from "../features/sessions/history";
-import type { Thread } from "../generated/v2/Thread";
+import type { TitledThread as Thread } from "../features/sessions/thread-title";
 import type { TurnPlanStep } from "../generated/v2/TurnPlanStep";
 import type { Turn } from "../generated/v2/Turn";
 import type { ThreadItem } from "../generated/v2/ThreadItem";
