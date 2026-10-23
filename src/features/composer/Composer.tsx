@@ -461,6 +461,7 @@ export const Composer = memo(function Composer({
         <MessageEditor
           key={`${connection.url}-${threadId}`}
           ref={editor}
+          autoFocus={localDraft}
           draft={draft}
           disabled={readOnly}
           hasCompletions={!!token}

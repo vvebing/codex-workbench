@@ -219,6 +219,7 @@ function AppView() {
     "general" | "activity"
   >("general");
   const [newOpen, setNewOpen] = useState(false);
+  const [newCreated, setNewCreated] = useState(false);
   const [cwd, setCwd] = useState("");
   const projectDefaults = projectSettings.projects.find(
     (project) => project.cwd === normalizeProjectDirectory(cwd),
@@ -372,6 +373,7 @@ function AppView() {
           "",
       );
       setNewError("");
+      setNewCreated(false);
       setNewOpen(true);
       setMobileNav(false);
     },
@@ -428,6 +430,7 @@ function AppView() {
           `项目说明：\n${projectDefaults.description}\n\n任务：\n`,
         );
       environments.select(newEnvironment.id);
+      setNewCreated(true);
       setNewOpen(false);
     } catch (e) {
       setNewError(e instanceof Error ? e.message : String(e));
@@ -871,6 +874,7 @@ function AppView() {
         open={newOpen}
         onOpenChange={setNewOpen}
         title="新建会话"
+        returnFocusSelector={newCreated ? "#message-input" : undefined}
         description="选择工作环境和项目目录，创建后发送第一条消息即可开始。"
       >
         <form onSubmit={(e) => void create(e)}>

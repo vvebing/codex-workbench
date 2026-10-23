@@ -46,6 +46,7 @@ test("first local draft message keeps its DOM through thread creation and promot
     await dialog.getByRole("button", { name: "创建会话", exact: true }).click();
     await expect(dialog).toBeHidden();
     const editor = page.getByRole("textbox", { name: "消息输入框" });
+    await expect(editor).toBeFocused();
     const text =
       "slow local first identity " + "第一条消息布局稳定。".repeat(35);
     await editor.fill(text);

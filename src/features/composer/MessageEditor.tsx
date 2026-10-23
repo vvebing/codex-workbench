@@ -28,6 +28,7 @@ export interface MessageEditorHandle {
 }
 interface Props {
   ref: Ref<MessageEditorHandle>;
+  autoFocus?: boolean;
   draft: Draft;
   disabled: boolean;
   placeholder: string;
@@ -197,13 +198,13 @@ export function MessageEditor(props: Props) {
 
   useEffect(() => {
     if (
-      props.draft.restored?.id &&
+      (props.autoFocus || props.draft.restored?.id) &&
       editor &&
       !editor.isDestroyed &&
       editor.isEditable
     )
       editor.commands.focus("end");
-  }, [editor, props.draft.restored?.id]);
+  }, [editor, props.autoFocus, props.draft.restored?.id]);
 
   return <EditorContent editor={editor} />;
 }
