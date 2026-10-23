@@ -81,7 +81,7 @@ async function chooseTier(page: Page, name: string) {
 }
 async function send(page: Page, text: string) {
   await page.getByRole("textbox", { name: "消息输入框" }).fill(text);
-  await page.keyboard.press("Enter");
+  await page.locator('[data-slot="composer-action"]').click();
 }
 test.afterEach(async () => {
   if (server)

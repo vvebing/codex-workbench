@@ -225,7 +225,7 @@ test("unnamed sessions keep task titles across diagnostic previews, navigation a
   await page.reload();
   await expect(link(page, "分析 Session 频繁请求")).toBeVisible();
   await expect(link(page, "分析接口 401 与安全更新的关系")).toBeVisible();
-  await page.getByRole("button", { name: "搜索会话 ⌘ K", exact: true }).click();
+  await page.getByRole("button", { name: /^搜索会话 (?:⌘|Ctrl) K$/ }).click();
   const search = page.getByRole("dialog", { name: "搜索会话", exact: true });
   await search
     .getByPlaceholder("搜索标题、摘要或工作区…")
