@@ -1,27 +1,68 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vvebing/codex-workbench/main/public/icons/product-icon.png" width="112" height="112" alt="Codex 工作台图标" />
+</p>
+
 # Codex 工作台
 
-中文 Codex Web 客户端，用于连接本机或通过 SSH 转发的 Codex app-server，管理会话、消息队列、审批与子代理活动。前端使用 React、TypeScript 和 Vite，网页服务提供同源 WebSocket bridge。
+**把 Codex 的会话、任务队列、审批和子代理活动放进一个中文工作台。**
+
+在浏览器中组织项目、跟进执行、查看代码变更，同时连接本机与通过 SSH 转发的开发环境。工作台在本机运行，通过 Codex app-server 执行任务。
+
+[使用指南](docs/user-guide.md) · [更新日志](https://github.com/vvebing/codex-workbench/releases) · [参与开发](CONTRIBUTING.md) · [安全说明](SECURITY.md)
+
+采用 [MIT License](LICENSE)。
+
+## 功能亮点
+
+| 功能         | 你可以做什么                                             |
+| ------------ | -------------------------------------------------------- |
+| 多环境工作区 | 同时连接本机和远端开发机，按环境、项目和分区组织会话     |
+| 会话与历史   | 搜索、收藏、分叉、归档会话，复制或导出 Markdown          |
+| 消息队列     | 在任务执行期间继续编辑和排队，查看发送状态并恢复失败草稿 |
+| 审批与协作   | 处理审批、回答请求，跟踪子代理活动和任务进度             |
+| 代码与上下文 | 引用文件和技能，查看代码差异，使用会话目标和代码审查     |
+| 本机运行     | 一条 npx 命令启动网页服务，自动启动或复用本机 app-server |
 
 ## 快速开始
 
-需要 Node.js **22.12+**、npm，以及已安装并完成登录的 Codex CLI。
+需要 **Node.js 22.12+**，以及已安装并完成登录的 Codex CLI。npm 包首次发布后，可直接运行：
 
-在项目根目录安装依赖并启动工作台：
+```sh
+npx codex-workbench@latest
+```
+
+打开 **http://127.0.0.1:5180** ，在「设置 → 工作环境」连接默认的 `ws://127.0.0.1:4501`。也可以指定网页端口：
+
+```sh
+npx codex-workbench@latest --port 5181
+
+# 或安装为常用命令
+npm install -g codex-workbench
+codex-workbench --port 5181
+```
+
+| 参数                | 说明                                        |
+| ------------------- | ------------------------------------------- |
+| `-p, --port <port>` | 网页端口；优先于 `PORT` 环境变量，默认 5180 |
+| `--no-app-server`   | 仅启动网页服务，自行管理 app-server         |
+| `-h, --help`        | 显示帮助                                    |
+| `-v, --version`     | 显示已安装版本                              |
+
+网页服务仅监听 `127.0.0.1`。`--port` 不改变 app-server 端口；不同网页端口的浏览器本地配置相互独立。远端连接与数据保存方式见[使用指南](docs/user-guide.md)。
+
+## 从源码开发
 
 ```sh
 npm ci
+npm run patch:release-tools
 npm run dev
 ```
 
-在另一个终端启动 Codex app-server：
+开发模式需在另一个终端启动 app-server：
 
 ```sh
 codex app-server --listen ws://127.0.0.1:4501
 ```
-
-打开 **http://127.0.0.1:5180**，在「设置 → 工作环境」确认地址为 `ws://127.0.0.1:4501` 并连接。app-server 的启动、停止和终端日志由该终端管理。
-
-工作台支持多个环境同时连接。远端连接通过 SSH 将 app-server 端口转发到本机；工作目录使用实际执行任务的环境路径。具体配置见[使用指南](docs/user-guide.md)。
 
 ## 生产运行
 
@@ -31,11 +72,12 @@ codex app-server --listen ws://127.0.0.1:4501
 
 ```sh
 npm ci
+npm run patch:release-tools
 npm run build
 npm start
 ```
 
-构建产物位于 `dist/client/` 和 `dist/server/`。生产服务运行编译后的 JavaScript，默认监听 **127.0.0.1:5180**；使用 `PORT=5182 npm start` 修改端口。网页和 `/bridge` 共用一个端口，`GET /healthz` 返回网页服务的存活状态。
+构建产物位于 `dist/client/` 和 `dist/server/`。生产服务运行编译后的 JavaScript，默认监听 **127.0.0.1:5180**；使用 `npm start -- --port 5182` 或 `PORT=5182 npm start` 修改端口。网页和 `/bridge` 共用一个端口，`GET /healthz` 返回网页服务的存活状态。
 
 向独立运行目录交付时，保留 `dist/`、`package.json`、`package-lock.json` 和 `.npmrc`，执行 `npm ci --omit=dev` 后即可 `npm start`。`npm start` 会自动执行 `codex app-server --listen ws://127.0.0.1:4501`；若该端口已有服务则直接复用。找不到 `codex` 或子进程启动失败时会输出提示，网页服务继续运行，可连接其他 app-server。健康检查仅代表网页服务可用。在「设置 → 终端输出」可查看该进程的 stdout、stderr 和启动提示（最近 128 KiB）；输出仍会同步到启动 `npm start` 的终端。复用外部进程时无法读取其输出。
 

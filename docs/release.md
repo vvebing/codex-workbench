@@ -1,5 +1,46 @@
 # 发布检查清单
 
+## 自动发布
+
+### 发布工具的可复现依赖修复
+
+semantic-release 所依赖的 npm 11.21.1 捆绑了旧版 undici 与 ip-address，普通 overrides 不会替换其 tarball 内的代码。仓库将官方修复版 `undici@6.29.1` 和 `ip-address@10.7.4` 以开发依赖别名锁定，安装后执行 `npm run patch:release-tools`，实际替换捆绑文件并逐文件核验 SHA-256，最后同步审计元数据。
+
+**每次 `npm ci` 或 `npm install` 后都必须执行补丁命令。** 仅修改锁文件不能修复 npm 的捆绑代码。`npm run check:release-tools` 会校验实际安装内容，未修复就失败；CI 和发布 job 都在审计之前应用并验证修复，不忽略任何审计告警。补丁只用于开发/发布工具，不进入用户安装的产品包。上游修复后应一起移除两个别名依赖、补丁脚本和流水线步骤。
+
+日常发布入口是 `.github/workflows/release.yml`。推送 main 后先调用完整 CI（质量检查、依赖审计、构建、真实 npm 包安装烟测、生产浏览器测试），通过后运行 semantic-release。也可在 main 上手动运行 Release workflow；没有符合发布条件的新提交时不会生成新版本。
+
+发布使用 Node.js 24 和 npm OIDC Trusted Publishing，无需在仓库长期保存 npm token。工作流只授予发布 job `contents: write` 与 `id-token: write`；不向 issue 或 PR 发送评论。发布串行执行，不取消正在发布的任务。
+
+semantic-release 根据 Conventional Commits 自动决定版本，更新发布工作区的 package.json / lockfile，生成该版本 CHANGELOG.md，构建并发布 npm 包、创建 `vX.Y.Z` 标签和 GitHub Release，附上 `.tgz` 与更新日志。完整历史以 [GitHub Releases](https://github.com/vvebing/codex-workbench/releases) 为准。版本号与生成日志不回写 main，避免自动提交循环及绕过分支保护；仓库里的版本号不是最新发行版查询接口。首次没有历史标签时，semantic-release 默认从 **1.0.0** 开始。
+
+### 首次启用（包所有者）
+
+1. 确认 GitHub 仓库和 npm 包名均为 `vvebing/codex-workbench` / `codex-workbench`，并拥有发布权限。名称以 npm 实时查询结果为准。
+2. 如 npm 尚无该包，先在干净检出中完成下方验证门禁，使用 npm 账户登录并执行 `npm publish --access public` 发布当前引导版本（0.1.0）；此操作会通过 prepack 构建产物。不要用空包占位。首次登录/2FA 由包所有者完成。
+3. 在 npm 包 Settings → Trusted publishing 中添加 GitHub Actions：owner `vvebing`、repository `codex-workbench`、workflow filename **`release.yml`**，environment 留空（工作流未指定 environment）。按 npm 当前有效期要求及时完成首次可信发布。
+4. 在 GitHub 启用 Actions，允许工作流创建发布标签与 Releases；配置 main 分支保护和 CI 必需检查，推荐只允许 squash 合并并使用 PR 标题作为提交信息。若标签规则限制创建 `v*`，需允许发布工作流执行。
+5. 合并一个符合规范的 `feat:` 提交，或在已包含发布提交的 main 上运行 Release workflow。检查 npm 的 `latest`、GitHub Release、provenance 和打包附件，最后执行 `npx codex-workbench@latest --port 5181` 验收。
+
+如已有合法发布版本，迁移前确认对应提交有正确的 `vX.Y.Z` 标签，不要为尚未发布的版本虚构标签。后续不手动 `npm version` 或 `npm publish`。
+
+官方配置依据：[npm Trusted Publishers](https://docs.npmjs.com/trusted-publishers/)、[semantic-release GitHub Actions](https://semantic-release.org/recipes/ci-configurations/github-actions/)。不要给 setup-node 设置 `registry-url`，以免生成的 npm 配置干扰 semantic-release 的 OIDC 认证。
+
+### 本地验包与预演
+
+```sh
+npm ci
+npm run patch:release-tools
+npm run check
+npm run build
+npm run test:package
+npm run release:dry-run
+```
+
+`test:package` 在临时目录安装真实 tarball，通过 npm exec 验证命令入口、帮助和版本，并从非项目目录验证端口、健康检查、SPA 页面和退出；使用 `--no-app-server`，不访问用户真实 Codex。`release:dry-run` 不发布，但仍需要远端仓库与认证，离线不能视为已验证发布。`npm pack` 自动构建；安装已发布包无需构建工具。运行依赖只有 `ws`，前端依赖已打包进静态文件。
+
+发布失败时先核对 npm 版本和 GitHub 标签是否已存在；npm 已发布版本不能覆盖。不要删除已发布标签重试同版本。部分成功的发布按 semantic-release 的错误输出完成恢复，并通过新的修复提交发布后继版本。
+
 ## 发布范围
 
 发行目标是单用户本机运行版本，不是互联网服务。保留现有按功能组织的源码、生成协议和分层测试；只交付构建所需源码或明确列出的运行产物。安全限制见 [SECURITY.md](../SECURITY.md)。
@@ -35,6 +76,7 @@
 
 ```sh
 npm ci
+npm run patch:release-tools
 npm audit --audit-level=low
 npm run check
 npm run build
