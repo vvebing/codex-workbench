@@ -932,13 +932,16 @@ for (const blocking of [false, true]) {
     } else {
       await expect(panel.getByRole("form")).toHaveCount(0);
       await expect(page.locator("[data-answer-record]").last()).toBeFocused();
-      expect(
-        JSON.stringify(
-          fixtureServer.requestLog.findLast(
-            (request) => request.method === "turn/start",
-          )?.input,
-        ),
-      ).toContain(titles.at(-1));
+      // The UI records the answer before the asynchronous RPC reaches the server.
+      await expect
+        .poll(() =>
+          JSON.stringify(
+            fixtureServer.requestLog.findLast(
+              (request) => request.method === "turn/start",
+            )?.input ?? [],
+          ),
+        )
+        .toContain(titles.at(-1));
     }
   });
 }
