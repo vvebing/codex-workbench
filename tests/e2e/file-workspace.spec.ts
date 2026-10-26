@@ -14,6 +14,14 @@ test.beforeEach(async ({ page }) => {
   writeDelay = 0;
   server = createMockServer({
     base64Files: {
+      ...(test.info().title.startsWith("file list scrolls")
+        ? Object.fromEntries(
+            Array.from({ length: 80 }, (_, index) => [
+              `${root}/scroll-file-${String(index).padStart(3, "0")}.txt`,
+              "dGVzdA==",
+            ]),
+          )
+        : {}),
       "/demo/atlas-web/screenshot.png":
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
     },
@@ -94,6 +102,45 @@ async function openReadme(page: Page) {
   await expect(workspace.locator(".view-lines")).toContainText("Demo project");
   return { panel, workspace };
 }
+
+test("file list scrolls independently of its toolbar and retains its position across tabs", async ({
+  page,
+}) => {
+  await openFirst(page);
+  await page.getByRole("button", { name: "打开项目面板" }).click();
+  const panel = page.getByRole("complementary", { name: "项目面板" });
+  const files = panel.getByRole("region", { name: "项目文件" });
+  const viewport = files.locator("[data-radix-scroll-area-viewport]");
+  const search = files.getByRole("textbox", { name: "搜索项目文件" });
+  await expect(
+    files.getByRole("button", { name: /^scroll-file-079.txt/ }),
+  ).toBeAttached();
+  expect(
+    await viewport.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  ).toBe(true);
+  const headerY = (await search.boundingBox())!.y;
+  await viewport.hover();
+  await page.mouse.wheel(0, 600);
+  await expect
+    .poll(() => viewport.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(100);
+  expect((await search.boundingBox())!.y).toBe(headerY);
+  await viewport.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(
+    files.getByRole("button", { name: /^scroll-file-079.txt/ }),
+  ).toBeInViewport();
+  const position = await viewport.evaluate((element) => element.scrollTop);
+  const tabs = panel.getByRole("tablist", { name: "项目工具" });
+  await tabs.getByRole("tab", { name: "Git", exact: true }).click();
+  await tabs.getByRole("tab", { name: "文件", exact: true }).click();
+  await expect
+    .poll(() => viewport.evaluate((element) => element.scrollTop))
+    .toBe(position);
+});
 
 async function edit(page: Page, text: string) {
   const editor = page

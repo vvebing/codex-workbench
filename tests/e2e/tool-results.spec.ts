@@ -38,7 +38,27 @@ const longOutput =
     { length: 120 },
     (_, i) => `完整记录 ${i}: ${"unbroken".repeat(30)}`,
   ).join("\n") + "\nFINAL_OUTPUT_SENTINEL";
+const emptyCollaboration: Extract<ThreadItem, { type: "collabAgentToolCall" }> =
+  {
+    type: "collabAgentToolCall",
+    id: "empty-collaboration",
+    tool: "wait",
+    status: "completed",
+    senderThreadId: "mock-thread-010",
+    receiverThreadIds: [],
+    prompt: null,
+    model: null,
+    reasoningEffort: null,
+    agentsStates: {},
+  };
 const crossTypeItems: ThreadItem[] = [
+  emptyCollaboration,
+  { ...emptyCollaboration, id: "whitespace-collaboration", prompt: " \n " },
+  {
+    ...emptyCollaboration,
+    id: "linked-collaboration",
+    receiverThreadIds: ["agent-result"],
+  },
   { type: "imageView", id: "local-image-view", path: "/demo/reference.png" },
   {
     type: "imageGeneration",
@@ -328,6 +348,31 @@ test.beforeEach(async ({ page }) => {
 });
 test.afterEach(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
+});
+
+test("empty operations have no disclosure or copy action while agent links remain available", async ({
+  page,
+}) => {
+  await page.goto("/?env=local&session=mock-thread-010");
+  for (const id of ["empty-collaboration", "whitespace-collaboration"]) {
+    const tool = page.locator(`[data-reading-id="${id}"]`);
+    await expect(tool).toBeVisible();
+    await expect(tool).toHaveAttribute("data-expandable", "false");
+    await expect(tool.locator("summary")).toHaveCount(0);
+    await expect(tool.getByRole("button", { name: "复制输出" })).toHaveCount(0);
+  }
+  const linked = page.locator('[data-reading-id="linked-collaboration"]');
+  await linked.locator(":scope > summary").click();
+  await expect(
+    linked.getByRole("button", { name: /查看子代理/ }),
+  ).toBeVisible();
+  await expect(linked.getByRole("button", { name: "复制输出" })).toHaveCount(0);
+  const populated = page.locator('[data-reading-id="collab-markdown"]');
+  await populated.locator(":scope > summary").click();
+  await expect(
+    populated.getByRole("button", { name: "复制输出" }),
+  ).toBeVisible();
+  await expect(populated).toContainText("Agent findings");
 });
 
 for (const width of [1440, 390]) {

@@ -1,6 +1,29 @@
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
 import type { TurnStatus } from "../../generated/v2/TurnStatus";
 
+/** Include rich results and input arguments, not only the plain-text preview. */
+export function hasOperationContent(
+  item: ThreadItem,
+  content: string,
+  progress?: string[],
+  output?: string,
+): boolean {
+  return (
+    !!content.trim() ||
+    !!output?.trim() ||
+    !!progress?.some((entry) => entry.trim()) ||
+    item.type === "mcpToolCall" ||
+    item.type === "dynamicToolCall" ||
+    (item.type === "fileChange" && item.changes.length > 0) ||
+    (item.type === "imageGeneration" &&
+      !!(item.result || item.savedPath || item.failure)) ||
+    (item.type === "webSearch" && !!item.results?.length) ||
+    (item.type === "functionCallOutput" &&
+      Array.isArray(item.output) &&
+      item.output.length > 0)
+  );
+}
+
 /** File changes and durations shown as 0.0 seconds do not need automatic motion. */
 export function isInstantOperation(item: ThreadItem): boolean {
   if (item.type === "fileChange") return true;

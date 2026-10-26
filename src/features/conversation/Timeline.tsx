@@ -65,6 +65,7 @@ import {
 import { OperationDetails } from "./OperationDetails";
 import {
   operationStatus,
+  hasOperationContent,
   commandTitle,
   isInstantOperation,
   type OperationGroupContext,
@@ -314,6 +315,38 @@ const ToolItem = memo(function ToolItem({
           <Brain size={14} className="shrink-0" />
         )}
         <span>正在思考</span>
+      </div>
+    );
+  }
+  const hasAgentLinks =
+    !!onInspectAgent &&
+    ((item.type === "collabAgentToolCall" &&
+      item.receiverThreadIds.length > 0) ||
+      item.type === "subAgentActivity");
+  if (!hasOperationContent(item, content, progress, output) && !hasAgentLinks) {
+    return (
+      <div
+        data-slot="conversation-tool"
+        data-reading-id={item.id}
+        data-status={status}
+        data-item-type={item.type}
+        data-expandable="false"
+        className={`my-1 flex w-fit min-w-0 max-w-full items-center gap-2 rounded-md px-2 py-1.5 text-caption ${status === "failed" ? "text-danger" : "text-muted"}`}
+      >
+        {active ? (
+          <LoaderCircle
+            size={14}
+            className="shrink-0 animate-spin"
+            aria-label="执行中"
+          />
+        ) : status === "failed" ? (
+          <CircleAlert size={14} className="shrink-0" aria-label="失败" />
+        ) : (
+          <Icon size={14} className="shrink-0" />
+        )}
+        <span className="min-w-0 truncate" title={title}>
+          {title}
+        </span>
       </div>
     );
   }

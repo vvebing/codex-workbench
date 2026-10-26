@@ -79,17 +79,11 @@ export function Details({
           value="files"
           className="min-h-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col"
         >
-          <ResourceScrollArea
-            key={JSON.stringify([cacheScope, "files", thread?.cwd])}
-            scope={cacheScope}
-            resource={JSON.stringify(["files", thread?.cwd])}
-          >
-            {thread ? (
-              <FilesPanel thread={thread} />
-            ) : (
-              <p className="text-muted">选择会话查看项目文件。</p>
-            )}
-          </ResourceScrollArea>
+          {thread ? (
+            <FilesPanel thread={thread} />
+          ) : (
+            <p className="p-4 text-muted">选择会话查看项目文件。</p>
+          )}
         </Tabs.Content>
         <Tabs.Content
           value="search"

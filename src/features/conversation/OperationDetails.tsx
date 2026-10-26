@@ -8,6 +8,7 @@ import { ToolText } from "./ToolText";
 import { LocalMessageImage } from "./MessageImage";
 import { executionStatusLabel } from "./model";
 import { AnimatedDisclosure } from "./AnimatedDisclosure";
+import { hasOperationContent } from "./operation";
 
 function StructuredResult({ value }: { value: unknown }) {
   return (
@@ -247,9 +248,10 @@ export function OperationDetails({
         () => setCopyState("复制失败，请重试"),
       );
   };
+  if (!hasOperationContent(item, content, progress, output)) return null;
   return (
     <div className="relative min-w-0 space-y-3 py-3 text-foreground [overflow-wrap:anywhere]">
-      <div className="absolute top-4 right-1 flex items-center gap-2 z-1">
+      <div className="absolute top-6 right-2 flex items-center gap-2 z-1">
         <span role="status" className="text-xs text-muted">
           {copyState}
         </span>
