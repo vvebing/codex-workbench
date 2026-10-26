@@ -1,5 +1,11 @@
 import type { RpcCall } from "../../lib/rpc";
 import {
+  fileTextInfo,
+  MAX_FILE_BYTES,
+  MAX_EDITABLE_FILE_BYTES,
+} from "./file-limits";
+export { MAX_FILE_BYTES } from "./file-limits";
+import {
   readGitComparison,
   type GitComparison,
   type GitComparisonRequest,
@@ -12,6 +18,8 @@ import {
   fileBufferKey,
   readFileBuffers,
   saveFileBuffers,
+  readLargeFileBuffers,
+  saveLargeFileBuffers,
   type SavedFileBuffer,
 } from "./buffer-recovery";
 
@@ -40,6 +48,8 @@ export interface FileDocument extends OpenFileRequest {
   kind?: "image";
   imageUrl?: string;
   recovered?: boolean;
+  byteLength?: number;
+  largeFile?: boolean;
 }
 export interface FileWorkspaceSnapshot {
   documents: FileDocument[];
@@ -49,8 +59,14 @@ export interface FileWorkspaceSnapshot {
   changedPaths?: string[];
   openRevision: number;
   recoveryError?: string;
+  recoveryPending?: boolean;
+  revealRequest?: {
+    revision: number;
+    path: string;
+    cwd: string;
+    threadId?: string;
+  };
 }
-export const MAX_FILE_BYTES = 256 * 1024;
 
 export function absoluteFilePath(path: string, cwd?: string): string {
   const input = path.replace(/\\/g, "/");
@@ -73,16 +89,19 @@ export function absoluteFilePath(path: string, cwd?: string): string {
 }
 function encode(text: string): string {
   let binary = "";
-  for (const byte of new TextEncoder().encode(text))
-    binary += String.fromCharCode(byte);
+  const bytes = new TextEncoder().encode(text);
+  for (let start = 0; start < bytes.length; start += 32768)
+    binary += String.fromCharCode(...bytes.subarray(start, start + 32768));
   return btoa(binary);
 }
 function decode(data: string): string {
   if (data.length > Math.ceil(MAX_FILE_BYTES / 3) * 4)
-    throw new Error("文件超过 256 KB，无法在此工作区打开。");
+    throw new Error(
+      "文件超过 8 MB，无法在此工作区打开。请使用本地编辑器查看。",
+    );
   const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
   if (bytes.length > MAX_FILE_BYTES || bytes.includes(0))
-    throw new Error("二进制或过大的文件无法编辑。");
+    throw new Error("二进制或超过 8 MB 的文件无法打开。");
   return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
     bytes,
   );
@@ -111,6 +130,14 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
   private recoveredEndpoints = new Set<string>();
   private savedBuffers = new Map<string, SavedFileBuffer[]>();
   private recoveryErrors = new Map<string, string | undefined>();
+  private largeRecoveryErrors = new Map<string, string | undefined>();
+  private recoveryFlights = new Map<string, Promise<void>>();
+  private largeBuffers = new Map<string, SavedFileBuffer[]>();
+  private recoveryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private recoveryWrites = new Map<string, Promise<void>>();
+  private recoveryVersions = new Map<string, number>();
+  private pendingRecovery = new Set<string>();
+  private touchedPaths = new Set<string>();
   constructor(
     private connection: ConnectionStore,
     private persistenceScope = "",
@@ -134,7 +161,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
         this.reads.set(id, (this.reads.get(id) ?? 0) + 1);
         if (doc.loading) this.documents.set(id, { ...doc, loading: false });
       }
-      this.publish();
+      this.publish({ revealRequest: undefined });
       if (state.status === "connected")
         for (const doc of this.state.documents) {
           this.watch(doc);
@@ -154,6 +181,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
       this.urls.set(id, url);
       this.documents.set(id, {
         ...buffer,
+        ...fileTextInfo(buffer.text),
         id,
         navigationRevision: 0,
         dirty: true,
@@ -174,9 +202,66 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
         recoveryError: result.error,
       });
     }
+    if (typeof indexedDB === "undefined") return;
+    // Wait for asynchronous recovery before writing a new snapshot. Opening a
+    // file also waits, so disk reads cannot replace an unhydrated dirty buffer.
+    const flight = readLargeFileBuffers(
+      fileBufferKey(this.persistenceScope, url),
+    )
+      .then((large) => {
+        try {
+          const paths = localStorage.getItem(
+            `${fileBufferKey(this.persistenceScope, url)}:large-paths`,
+          );
+          if (paths !== null) {
+            const allowed: unknown = JSON.parse(paths);
+            if (
+              Array.isArray(allowed) &&
+              allowed.every((path) => typeof path === "string")
+            )
+              large.buffers = large.buffers.filter((buffer) =>
+                allowed.includes(buffer.path),
+              );
+          }
+        } catch {
+          /* IndexedDB recovery remains available if localStorage is blocked. */
+        }
+        this.largeRecoveryErrors.set(url, large.error);
+        this.largeBuffers.set(url, large.buffers);
+        for (const buffer of large.buffers) {
+          const id = JSON.stringify([url, buffer.path]);
+          if (this.documents.has(id) || this.touchedPaths.has(id)) continue;
+          this.urls.set(id, url);
+          this.documents.set(id, {
+            ...buffer,
+            ...fileTextInfo(buffer.text),
+            id,
+            navigationRevision: 0,
+            dirty: true,
+            loading: false,
+            saving: false,
+            readonly: false,
+            conflict: false,
+            recovered: true,
+          });
+        }
+        if (large.buffers.length) this.savedBuffers.delete(url);
+      })
+      .finally(() => {
+        this.recoveryFlights.delete(url);
+        const currentUrl =
+          this.connection.getSnapshot().url || this.initialEndpoint;
+        if (currentUrl === url) {
+          const first = [...this.documents.values()].find(
+            (doc) => this.urls.get(doc.id) === url,
+          );
+          this.publish({ activeId: this.state.activeId ?? first?.id });
+        }
+      });
+    this.recoveryFlights.set(url, flight);
   }
   private persistBuffers(url: string) {
-    if (!url) return;
+    if (!url || this.recoveryFlights.has(url)) return;
     const buffers: SavedFileBuffer[] = [...this.documents.values()]
       .filter(
         (doc) =>
@@ -204,10 +289,83 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     )
       return;
     this.savedBuffers.set(url, buffers);
+    let small = buffers.filter(
+      (buffer) =>
+        buffer.text.length <= 256 * 1024 &&
+        buffer.baseText.length <= 256 * 1024,
+    );
+    // Keep localStorage writes bounded; larger sets use structured cloning.
+    if (
+      small.reduce(
+        (sum, buffer) => sum + buffer.text.length + buffer.baseText.length,
+        0,
+      ) >
+      1800 * 1024
+    )
+      small = [];
+    const large = buffers.filter((buffer) => !small.includes(buffer));
     this.recoveryErrors.set(
       url,
-      saveFileBuffers(fileBufferKey(this.persistenceScope, url), buffers),
+      saveFileBuffers(fileBufferKey(this.persistenceScope, url), small),
     );
+    const previousLarge = this.largeBuffers.get(url) ?? [];
+    if (
+      large.length === previousLarge.length &&
+      large.every((buffer, index) =>
+        Object.entries(buffer).every(
+          ([key, value]) =>
+            previousLarge[index][key as keyof SavedFileBuffer] === value,
+        ),
+      )
+    )
+      return;
+    this.largeBuffers.set(url, large);
+    try {
+      // A small synchronous manifest prevents discarded/saved drafts from
+      // reappearing if the page exits before the asynchronous delete completes.
+      localStorage.setItem(
+        `${fileBufferKey(this.persistenceScope, url)}:large-paths`,
+        JSON.stringify(large.map((buffer) => buffer.path)),
+      );
+    } catch {
+      /* The existing recovery error reports unavailable browser storage. */
+    }
+    this.pendingRecovery.add(url);
+    const version = (this.recoveryVersions.get(url) ?? 0) + 1;
+    this.recoveryVersions.set(url, version);
+    clearTimeout(this.recoveryTimers.get(url));
+    this.recoveryTimers.set(
+      url,
+      setTimeout(
+        () => this.writeRecovery(url, version),
+        large.length ? 400 : 0,
+      ),
+    );
+  }
+  private writeRecovery(url: string, version: number) {
+    this.recoveryTimers.delete(url);
+    const buffers = this.largeBuffers.get(url) ?? [];
+    const previous = this.recoveryWrites.get(url) ?? Promise.resolve();
+    const write = previous.then(async () => {
+      if (version !== this.recoveryVersions.get(url)) return;
+      const error = await saveLargeFileBuffers(
+        fileBufferKey(this.persistenceScope, url),
+        buffers,
+      );
+      if (version !== this.recoveryVersions.get(url)) return;
+      this.largeRecoveryErrors.set(url, error);
+      this.pendingRecovery.delete(url);
+      this.publish();
+    });
+    this.recoveryWrites.set(url, write);
+  }
+  /** Start pending writes immediately when the page is hidden or exiting. */
+  flushRecovery() {
+    for (const [url, timer] of this.recoveryTimers) {
+      clearTimeout(timer);
+      this.writeRecovery(url, this.recoveryVersions.get(url)!);
+    }
+    return Promise.all(this.recoveryWrites.values());
   }
   private publish(patch: Partial<FileWorkspaceSnapshot> = {}) {
     const url = this.connection.getSnapshot().url || this.initialEndpoint || "";
@@ -215,7 +373,9 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     this.update({
       ...this.state,
       ...patch,
-      recoveryError: this.recoveryErrors.get(url),
+      recoveryError:
+        this.recoveryErrors.get(url) ?? this.largeRecoveryErrors.get(url),
+      recoveryPending: this.pendingRecovery.has(url),
       documents: [...this.documents.values()].filter(
         (doc) => this.urls.get(doc.id) === url,
       ),
@@ -269,7 +429,8 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
       const interval =
         !this.foreground || !this.state.visible
           ? 12
-          : this.state.activeId === doc.id
+          : this.state.activeId === doc.id &&
+              !this.documents.get(doc.id)?.largeFile
             ? 1
             : 6;
       if (ticks % interval === 0) void this.read(doc.id, false);
@@ -369,6 +530,11 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
   async open(request: OpenFileRequest): Promise<void> {
     const path = absoluteFilePath(request.path, request.cwd);
     const url = this.connection.getSnapshot().url || this.initialEndpoint || "";
+    const restore = this.recoveryFlights.get(url);
+    if (restore) await restore;
+    const currentUrl =
+      this.connection.getSnapshot().url || this.initialEndpoint || "";
+    if (url !== currentUrl) throw new Error("连接已变化，请重新打开文件。");
     const id = JSON.stringify([url, path]);
     const existing = this.documents.get(id);
     const navigationRevision = this.state.openRevision + 1;
@@ -420,6 +586,19 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
       this.validateActive();
     }
   }
+  revealInTree(id: string): boolean {
+    const doc = this.state.documents.find((item) => item.id === id);
+    if (!doc?.cwd) return false;
+    this.publish({
+      revealRequest: {
+        revision: (this.state.revealRequest?.revision ?? 0) + 1,
+        path: doc.path,
+        cwd: doc.cwd,
+        threadId: doc.threadId,
+      },
+    });
+    return true;
+  }
   setVisible(visible: boolean) {
     if (visible === this.state.visible) return;
     this.publish({ visible });
@@ -431,6 +610,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     if (restored) this.validateActive();
   }
   setPageVisible(visible: boolean) {
+    if (!visible) void this.flushRecovery();
     const restored = visible && !this.pageVisible;
     this.pageVisible = visible;
     if (restored) this.validateActive();
@@ -448,11 +628,22 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
   setText(id: string, text: string) {
     const doc = this.documents.get(id);
     if (!doc || doc.readonly || doc.loading) return;
+    this.touchedPaths.add(id);
     // Keep the original BOM and newline convention when textarea normalizes them.
     if (doc.baseText.startsWith("\ufeff") && !text.startsWith("\ufeff"))
       text = `\ufeff${text}`;
     if (doc.baseText.includes("\r\n")) text = text.replace(/\r?\n/g, "\r\n");
-    this.patch(id, { text, dirty: text !== doc.baseText, preview: false });
+    const info = fileTextInfo(text);
+    this.patch(id, {
+      text,
+      ...info,
+      dirty: text !== doc.baseText,
+      preview: false,
+      error:
+        info.byteLength > MAX_EDITABLE_FILE_BYTES
+          ? "当前内容超过 5 MB 编辑上限，请撤销或缩减内容后保存。"
+          : undefined,
+    });
   }
   private read(
     id: string,
@@ -520,6 +711,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
         return true;
       }
       const text = decode(result.dataBase64);
+      const info = fileTextInfo(text);
       this.encoded.set(id, result.dataBase64);
       const latest = this.documents.get(id)!;
       if (!discard && latest.dirty)
@@ -531,11 +723,12 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
       else
         this.patch(id, {
           text,
+          ...info,
           baseText: text,
           dirty: false,
           conflict: false,
           loading: false,
-          readonly: false,
+          readonly: info.byteLength > MAX_EDITABLE_FILE_BYTES,
           diskText: undefined,
           recovered: false,
         });
@@ -567,6 +760,15 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     const doc = this.documents.get(id);
     if (!doc || !doc.dirty || doc.saving || doc.loading || doc.readonly) return;
     if (
+      (doc.byteLength ?? fileTextInfo(doc.text).byteLength) >
+      MAX_EDITABLE_FILE_BYTES
+    ) {
+      this.patch(id, {
+        error: "当前内容超过 5 MB 编辑上限，请撤销或缩减内容后保存。",
+      });
+      return;
+    }
+    if (
       [...this.removals].some(
         (removal) =>
           removal.url === this.urls.get(id) &&
@@ -594,18 +796,20 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
         dataBase64: string;
       }>("fs/readFile", { path: doc.path });
       check();
-      if (decode(result.dataBase64) !== doc.baseText) {
-        this.patch(id, { conflict: true, diskText: decode(result.dataBase64) });
+      const diskText = decode(result.dataBase64);
+      if (diskText !== doc.baseText) {
+        this.patch(id, { conflict: true, diskText });
         throw new Error("文件已被外部修改。请重新加载并合并后保存。");
       }
+      const dataBase64 = encode(doc.text);
       this.uncertainWrites.add(id);
       await this.connection.client.request("fs/writeFile", {
         path: doc.path,
-        dataBase64: encode(doc.text),
+        dataBase64,
       });
       check();
       this.uncertainWrites.delete(id);
-      this.encoded.set(id, encode(doc.text));
+      this.encoded.set(id, dataBase64);
       this.patch(id, {
         baseText: doc.text,
         recovered: false,
@@ -620,11 +824,13 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     } catch (error) {
       this.patch(id, { error: errorMessage(error), conflict: true });
     } finally {
+      await this.flushRecovery();
       this.patch(id, { saving: false });
     }
   }
   close(id: string) {
     if (this.documents.get(id)?.saving) return;
+    this.touchedPaths.add(id);
     this.watches.get(id)?.();
     this.watches.delete(id);
     this.flights.delete(id);
@@ -641,7 +847,10 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     });
   }
   hasDirty() {
-    return [...this.documents.values()].some((doc) => doc.dirty || doc.saving);
+    return (
+      this.pendingRecovery.size > 0 ||
+      [...this.documents.values()].some((doc) => doc.dirty || doc.saving)
+    );
   }
   private async missing(path: string, check: () => void) {
     try {
@@ -683,6 +892,8 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     }
   }
   createFile(path: string, text = "") {
+    if (fileTextInfo(text).byteLength > MAX_EDITABLE_FILE_BYTES)
+      return Promise.reject(new Error("创建文件的内容不能超过 5 MB。"));
     path = absoluteFilePath(path);
     return this.mutate(
       ["fs/writeFile", { path, dataBase64: encode(text) }],

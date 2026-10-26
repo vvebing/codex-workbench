@@ -287,6 +287,20 @@ function AppView() {
     },
     [panelKey],
   );
+  const revealedRevision = useRef<typeof files.revealRequest>(undefined);
+  useEffect(() => {
+    const request = files.revealRequest;
+    if (!request || request === revealedRevision.current) return;
+    revealedRevision.current = request;
+    if (
+      !thread ||
+      normalizeProjectDirectory(request.cwd) !==
+        normalizeProjectDirectory(thread.cwd)
+    )
+      return;
+    setProjectTab("files");
+    setDetails(true);
+  }, [files.revealRequest, thread, setProjectTab]);
   const pageTitle = browserTitle({
     thread: route.status === "ready" ? thread : undefined,
     draft: !!(thread && sessions.localDrafts[thread.id]),

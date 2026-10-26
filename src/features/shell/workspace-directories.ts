@@ -15,6 +15,8 @@ export class WorkspaceDirectories {
   revision = 0;
   fileRevision?: number;
   selected?: string;
+  followedEditorPath?: string;
+  handledReveal?: object;
   selectedDirectory = false;
   scrollTop = 0;
   private requests = new Map<string, Promise<void>>();

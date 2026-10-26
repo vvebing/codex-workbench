@@ -3,6 +3,9 @@ import { FileWorkspaceStore } from "../../src/features/files/store";
 import {
   fileBufferKey,
   readFileBuffers,
+  readLargeFileBuffers,
+  saveLargeFileBuffers,
+  MAX_RECOVERY_TEXT_LENGTH,
 } from "../../src/features/files/buffer-recovery";
 import type { ConnectionStore } from "../../src/features/connection/store";
 
@@ -140,4 +143,149 @@ it("rejects malformed, oversized and unsupported recovery records", () => {
     expect(readFileBuffers(key).buffers).toEqual([]);
     expect(readFileBuffers(key).error).toBeTruthy();
   }
+});
+
+function indexedRecovery() {
+  const records = new Map<string, unknown>();
+  let failWrite = false;
+  const close = vi.fn();
+  vi.stubGlobal("indexedDB", {
+    open: () => {
+      const request: Record<string, unknown> = {};
+      const database = {
+        close,
+        transaction: () => {
+          const transaction: Record<string, unknown> = {};
+          const operation = (kind: string, key: string, value?: unknown) => {
+            const operationRequest: Record<string, unknown> = {};
+            Promise.resolve().then(() => {
+              if (failWrite && kind !== "get") {
+                transaction.error = new Error("QuotaExceededError");
+                (transaction.onabort as () => void)?.();
+                return;
+              }
+              if (kind === "put") records.set(key, structuredClone(value));
+              if (kind === "delete") records.delete(key);
+              operationRequest.result = records.get(key);
+              (operationRequest.onsuccess as () => void)?.();
+              (transaction.oncomplete as () => void)?.();
+            });
+            return operationRequest;
+          };
+          transaction.objectStore = () => ({
+            get: (key: string) => operation("get", key),
+            put: (value: unknown, key: string) => operation("put", key, value),
+            delete: (key: string) => operation("delete", key),
+          });
+          return transaction;
+        },
+      };
+      request.result = database;
+      Promise.resolve().then(() => (request.onsuccess as () => void)?.());
+      return request;
+    },
+  });
+  return {
+    records,
+    close,
+    failWrites: () => {
+      failWrite = true;
+    },
+  };
+}
+
+it("persists large structured-clone buffers, isolates endpoints and deletes cleared copies", async () => {
+  const db = indexedRecovery();
+  const key = fileBufferKey("environment", "ws://localhost:4501");
+  const buffer = {
+    path: "/project/large.txt",
+    text: "x".repeat(1024 * 1024 + 1),
+    baseText: "baseline",
+  };
+  expect(await saveLargeFileBuffers(key, [buffer])).toBeUndefined();
+  expect((await readLargeFileBuffers(key)).buffers).toEqual([buffer]);
+  expect(
+    (
+      await readLargeFileBuffers(
+        fileBufferKey("another", "ws://localhost:4501"),
+      )
+    ).buffers,
+  ).toEqual([]);
+  expect(await saveLargeFileBuffers(key, [])).toBeUndefined();
+  expect((await readLargeFileBuffers(key)).buffers).toEqual([]);
+  expect(db.close).toHaveBeenCalledTimes(5);
+});
+
+it("reports failed large writes and rejects malformed or oversized indexed records", async () => {
+  const db = indexedRecovery();
+  const buffer = {
+    path: "/project/large.txt",
+    text: "edited",
+    baseText: "original",
+  };
+  db.failWrites();
+  expect(await saveLargeFileBuffers("key", [buffer])).toContain("未能保存");
+  db.records.set("key", {
+    version: 1,
+    buffers: [{ ...buffer, text: "x".repeat(MAX_RECOVERY_TEXT_LENGTH + 1) }],
+  });
+  expect(await readLargeFileBuffers("key")).toMatchObject({
+    buffers: [],
+    error: expect.stringContaining("无法读取"),
+  });
+  expect(
+    await saveLargeFileBuffers("key", [{ ...buffer, path: "relative" }]),
+  ).toContain("未能保存");
+});
+
+it("keeps small recovery usable without IndexedDB and warns when large recovery is unavailable", async () => {
+  vi.stubGlobal("indexedDB", undefined);
+  expect(await readLargeFileBuffers("key")).toEqual({ buffers: [] });
+  expect(await saveLargeFileBuffers("key", [])).toBeUndefined();
+  expect(
+    await saveLargeFileBuffers("key", [
+      { path: "/project/large.txt", text: "edited", baseText: "original" },
+    ]),
+  ).toContain("未能保存");
+});
+
+it("debounces large store drafts, restores them before opening and removes saved copies", async () => {
+  const db = indexedRecovery();
+  const original = "line\n".repeat(220_000);
+  const first = setup("environment", "ws://localhost:4501", original);
+  await first.files.open({ path: "/project/large.txt" });
+  const id = first.files.getSnapshot().activeId!;
+  first.files.setText(id, `first edit\n${original}`);
+  first.files.setText(id, `last edit\n${original}`);
+  expect(first.files.getSnapshot().recoveryPending).toBe(true);
+  expect(db.records.size).toBe(0);
+  await first.files.flushRecovery();
+  expect(first.files.getSnapshot().recoveryPending).toBe(false);
+  const fresh = setup("environment", "ws://localhost:4501", original);
+  await fresh.files.open({ path: "/project/large.txt" });
+  expect(fresh.files.getSnapshot().documents[0]).toMatchObject({
+    text: `last edit\n${original}`,
+    recovered: true,
+    largeFile: true,
+  });
+  await fresh.files.save(id);
+  expect(db.records.size).toBe(0);
+  expect(fresh.files.getSnapshot().recoveryPending).toBe(false);
+});
+
+it("does not restore discarded large drafts even before asynchronous cleanup completes", async () => {
+  indexedRecovery();
+  const original = "line\n".repeat(220_000);
+  const first = setup("environment", "ws://localhost:4501", original);
+  await first.files.open({ path: "/project/large.txt" });
+  const id = first.files.getSnapshot().activeId!;
+  first.files.setText(id, `discarded\n${original}`);
+  await first.files.flushRecovery();
+  first.files.close(id);
+  const fresh = setup("environment", "ws://localhost:4501", original);
+  await fresh.files.open({ path: "/project/large.txt" });
+  expect(fresh.files.getSnapshot().documents[0]).toMatchObject({
+    text: original,
+    dirty: false,
+  });
 });

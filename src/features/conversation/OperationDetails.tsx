@@ -251,8 +251,8 @@ export function OperationDetails({
   if (!hasOperationContent(item, content, progress, output)) return null;
   return (
     <div className="relative min-w-0 space-y-3 py-3 text-foreground [overflow-wrap:anywhere]">
-      <div className="absolute top-6 right-2 flex items-center gap-2 z-1">
-        <span role="status" className="text-xs text-muted">
+      <div hidden className="absolute top-6 right-2 items-center gap-2 z-1">
+        <span role="status" className="text-xs text-muted empty:hidden">
           {copyState}
         </span>
         <IconButton size="sm" label="复制输出" onClick={copy}>

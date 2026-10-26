@@ -20,9 +20,9 @@ const SIZE_KEY = "codex-workbench-editor-ratio";
 function savedRatio() {
   try {
     const ratio = Number(localStorage.getItem(SIZE_KEY));
-    return ratio >= 35 && ratio <= 55 ? ratio : 42;
+    return ratio >= 30 && ratio <= 70 ? ratio : 50;
   } catch {
-    return 42;
+    return 50;
   }
 }
 
@@ -89,7 +89,7 @@ export function ConversationWorkspace({ children }: { children: ReactNode }) {
         direction="horizontal"
         ref={group}
         onLayout={(sizes) => {
-          if (mode === "split" && sizes[0] >= 35 && sizes[0] <= 55) {
+          if (mode === "split" && sizes[0] >= 30 && sizes[0] <= 70) {
             ratio.current = sizes[0];
             try {
               localStorage.setItem(SIZE_KEY, String(sizes[0]));
@@ -103,8 +103,8 @@ export function ConversationWorkspace({ children }: { children: ReactNode }) {
           id="chat"
           order={1}
           defaultSize={100}
-          minSize={mode === "split" ? 35 : 0}
-          maxSize={mode === "split" ? 55 : 100}
+          minSize={mode === "split" ? 30 : 0}
+          maxSize={mode === "split" ? 70 : 100}
         >
           <section
             className="@container/conversation flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
@@ -120,6 +120,14 @@ export function ConversationWorkspace({ children }: { children: ReactNode }) {
         <PanelResizeHandle
           className="conversation-editor-resize"
           aria-label="调整会话与编辑器宽度"
+          title="拖动调整宽度，双击或按 Enter 恢复均分"
+          onDoubleClick={() => group.current?.setLayout([50, 50])}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && mode === "split") {
+              event.preventDefault();
+              group.current?.setLayout([50, 50]);
+            }
+          }}
           disabled={mode !== "split"}
           style={mode === "split" ? undefined : { display: "none" }}
         />
@@ -127,7 +135,7 @@ export function ConversationWorkspace({ children }: { children: ReactNode }) {
           id="editor"
           order={2}
           defaultSize={0}
-          minSize={mode === "split" ? 45 : 0}
+          minSize={mode === "split" ? 30 : 0}
         >
           <FileWorkspace
             canSplit={canSplit}

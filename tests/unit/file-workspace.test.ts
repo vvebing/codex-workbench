@@ -51,6 +51,23 @@ function setup(text = "original") {
   };
 }
 describe("file workspace", () => {
+  it("publishes repeated explicit reveal requests and clears them when changing environments", async () => {
+    const { files, switchTo } = setup();
+    await files.open({ path: "/work/a.txt", cwd: "/work", threadId: "thread" });
+    const id = files.getSnapshot().activeId!;
+    expect(files.revealInTree(id)).toBe(true);
+    expect(files.getSnapshot().revealRequest).toMatchObject({
+      revision: 1,
+      path: "/work/a.txt",
+      cwd: "/work",
+      threadId: "thread",
+    });
+    files.revealInTree(id);
+    expect(files.getSnapshot().revealRequest?.revision).toBe(2);
+    expect(files.revealInTree("missing")).toBe(false);
+    switchTo("ws://b");
+    expect(files.getSnapshot().revealRequest).toBeUndefined();
+  });
   it("previews binary images without decoding text or permitting writes", async () => {
     const { files, request } = setup();
     const data = btoa("\x89PNG\r\n\x1a\n" + "a".repeat(300 * 1024));

@@ -149,8 +149,9 @@ export function createMockServer(options: MockOptions = {}) {
   const gitBaselines = new Map<string, string>();
   const gitBlobs = new Map<string, string>();
   const files = new Map<string, string>();
-  for (const path of Object.keys(options.base64Files ?? {}))
-    files.set(path, "");
+  const fileBytes = new Map(Object.entries(options.base64Files ?? {}));
+  for (const [path, dataBase64] of fileBytes)
+    files.set(path, Buffer.from(dataBase64, "base64").toString("utf8"));
   const directories = new Set([
     "/",
     "/demo",
@@ -1015,8 +1016,8 @@ export function createMockServer(options: MockOptions = {}) {
         }
         if (method === "fs/readFile") {
           const path = fsPath(p.path);
-          if (options.base64Files?.[path])
-            return reply(id, { dataBase64: options.base64Files[path] }, method);
+          if (fileBytes.has(path))
+            return reply(id, { dataBase64: fileBytes.get(path)! }, method);
           const text = files.get(path);
           if (text === undefined)
             return fail(id, "ENOENT: No such file or directory");
@@ -1049,6 +1050,10 @@ export function createMockServer(options: MockOptions = {}) {
             return fail(id, "EISDIR: Path is a directory");
           if (typeof p.dataBase64 !== "string")
             return fail(id, "Expected base64 file content");
+          fileBytes.set(
+            path,
+            Buffer.from(p.dataBase64, "base64").toString("base64"),
+          );
           files.set(path, Buffer.from(p.dataBase64, "base64").toString("utf8"));
           changed(path);
           return reply(id, {}, method);
@@ -1087,9 +1092,17 @@ export function createMockServer(options: MockOptions = {}) {
               if (entry === source || entry.startsWith(`${source}/`))
                 directories.add(destination + entry.slice(source.length));
             for (const [entry, text] of [...files])
-              if (entry.startsWith(`${source}/`))
-                files.set(destination + entry.slice(source.length), text);
-          } else files.set(destination, files.get(source)!);
+              if (entry.startsWith(`${source}/`)) {
+                const target = destination + entry.slice(source.length);
+                files.set(target, text);
+                if (fileBytes.has(entry))
+                  fileBytes.set(target, fileBytes.get(entry)!);
+              }
+          } else {
+            files.set(destination, files.get(source)!);
+            if (fileBytes.has(source))
+              fileBytes.set(destination, fileBytes.get(source)!);
+          }
           changed(destination);
           return reply(id, {}, method);
         }
@@ -1106,8 +1119,10 @@ export function createMockServer(options: MockOptions = {}) {
           )
             return fail(id, "ENOTEMPTY: Directory is not empty");
           for (const entry of [...files.keys()])
-            if (entry === path || entry.startsWith(`${path}/`))
+            if (entry === path || entry.startsWith(`${path}/`)) {
               files.delete(entry);
+              fileBytes.delete(entry);
+            }
           for (const entry of [...directories])
             if (entry === path || entry.startsWith(`${path}/`))
               directories.delete(entry);
@@ -2275,6 +2290,7 @@ export function createMockServer(options: MockOptions = {}) {
     setFile(path: string, text: string) {
       path = fsPath(path);
       files.set(path, text);
+      fileBytes.delete(path);
       changed(path);
     },
     fileText(path: string) {

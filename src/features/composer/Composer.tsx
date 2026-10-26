@@ -29,6 +29,12 @@ import { DropdownMenu } from "radix-ui";
 import { ImagePreview } from "../../components/ImagePreview";
 import { MessageEditor, type MessageEditorHandle } from "./MessageEditor";
 import { QueuedTasks } from "./QueuedTasks";
+import { referenceProjectFile } from "../shell/project-files";
+import {
+  PROJECT_FILE_DRAG_TYPE,
+  projectFileDrop,
+  saveAttachment,
+} from "./file-attachments";
 
 import type { ReasoningEffort } from "../../generated/ReasoningEffort";
 import type { AskForApproval } from "../../generated/v2/AskForApproval";
@@ -80,6 +86,7 @@ export const Composer = memo(function Composer({
     Record<string, string | undefined>
   >({});
   const [reading, setReading] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState("");
   const {
     runtime,
     connection,
@@ -198,7 +205,7 @@ export const Composer = memo(function Composer({
     )
       return;
     if (attachmentLock.current) {
-      setError("正在读取图片，请稍后再粘贴或拖放。");
+      setError("正在准备附件，请稍后再粘贴或拖放。");
       return;
     }
     attachmentLock.current = true;
@@ -209,14 +216,36 @@ export const Composer = memo(function Composer({
     try {
       for (const file of files) {
         try {
+          setPendingAttachment(
+            `${file.name} · ${Math.ceil(file.size / 1024)} KB`,
+          );
           if (
             !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
               file.type,
             )
-          )
-            throw Error(
-              `${file.name || "附件"}：仅支持 PNG、JPEG、WebP 或 GIF 图片。`,
+          ) {
+            if (!thread?.cwd)
+              throw new Error("当前会话没有项目目录，无法保存文件附件。");
+            const current = () =>
+              runtime.connection.getSnapshot().epoch === epoch &&
+              runtime.sessions.getSnapshot().threadAccess[
+                runtime.sessions.resolveId(threadId)
+              ] !== "occupied";
+            const path = await saveAttachment(
+              runtime.connection.client,
+              thread.cwd,
+              file,
+              current,
             );
+            if (!current()) return;
+            referenceProjectFile(
+              runtime.drafts,
+              threadId,
+              `${file.name} · ${Math.ceil(file.size / 1024)} KB`,
+              path,
+            );
+            continue;
+          }
           if (file.size > 5 * 1024 * 1024)
             throw Error(`${file.name} 超过单张 5 MB 限制。`);
           const current = runtime.drafts.get(threadId);
@@ -268,6 +297,7 @@ export const Composer = memo(function Composer({
     } finally {
       attachmentLock.current = false;
       setReading(false);
+      setPendingAttachment("");
       if (input.current) input.current.value = "";
     }
   }
@@ -369,28 +399,60 @@ export const Composer = memo(function Composer({
       <form
         className={`relative overflow-hidden rounded-[15px] border bg-elevated shadow-sm focus-within:border-accent/60 focus-within:ring-[3px] focus-within:ring-accent/10 ${dragging ? "border-accent ring-[3px] ring-accent/20" : "border-border"}`}
         onDragEnter={(event) => {
-          if (readOnly || !event.dataTransfer.types.includes("Files")) return;
+          if (
+            readOnly ||
+            !event.dataTransfer.types.some(
+              (type) => type === "Files" || type === PROJECT_FILE_DRAG_TYPE,
+            )
+          )
+            return;
           event.preventDefault();
           dragDepth.current += 1;
           setDragging(true);
         }}
         onDragOver={(event) => {
-          if (!event.dataTransfer.types.includes("Files")) return;
+          if (
+            !event.dataTransfer.types.some(
+              (type) => type === "Files" || type === PROJECT_FILE_DRAG_TYPE,
+            )
+          )
+            return;
           event.preventDefault();
           event.dataTransfer.dropEffect = readOnly || reading ? "none" : "copy";
         }}
         onDragLeave={(event) => {
-          if (!event.dataTransfer.types.includes("Files")) return;
+          if (
+            !event.dataTransfer.types.some(
+              (type) => type === "Files" || type === PROJECT_FILE_DRAG_TYPE,
+            )
+          )
+            return;
           dragDepth.current = Math.max(0, dragDepth.current - 1);
           if (!dragDepth.current) setDragging(false);
         }}
         onDropCapture={(event) => {
-          if (!event.dataTransfer.files.length) return;
+          const projectFile = event.dataTransfer.getData(
+            PROJECT_FILE_DRAG_TYPE,
+          );
+          if (!projectFile && !event.dataTransfer.files.length) return;
           event.preventDefault();
           event.stopPropagation();
           dragDepth.current = 0;
           setDragging(false);
-          void attach(Array.from(event.dataTransfer.files));
+          if (readOnly || reading) return;
+          if (projectFile) {
+            try {
+              const file = projectFileDrop(projectFile, thread?.cwd || "");
+              referenceProjectFile(
+                runtime.drafts,
+                threadId,
+                file.relative,
+                file.path,
+              );
+            } catch (cause) {
+              setError(cause instanceof Error ? cause.message : String(cause));
+            }
+          } else void attach(Array.from(event.dataTransfer.files));
         }}
         onSubmit={(e) => {
           e.preventDefault();
@@ -402,8 +464,13 @@ export const Composer = memo(function Composer({
             className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-elevated/90 text-sm text-accent"
             role="status"
           >
-            松开以添加图片
+            松开以添加文件或引用
           </div>
+        )}
+        {reading && (
+          <p className="px-4 pt-3 text-xs text-muted" role="status">
+            正在准备：{pendingAttachment}
+          </p>
         )}
         {token && !readOnly && (
           <Completions
@@ -514,7 +581,14 @@ export const Composer = memo(function Composer({
               setDismissed(true);
               return;
             }
-            if (token && items.length && !e.shiftKey) {
+            if (
+              token &&
+              items.length &&
+              !e.shiftKey &&
+              !e.metaKey &&
+              !e.ctrlKey &&
+              !e.altKey
+            ) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();
                 setSelected(
@@ -556,13 +630,12 @@ export const Composer = memo(function Composer({
             ref={input}
             type="file"
             multiple
-            accept="image/png,image/jpeg,image/webp,image/gif"
             onChange={(e) => void attach(Array.from(e.target.files || []))}
           />
           <IconButton
             size="composer"
             label={
-              reading ? "读取附件中" : "添加图片（可粘贴或拖放，每张最多 5 MB）"
+              reading ? "读取附件中" : "添加附件（可粘贴或拖放，每个最多 5 MB）"
             }
             disabled={readOnly || reading}
             onClick={() => input.current?.click()}
@@ -891,7 +964,7 @@ export const Composer = memo(function Composer({
                     : waiting
                       ? "请先回答当前请求"
                       : !hasContent
-                        ? "输入消息或添加图片"
+                        ? "输入消息或添加附件"
                         : sending
                           ? "正在提交"
                           : defaultSteering

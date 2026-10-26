@@ -1,6 +1,7 @@
 import { attachGitGutter } from "./git-gutter";
 import { attachDiffModel } from "./diff-model";
-import { useEffect, useRef } from "react";
+import { isLargeFile } from "./file-limits";
+import { useEffect, useRef, useMemo } from "react";
 import * as monaco from "monaco-editor/editor/editor.api.js";
 import "monaco-editor/basic-languages/monaco.contribution.js";
 import "monaco-editor/features/find/register.js";
@@ -50,6 +51,7 @@ export default function MonacoEditor({
   onChange,
   onSave,
   onPosition,
+  onSelection,
   comparison,
   gitBaseline,
   onGitCompare,
@@ -61,6 +63,11 @@ export default function MonacoEditor({
   documents: FileDocument[];
   onChange: (id: string, text: string) => void;
   onSave: () => void;
+  onSelection?: (
+    selection:
+      | { text: string; startLine: number; endLine: number; tooLarge?: boolean }
+      | undefined,
+  ) => void;
   onPosition: (line: number, column: number, language: string) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
@@ -69,7 +76,43 @@ export default function MonacoEditor({
   const original = useRef<monaco.editor.ITextModel | null>(null);
   const diffModelCleanup = useRef<(() => void) | undefined>(undefined);
   const gutterCleanup = useRef<(() => void) | undefined>(undefined);
-  const comparing = comparison !== undefined;
+  const simplified = useMemo(
+    () => document.largeFile ?? isLargeFile(document.text),
+    [document.largeFile, document.text],
+  );
+  const comparing = comparison !== undefined && !simplified;
+  const simplifiedOptions =
+    useMemo<monaco.editor.IStandaloneEditorConstructionOptions>(
+      () =>
+        simplified
+          ? {
+              wordWrap: "off",
+              wordBasedSuggestions: "off",
+              renderWhitespace: "none",
+              folding: false,
+              bracketPairColorization: { enabled: false },
+              guides: { indentation: false, bracketPairs: false },
+              colorDecorators: false,
+              codeLens: false,
+              links: false,
+              matchBrackets: "never",
+              occurrencesHighlight: "off",
+              selectionHighlight: false,
+              renderValidationDecorations: "off",
+              quickSuggestions: false,
+              suggestOnTriggerCharacters: false,
+              parameterHints: { enabled: false },
+              inlayHints: { enabled: "off" },
+              "semanticHighlighting.enabled": false,
+              unicodeHighlight: {
+                ambiguousCharacters: false,
+                invisibleCharacters: false,
+                nonBasicASCII: false,
+              },
+            }
+          : {},
+      [simplified],
+    );
   const models = useRef(new Map<string, monaco.editor.ITextModel>());
   const views = useRef(new Map<string, monaco.editor.ICodeEditorViewState>());
   const selected = useRef<string | undefined>(undefined);
@@ -77,8 +120,20 @@ export default function MonacoEditor({
   const revealed = useRef(new Map<string, number>());
   // Track the original text separately: Monaco normalizes EOLs on model creation.
   const synchronized = useRef(new Map<string, string>());
-  const callbacks = useRef({ onChange, onSave, onPosition, onGitCompare });
-  callbacks.current = { onChange, onSave, onPosition, onGitCompare };
+  const callbacks = useRef({
+    onChange,
+    onSave,
+    onPosition,
+    onGitCompare,
+    onSelection,
+  });
+  callbacks.current = {
+    onChange,
+    onSave,
+    onPosition,
+    onGitCompare,
+    onSelection,
+  };
   useEffect(() => {
     const viewMap = views.current;
     const options = {
@@ -88,7 +143,8 @@ export default function MonacoEditor({
       scrollBeyondLastLine: false,
       padding: { top: 12, bottom: 12 },
       readOnly: true,
-      glyphMargin: !comparing,
+      glyphMargin: !comparing && !simplified,
+      ...simplifiedOptions,
     };
     const diff = comparing
       ? monaco.editor.createDiffEditor(container.current!, {
@@ -103,7 +159,10 @@ export default function MonacoEditor({
     diffEditor.current = diff;
     editor.current = instance;
     const stopObservingAppearance = observeAppearance((appearance) => {
-      const options = applyEditorAppearance(appearance);
+      const options = {
+        ...applyEditorAppearance(appearance),
+        ...simplifiedOptions,
+      };
       if (diff) diff.updateOptions(options);
       else instance.updateOptions(options);
     });
@@ -131,7 +190,27 @@ export default function MonacoEditor({
         instance.getModel()?.getLanguageId() ?? "plaintext",
       );
     });
+    const selectionListener = instance.onDidChangeCursorSelection((event) => {
+      const model = instance.getModel();
+      callbacks.current.onSelection?.(
+        model && !event.selection.isEmpty()
+          ? {
+              // A selection may span the entire file. Inspect its length without
+              // materializing a multi-megabyte string on every cursor movement.
+              text:
+                model.getValueLengthInRange(event.selection) <= 64 * 1024
+                  ? model.getValueInRange(event.selection)
+                  : "",
+              tooLarge:
+                model.getValueLengthInRange(event.selection) > 64 * 1024,
+              startLine: event.selection.startLineNumber,
+              endLine: event.selection.endLineNumber,
+            }
+          : undefined,
+      );
+    });
     return () => {
+      selectionListener.dispose();
       gutterCleanup.current?.();
       gutterCleanup.current = undefined;
       cursor.dispose();
@@ -149,7 +228,7 @@ export default function MonacoEditor({
       selected.current = undefined;
       editor.current = null;
     };
-  }, [comparing]);
+  }, [comparing, simplified, simplifiedOptions]);
   useEffect(() => {
     const modelMap = models.current;
     const viewMap = views.current;
@@ -186,10 +265,16 @@ export default function MonacoEditor({
     updating.current = true;
     let model = models.current.get(document.id);
     if (!model) {
-      model = monaco.editor.createModel(document.text, language(document.path));
+      model = monaco.editor.createModel(
+        document.text,
+        simplified ? "plaintext" : language(document.path),
+      );
       models.current.set(document.id, model);
       synchronized.current.set(document.id, document.text);
     }
+    const targetLanguage = simplified ? "plaintext" : language(document.path);
+    if (model.getLanguageId() !== targetLanguage)
+      monaco.editor.setModelLanguage(model, targetLanguage);
     if (selected.current !== document.id) {
       const view = instance.saveViewState();
       if (view && selected.current) views.current.set(selected.current, view);
@@ -238,10 +323,11 @@ export default function MonacoEditor({
     instance.updateOptions({ readOnly });
     diffEditor.current?.updateOptions({ readOnly });
     updating.current = false;
-  }, [document, documents, comparison, comparing]);
+  }, [document, documents, comparison, comparing, simplified]);
   useEffect(() => {
     if (
       comparing ||
+      simplified ||
       gitBaseline === undefined ||
       !editor.current ||
       document.loading
@@ -257,7 +343,7 @@ export default function MonacoEditor({
         gutterCleanup.current = undefined;
       }
     };
-  }, [comparing, gitBaseline, document.id, document.loading]);
+  }, [comparing, simplified, gitBaseline, document.id, document.loading]);
   useEffect(() => {
     if (!document.line || document.loading) return;
     if (revealed.current.get(document.id) === document.navigationRevision)

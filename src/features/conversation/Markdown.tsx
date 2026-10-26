@@ -40,7 +40,10 @@ function MarkdownImage({
     />
   );
 }
-const MarkdownContext = createContext({ text: "", streaming: false });
+const MarkdownContext = createContext({
+  text: "",
+  streaming: false,
+});
 function CodeBlock({
   children,
   node,
@@ -95,7 +98,9 @@ function CodeBlock({
         }}
       >
         {message === "已复制" ? <Check size={14} /> : <Copy size={14} />}
-        <span aria-live="polite">{message}</span>
+        <span aria-live="polite" className="empty:hidden">
+          {message}
+        </span>
       </Button>
       <ScrollArea scrollChaining orientation="both">
         <pre {...props} className="m-0 p-4 pr-14 text-code leading-code">

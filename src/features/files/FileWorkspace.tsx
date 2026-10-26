@@ -1,9 +1,11 @@
+import { ContextMenu } from "radix-ui";
 import { settingsInputClass } from "../settings/settings-ui";
 import {
   ArrowLeft,
   Columns2,
   Eye,
   FileDiff,
+  FolderSearch,
   LoaderCircle,
   MessageSquareQuote,
   Pencil,
@@ -32,8 +34,11 @@ import {
 } from "react";
 import { useNarrow, useStore } from "../../components/hooks";
 import { useRuntime } from "../../lib/runtime-context";
+import { textDocument } from "../composer/editor-document";
 import { referenceProjectFile } from "../shell/project-files";
 import "./files.css";
+import { isLargeFile, MAX_EDITABLE_FILE_BYTES } from "./file-limits";
+import { relativeWorkspaceFile } from "./tree-navigation";
 import { FileDialog } from "./FileDialog";
 import { FileImagePreview } from "./FileImagePreview";
 import { MarkdownPreview } from "./MarkdownPreview";
@@ -57,7 +62,12 @@ class EditorBoundary extends Component<
           </ErrorNotice>
           <ScrollArea orientation="both" className="flex-1">
             <pre className="file-readonly" tabIndex={0}>
-              <code>{this.props.text}</code>
+              <code>
+                {this.props.text.slice(0, 64 * 1024)}
+                {this.props.text.length > 64 * 1024
+                  ? "\n（仅显示前 64 KB，请重新打开编辑器或下载文件查看）"
+                  : ""}
+              </code>
             </pre>
           </ScrollArea>
         </>
@@ -75,21 +85,46 @@ export function FileWorkspace({
   focused?: boolean;
   onToggleFocus?: () => void;
 }) {
-  const { files, drafts, connection } = useRuntime();
+  const { files, drafts, connection, sessions } = useRuntime();
+  const sessionState = useStore(sessions);
+  const currentCwd = sessionState.selectedId
+    ? sessionState.threads[sessionState.selectedId]?.cwd
+    : undefined;
   const connected = useStore(connection).status === "connected";
   const state = useStore(files);
   const narrow = useNarrow();
   const document = state.documents.find((item) => item.id === state.activeId);
+  const largeFile =
+    !!document && (document.largeFile ?? isLargeFile(document.text));
+  const byteLength = useMemo(
+    () =>
+      document?.byteLength ??
+      new TextEncoder().encode(document?.text ?? "").length,
+    [document?.byteLength, document?.text],
+  );
+  const sizeLabel =
+    byteLength >= 1024 * 1024
+      ? `${(byteLength / (1024 * 1024)).toFixed(1)} MB`
+      : `${Math.ceil(byteLength / 1024)} KB`;
+  const largeReadonly =
+    largeFile && !!document?.readonly && byteLength > MAX_EDITABLE_FILE_BYTES;
   const gitBaseline = useGitBaseline(state.visible ? document : undefined);
   const image = document?.kind === "image";
+  const [selection, setSelection] = useState<{
+    text: string;
+    startLine: number;
+    endLine: number;
+    tooLarge?: boolean;
+  }>();
   const [notice, setNotice] = useState("");
   const [compare, setCompare] = useState<"base" | "disk" | "git" | null>(null);
   const [view, setView] = useState<"edit" | "preview" | "split">("edit");
-  const markdown = /\.(md|markdown)$/i.test(document?.path ?? "");
+  const markdown = !largeFile && /\.(md|markdown)$/i.test(document?.path ?? "");
   const gitComparison = document?.gitComparison;
   const baseText = document?.baseText;
   const diskText = document?.diskText;
   const comparison = useMemo(() => {
+    if (largeFile) return undefined;
     if (gitComparison)
       return {
         original: gitComparison.original,
@@ -101,7 +136,8 @@ export function FileWorkspace({
         : compare === "disk"
           ? diskText
           : baseText;
-    if (!compare || original === undefined) return undefined;
+    if (!compare || original === undefined || isLargeFile(original))
+      return undefined;
     return {
       original,
       label:
@@ -111,7 +147,14 @@ export function FileWorkspace({
             ? "磁盘内容"
             : "上次读取或保存的内容",
     };
-  }, [compare, baseText, diskText, gitComparison, gitBaseline?.text]);
+  }, [
+    compare,
+    baseText,
+    diskText,
+    gitComparison,
+    gitBaseline?.text,
+    largeFile,
+  ]);
   const [saveAs, setSaveAs] = useState<string>();
   const [discard, setDiscard] = useState<{
     type: "close" | "reload";
@@ -159,6 +202,7 @@ export function FileWorkspace({
   useEffect(() => {
     setCompare(null);
     setView("edit");
+    setSelection(undefined);
     setNotice("");
     setSaveAs(undefined);
   }, [state.activeId]);
@@ -182,66 +226,84 @@ export function FileWorkspace({
             aria-label="已打开文件"
           >
             {state.documents.map((item) => (
-              <div
-                className={`file-tab ${item.id === state.activeId ? "is-active" : ""}`}
-                key={item.id}
-              >
-                <button
-                  role="tab"
-                  aria-selected={item.id === state.activeId}
-                  title={`${item.path}${item.preview ? "（预览，双击固定）" : ""}`}
-                  className={item.preview ? "is-preview" : undefined}
-                  onDoubleClick={() => files.pin(item.id)}
-                  onKeyDown={(event) => {
-                    const index = state.documents.findIndex(
-                      (doc) => doc.id === item.id,
-                    );
-                    const next =
-                      event.key === "ArrowRight"
-                        ? (index + 1) % state.documents.length
-                        : event.key === "ArrowLeft"
-                          ? (index - 1 + state.documents.length) %
-                            state.documents.length
-                          : event.key === "Home"
-                            ? 0
-                            : event.key === "End"
-                              ? state.documents.length - 1
-                              : -1;
-                    if (next < 0) return;
-                    event.preventDefault();
-                    files.select(state.documents[next].id);
-                    const tabs = event.currentTarget
-                      .closest('[role="tablist"]')
-                      ?.querySelectorAll<HTMLElement>('[role="tab"]');
-                    tabs?.item(next)?.focus();
-                  }}
-                  tabIndex={item.id === state.activeId ? 0 : -1}
-                  onClick={() => files.select(item.id)}
-                >
-                  {item.dirty ? "● " : ""}
-                  {item.path.split(/[\\/]/).at(-1)}
-                  {item.gitComparison
-                    ? ` · ${{ staged: "已暂存", unstaged: "未暂存", untracked: "未跟踪", conflict: "冲突" }[item.gitComparison.request.group]}`
-                    : ""}
-                  {item.readonly ? " · 只读" : ""}
-                </button>
-                <IconButton
-                  size="sm"
-                  label={`关闭 ${item.path}`}
-                  disabled={item.saving}
-                  onClick={() => {
-                    if (item.dirty)
-                      setDiscard({
-                        type: "close",
-                        id: item.id,
-                        path: item.path,
-                      });
-                    else closeFile(item.id);
-                  }}
-                >
-                  <X size={14} aria-hidden="true" />
-                </IconButton>
-              </div>
+              <ContextMenu.Root key={item.id}>
+                <ContextMenu.Trigger asChild>
+                  <div
+                    className={`file-tab ${item.id === state.activeId ? "is-active" : ""}`}
+                  >
+                    <button
+                      role="tab"
+                      aria-selected={item.id === state.activeId}
+                      title={`${item.path}${item.preview ? "（预览，双击固定）" : ""}`}
+                      className={item.preview ? "is-preview" : undefined}
+                      onDoubleClick={() => files.pin(item.id)}
+                      onKeyDown={(event) => {
+                        const index = state.documents.findIndex(
+                          (doc) => doc.id === item.id,
+                        );
+                        const next =
+                          event.key === "ArrowRight"
+                            ? (index + 1) % state.documents.length
+                            : event.key === "ArrowLeft"
+                              ? (index - 1 + state.documents.length) %
+                                state.documents.length
+                              : event.key === "Home"
+                                ? 0
+                                : event.key === "End"
+                                  ? state.documents.length - 1
+                                  : -1;
+                        if (next < 0) return;
+                        event.preventDefault();
+                        files.select(state.documents[next].id);
+                        const tabs = event.currentTarget
+                          .closest('[role="tablist"]')
+                          ?.querySelectorAll<HTMLElement>('[role="tab"]');
+                        tabs?.item(next)?.focus();
+                      }}
+                      tabIndex={item.id === state.activeId ? 0 : -1}
+                      onClick={() => files.select(item.id)}
+                    >
+                      {item.dirty ? "● " : ""}
+                      {item.path.split(/[\\/]/).at(-1)}
+                      {item.gitComparison
+                        ? ` · ${{ staged: "已暂存", unstaged: "未暂存", untracked: "未跟踪", conflict: "冲突" }[item.gitComparison.request.group]}`
+                        : ""}
+                      {item.readonly ? " · 只读" : ""}
+                    </button>
+                    <IconButton
+                      size="sm"
+                      label={`关闭 ${item.path}`}
+                      disabled={item.saving}
+                      onClick={() => {
+                        if (item.dirty)
+                          setDiscard({
+                            type: "close",
+                            id: item.id,
+                            path: item.path,
+                          });
+                        else closeFile(item.id);
+                      }}
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </IconButton>
+                  </div>
+                </ContextMenu.Trigger>
+                <ContextMenu.Portal>
+                  <ContextMenu.Content className="z-50 min-w-40 rounded-lg border border-border bg-surface p-1 shadow-xl">
+                    <ContextMenu.Item
+                      className="cursor-default rounded px-3 py-2 text-xs outline-none data-[highlighted]:bg-hover data-[disabled]:opacity-50"
+                      disabled={
+                        !connected ||
+                        !currentCwd ||
+                        !relativeWorkspaceFile(currentCwd, item.path)
+                      }
+                      onSelect={() => files.revealInTree(item.id)}
+                    >
+                      在文件列表中显示
+                    </ContextMenu.Item>
+                  </ContextMenu.Content>
+                </ContextMenu.Portal>
+              </ContextMenu.Root>
             ))}
           </div>
         </ScrollArea>
@@ -298,7 +360,7 @@ export function FileWorkspace({
                   <Save size={16} aria-hidden="true" />
                 )}
               </IconButton>
-              {!narrow && !gitComparison && (
+              {!narrow && !gitComparison && !largeFile && (
                 <IconButton
                   label="比较未保存更改"
                   disabled={!document.dirty || document.loading}
@@ -361,6 +423,59 @@ export function FileWorkspace({
         <>
           <div className="file-breadcrumb" title={document.path}>
             <span>{document.path.split(/[\\/]/).join(" / ")}</span>
+            <IconButton
+              label="在文件列表中显示"
+              title={
+                currentCwd && relativeWorkspaceFile(currentCwd, document.path)
+                  ? "在文件列表中显示"
+                  : "不在当前项目目录"
+              }
+              disabled={
+                !connected ||
+                !currentCwd ||
+                !relativeWorkspaceFile(currentCwd, document.path)
+              }
+              onClick={() => files.revealInTree(document.id)}
+            >
+              <FolderSearch size={16} aria-hidden="true" />
+            </IconButton>
+            {document.threadId && selection && !image && view !== "preview" && (
+              <Button
+                size="sm"
+                variant="quiet"
+                disabled={selection.tooLarge}
+                title={
+                  selection.tooLarge
+                    ? "选中代码超过 64 KB，请缩小选择范围"
+                    : undefined
+                }
+                onClick={() => {
+                  if (selection.tooLarge) return;
+                  referenceProjectFile(
+                    drafts,
+                    document.threadId!,
+                    document.path,
+                    document.path,
+                  );
+                  const draft = drafts.get(document.threadId!);
+                  const snippet = `选中代码（第 ${selection.startLine}–${selection.endLine} 行，当前编辑内容）：\n${selection.text}`;
+                  const content = structuredClone(draft.document!);
+                  content.content = [
+                    ...(content.content ?? []),
+                    ...textDocument(snippet).content!,
+                  ];
+                  drafts.setDocument(
+                    document.threadId!,
+                    content,
+                    `${draft.text}\n${snippet}`,
+                    draft.skills ?? [],
+                  );
+                  setNotice("已将选中代码添加到来源会话的输入框");
+                }}
+              >
+                添加选中代码到会话
+              </Button>
+            )}
             {document.threadId && (
               <IconButton
                 label="引用到来源会话"
@@ -383,6 +498,24 @@ export function FileWorkspace({
               {state.recoveryError}
             </ErrorNotice>
           )}
+          {largeFile && !image && !document.loading && (
+            <p className="file-notice" role="status">
+              {largeReadonly
+                ? `大文件只读模式（${sizeLabel}）：文件超过 5 MB，仅支持查看和下载。`
+                : narrow
+                  ? `大文件简化模式（${sizeLabel}）：当前屏幕仅支持查看；请在宽屏下编辑和保存。`
+                  : byteLength > MAX_EDITABLE_FILE_BYTES
+                    ? `大文件简化模式（${sizeLabel}）：编辑内容超过 5 MB 保存上限，请缩减内容后保存；撤销历史保留。`
+                    : `大文件简化模式（${sizeLabel}）：已关闭语法高亮、Markdown 预览和差异比较，可继续编辑和保存。`}
+            </p>
+          )}
+          {largeFile && document.dirty && !state.recoveryError && (
+            <p className="file-notice" role="status">
+              {state.recoveryPending
+                ? "正在保存大文件草稿到浏览器…"
+                : "大文件草稿已保存到浏览器"}
+            </p>
+          )}
           {document.recovered && (
             <p className="file-notice" role="status">
               已从浏览器恢复未保存的编辑内容，尚未写入文件。保存前会重新核对磁盘内容。
@@ -391,7 +524,7 @@ export function FileWorkspace({
           {document.conflict && (
             <div className="file-notice" role="alert">
               磁盘文件已改变。请比较内容，重新加载或另存为新文件。
-              {!narrow && (
+              {!narrow && !largeFile && (
                 <Button
                   size="sm"
                   variant="quiet"
@@ -476,13 +609,18 @@ export function FileWorkspace({
             className={`relative flex min-h-0 min-w-0 flex-1 ${markdown && !comparison ? `file-view-${view}` : "file-view-edit"}`}
           >
             <div
-              style={image ? { display: "none" } : undefined}
+              style={
+                image || (document.error && !document.text)
+                  ? { display: "none" }
+                  : undefined
+              }
               className={`file-editor-pane${comparison ? " file-comparison" : ""}`}
               aria-hidden={
                 markdown && view === "preview" && !comparison ? true : undefined
               }
             >
-              {narrow ? (
+              {document.error && !document.text ? null : narrow &&
+                !largeFile ? (
                 <ScrollArea orientation="both" className="flex-1">
                   <pre className="file-readonly" tabIndex={0}>
                     {gitComparison && (
@@ -511,10 +649,13 @@ export function FileWorkspace({
                         setCompare("git");
                         setView("edit");
                       }}
-                      document={document}
+                      document={
+                        narrow ? { ...document, readonly: true } : document
+                      }
                       documents={state.documents}
                       onChange={(id, text) => files.setText(id, text)}
                       onSave={save}
+                      onSelection={setSelection}
                       onPosition={(line, column, language) =>
                         setPosition((previous) =>
                           previous.line === line &&
@@ -579,7 +720,12 @@ export function FileWorkspace({
               {(document.readonly || narrow) && <span>只读</span>}
             </div>
             <div className="file-status-group ml-auto">
-              {!image && <span>UTF-8</span>}
+              {!image && (
+                <>
+                  <span>{sizeLabel}</span>
+                  <span>UTF-8</span>
+                </>
+              )}
               {!narrow && !image && (
                 <>
                   <span>{position.language}</span>

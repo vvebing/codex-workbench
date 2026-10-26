@@ -27,6 +27,7 @@ export function protectPageExit(
   let unsubscribeStores: (() => void)[] = [];
   const beforeUnload = (event: BeforeUnloadEvent) => {
     if (!hasTransientData(getRuntimes())) return;
+    for (const runtime of getRuntimes()) void runtime.files?.flushRecovery?.();
     event.preventDefault();
     event.returnValue = "";
   };

@@ -1266,6 +1266,9 @@ test("wide editor splits from chat and preserves scroll draft and undo across la
     exact: true,
   });
   const before = (await chat.boundingBox())!.width;
+  expect(
+    Math.abs(before - (await workspace.boundingBox())!.width),
+  ).toBeLessThan(3);
   await handle.press("ArrowRight");
   await expect
     .poll(async () => (await chat.boundingBox())!.width)
@@ -1273,8 +1276,10 @@ test("wide editor splits from chat and preserves scroll draft and undo across la
   const after = (await chat.boundingBox())!.width;
   const content = chat.locator("[data-slot=conversation-content]");
   const composerBox = chat.locator("[data-slot=conversation-composer]");
-  expect((await content.boundingBox())!.width).toBeCloseTo(after, 0);
-  expect((await composerBox.boundingBox())!.width).toBeCloseTo(after, 0);
+  // Wide panes keep a readable text measure while sharing the available space.
+  const contentWidth = (await content.boundingBox())!.width;
+  expect(contentWidth).toBeLessThanOrEqual(after);
+  expect((await composerBox.boundingBox())!.width).toBeCloseTo(contentWidth, 0);
   expect(await chat.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
     true,
   );
@@ -1467,4 +1472,192 @@ test("file selection remembers the creation directory across panel tabs", async 
   await panel.getByRole("button", { name: "新建文件", exact: true }).click();
   dialog = page.getByRole("dialog", { name: "新建文件", exact: true });
   await expect(dialog.getByLabel("相对于项目根目录的路径")).toHaveValue("");
+});
+
+test("split remembers user ratio and supports keyboard reset to equal widths", async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem("codex-workbench-editor-ratio", "65"),
+  );
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  const { workspace } = await openReadme(page);
+  await page
+    .getByRole("button", { name: "关闭项目面板", exact: true })
+    .first()
+    .click();
+  const chat = page.getByRole("region", { name: "会话内容", exact: true });
+  const handle = page.getByRole("separator", {
+    name: "调整会话与编辑器宽度",
+    exact: true,
+  });
+  await expect
+    .poll(
+      async () =>
+        (await chat.boundingBox())!.width /
+        ((await chat.boundingBox())!.width +
+          (await workspace.boundingBox())!.width),
+    )
+    .toBeCloseTo(0.65, 2);
+  await handle.press("Enter");
+  await expect
+    .poll(async () =>
+      Math.abs(
+        (await chat.boundingBox())!.width -
+          (await workspace.boundingBox())!.width,
+      ),
+    )
+    .toBeLessThan(3);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Number(localStorage.getItem("codex-workbench-editor-ratio")),
+      ),
+    )
+    .toBeCloseTo(50, 1);
+});
+
+test("project files upload, keep both names, reference and download binary bytes", async ({
+  page,
+}) => {
+  await openFirst(page);
+  await page.getByRole("button", { name: "打开项目面板" }).click();
+  const panel = page.getByRole("complementary", { name: "项目面板" });
+  const files = panel.getByRole("region", { name: "项目文件" });
+  const input = files.getByLabel("选择上传文件");
+  const bytes = Buffer.from([0, 255, 128, 10]);
+  await input.setInputFiles([
+    { name: "sample.bin", mimeType: "application/octet-stream", buffer: bytes },
+  ]);
+  await expect(
+    files.getByRole("button", { name: /^sample.bin/ }),
+  ).toBeVisible();
+  await input.setInputFiles([
+    { name: "sample.bin", mimeType: "application/octet-stream", buffer: bytes },
+  ]);
+  const conflict = page.getByRole("dialog", { name: "文件已存在" });
+  await conflict.getByRole("button", { name: "保留两者" }).click();
+  await expect(
+    files.getByRole("button", { name: /^sample \(1\).bin/ }),
+  ).toBeVisible();
+  await files.getByRole("button", { name: "添加上传文件到会话" }).click();
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toContainText(
+    "sample (1).bin",
+  );
+  await files
+    .getByRole("button", { name: /^sample.bin/ })
+    .click({ button: "right" });
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "下载文件" }).click();
+  const download = await downloaded;
+  expect(download.suggestedFilename()).toBe("sample.bin");
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  expect(Buffer.concat(chunks)).toEqual(bytes);
+});
+
+test("editor reveals filtered project file and adds selected code to conversation", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  const { workspace } = await openReadme(page);
+  const panel = page.getByRole("complementary", { name: "项目面板" });
+  await panel.getByPlaceholder("搜索文件…").fill("unrelated");
+  await page
+    .getByRole("button", { name: "关闭项目面板", exact: true })
+    .first()
+    .click();
+  await workspace
+    .getByRole("button", { name: "在文件列表中显示", exact: true })
+    .click();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByPlaceholder("搜索文件…")).toHaveValue("");
+  await expect(panel.locator('[data-file-entry="README.md"]')).toHaveAttribute(
+    "data-selected",
+    "true",
+  );
+  await workspace.locator(".view-lines").click({ position: { x: 80, y: 10 } });
+  await page.keyboard.press("ControlOrMeta+a");
+  await workspace
+    .getByRole("button", { name: "添加选中代码到会话", exact: true })
+    .click();
+  const composer = page.getByRole("textbox", { name: "消息输入框" });
+  await expect(composer).toContainText("Demo project");
+  await expect(composer).toContainText("README.md");
+});
+
+test("dirty file download distinguishes disk version from saved editor changes", async ({
+  page,
+}) => {
+  const { panel, workspace } = await openReadme(page);
+  await edit(page, "download current draft");
+  await panel
+    .getByRole("button", { name: /^README\.md(?:，|$)/ })
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: "下载文件", exact: true }).click();
+  let dialog = page.getByRole("dialog", {
+    name: "文件有未保存修改",
+    exact: true,
+  });
+  const diskEvent = page.waitForEvent("download");
+  await dialog
+    .getByRole("button", { name: "下载已保存版本", exact: true })
+    .click();
+  const disk = await diskEvent;
+  const diskChunks: Buffer[] = [];
+  for await (const chunk of await disk.createReadStream())
+    diskChunks.push(Buffer.from(chunk));
+  expect(Buffer.concat(diskChunks).toString()).toBe(original);
+  await expect(
+    workspace.getByRole("button", { name: "保存", exact: true }),
+  ).toBeEnabled();
+  await panel
+    .getByRole("button", { name: /^README\.md(?:，|$)/ })
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: "下载文件", exact: true }).click();
+  dialog = page.getByRole("dialog", { name: "文件有未保存修改", exact: true });
+  const savedEvent = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "保存并下载", exact: true }).click();
+  const saved = await savedEvent;
+  const savedChunks: Buffer[] = [];
+  for await (const chunk of await saved.createReadStream())
+    savedChunks.push(Buffer.from(chunk));
+  expect(Buffer.concat(savedChunks).toString()).toBe("download current draft");
+  expect(server.fileText(`${root}/README.md`)).toBe("download current draft");
+});
+
+test("project files upload via directory drop and drag references into composer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  const { panel } = await openReadme(page);
+  const transfer = await page.evaluateHandle(() => {
+    const data = new DataTransfer();
+    data.items.add(
+      new File(["drop content"], "dropped.txt", { type: "text/plain" }),
+    );
+    return data;
+  });
+  const directory = panel.locator('[data-file-entry="src"]');
+  await directory.dispatchEvent("dragover", { dataTransfer: transfer });
+  await expect(panel).toContainText("释放以上传到：src");
+  await directory.dispatchEvent("drop", { dataTransfer: transfer });
+  await expect
+    .poll(() => server.fileText(`${root}/src/dropped.txt`))
+    .toBe("drop content");
+  const row = panel.locator('[data-file-entry="src/dropped.txt"]');
+  await expect(row).toBeVisible();
+  const composer = page.locator('[data-slot="conversation-composer"]');
+  const fileTransfer = await page.evaluateHandle(() => new DataTransfer());
+  await row.dispatchEvent("dragstart", { dataTransfer: fileTransfer });
+  await composer
+    .locator("form")
+    .dispatchEvent("drop", { dataTransfer: fileTransfer });
+  await expect(
+    composer.locator('[data-composer-reference="file"]'),
+  ).toContainText("src/dropped.txt");
+  expect(
+    server.requestLog.filter((entry) => entry.method === "fs/writeFile"),
+  ).toHaveLength(1);
 });

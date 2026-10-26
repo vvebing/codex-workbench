@@ -1,3 +1,4 @@
+import { isLargeFile, MAX_NORMAL_FILE_BYTES } from "./file-limits";
 import { useEffect, useRef, useState } from "react";
 import { useRuntime } from "../../lib/runtime-context";
 import { useStore } from "../../components/hooks";
@@ -10,8 +11,10 @@ import type { FileDocument } from "./store";
 export function useGitBaseline(document: FileDocument | undefined) {
   const { connection } = useRuntime();
   const { epoch, scope } = useStore(connection);
+  const large =
+    !!document && (document.largeFile ?? isLargeFile(document.text));
   const git = useWorkspaceGitStatus(
-    !document || document.gitComparison || document.readonly
+    !document || document.gitComparison || document.readonly || large
       ? ""
       : (document.cwd ?? ""),
   );
@@ -24,7 +27,8 @@ export function useGitBaseline(document: FileDocument | undefined) {
   const path = document?.path;
   const key = JSON.stringify([epoch, scope, document?.id]);
   const root = git.value?.repoRoot;
-  const enabled = !!document && !document.gitComparison && !document.readonly;
+  const enabled =
+    !!document && !document.gitComparison && !document.readonly && !large;
   const relativePath = gitWorkspacePath(
     root,
     document?.cwd,
@@ -80,13 +84,18 @@ export function useGitBaseline(document: FileDocument | undefined) {
       let text = cache.current.get(cacheKey);
       if (text === undefined) {
         const size = Number((await exec(["cat-file", "-s", oid])).trim());
-        if (!Number.isSafeInteger(size) || size < 0 || size > 256 * 1024)
-          throw new Error("Git 基线超过 256 KB");
+        if (
+          !Number.isSafeInteger(size) ||
+          size < 0 ||
+          size > MAX_NORMAL_FILE_BYTES
+        )
+          throw new Error("Git 基线超过 1 MB");
         text = await exec(["cat-file", "blob", oid]);
         if (
           text.includes("\0") ||
           text.includes("\ufffd") ||
-          new TextEncoder().encode(text).length > 256 * 1024
+          new TextEncoder().encode(text).length > MAX_NORMAL_FILE_BYTES ||
+          isLargeFile(text)
         )
           throw new Error("Git 基线不是可预览的 UTF-8 文本");
         if (cache.current.size >= 16) cache.current.clear();

@@ -666,11 +666,11 @@ test("model and policy controls work and invalid attachments remain unsent", asy
   ).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("Escape");
   await page.locator("input[type=file]").setInputFiles({
-    name: "notes.txt",
+    name: "oversize.txt",
     mimeType: "text/plain",
-    buffer: Buffer.from("fictional"),
+    buffer: Buffer.alloc(5 * 1024 * 1024 + 1),
   });
-  await expect(page.getByRole("alert")).toContainText("仅支持 PNG");
+  await expect(page.getByRole("alert")).toContainText("5 MB");
   await expect(page.locator("[data-slot=attachment]")).toHaveCount(0);
   await expect(page.locator("[data-slot=composer-action]")).toBeDisabled();
   await page.locator("input[type=file]").setInputFiles({
@@ -3206,9 +3206,9 @@ test("rich composer images paste with text, drop, preview, preserve valid attach
   await page.getByRole("button", { name: "移除附件 drop.png" }).click();
   await page.locator("input[type=file]").setInputFiles([
     {
-      name: "notes.txt",
+      name: "oversize.txt",
       mimeType: "text/plain",
-      buffer: Buffer.from("invalid"),
+      buffer: Buffer.alloc(5 * 1024 * 1024 + 1),
     },
     {
       name: "valid.png",
@@ -3216,7 +3216,7 @@ test("rich composer images paste with text, drop, preview, preserve valid attach
       buffer: Buffer.from(tinyPng, "base64"),
     },
   ]);
-  await expect(page.getByRole("alert")).toContainText("notes.txt");
+  await expect(page.getByRole("alert")).toContainText("oversize.txt");
   await expect(page.locator("[data-slot=attachment]")).toHaveCount(2);
   await page.getByRole("button", { name: "移除附件 valid.png" }).click();
   await input(page).press("ControlOrMeta+a");
@@ -5709,4 +5709,93 @@ test("prompt dots jump and restore the reading position", async ({ page }) => {
       Math.abs((await viewport.evaluate((el) => el.scrollTop)) - before),
     )
     .toBeLessThan(5);
+});
+
+test("composer multiline arrows and line boundary keys keep the caret in the requested line", async ({
+  page,
+}) => {
+  await openFirst(page);
+  const editor = input(page);
+  await editor.fill("first line");
+  await editor.press("End");
+  await editor.press("Shift+Enter");
+  await page.keyboard.insertText("second line");
+  await editor.press("Shift+Enter");
+  await page.keyboard.insertText("third line");
+  await expect
+    .poll(() => editor.innerText())
+    .toBe("first line\nsecond line\nthird line");
+  const caret = () =>
+    editor.evaluate(() => {
+      const selection = window.getSelection()!;
+      return {
+        text: selection.focusNode?.textContent,
+        offset: selection.focusOffset,
+      };
+    });
+  await editor.press("ArrowUp");
+  await expect.poll(async () => (await caret()).text).toBe("second line");
+  await editor.press("ArrowDown");
+  await expect.poll(async () => (await caret()).text).toBe("third line");
+  await editor.press("Home");
+  await expect.poll(caret).toEqual({ text: "third line", offset: 0 });
+  await editor.press("End");
+  await expect.poll(caret).toEqual({ text: "third line", offset: 10 });
+  await editor.press("Shift+Home");
+  await expect
+    .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+    .toBe("third line");
+  await editor.press("Control+Home");
+  await expect.poll(caret).toEqual({ text: "first line", offset: 0 });
+  await editor.press("Control+End");
+  await expect.poll(caret).toEqual({ text: "third line", offset: 10 });
+  expect(
+    fixtureServer.requestLog.filter(
+      (request) => request.method === "turn/start",
+    ),
+  ).toHaveLength(0);
+});
+
+test("composer navigation follows visual wrapped lines and preserves shift selection", async ({
+  page,
+}) => {
+  await openFirst(page);
+  const editor = input(page);
+  const text = "word ".repeat(120) + "end";
+  await editor.fill(text);
+  await editor.press("Control+End");
+  await editor.press("ArrowUp");
+  const offset = () =>
+    editor.evaluate(() => window.getSelection()!.focusOffset);
+  const previousLine = await offset();
+  expect(previousLine).toBeGreaterThan(0);
+  expect(previousLine).toBeLessThan(text.length);
+  await editor.press("Home");
+  expect(await offset()).toBeLessThan(previousLine);
+  await editor.press("Shift+End");
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.getSelection()?.toString().length ?? 0),
+    )
+    .toBeGreaterThan(0);
+  await expect(editor).toHaveText(text);
+});
+
+test("composer mac line shortcuts and modified arrows bypass file completions", async ({
+  page,
+}) => {
+  test.skip(
+    !(await page.evaluate(() => /Mac/.test(navigator.platform))),
+    "Mac keyboard shortcuts",
+  );
+  await openFirst(page);
+  const editor = input(page);
+  await editor.fill("before @src");
+  await expect(page.getByRole("listbox", { name: /./ })).toBeVisible();
+  await editor.press("Meta+ArrowLeft");
+  await page.keyboard.insertText("START ");
+  await expect(editor).toHaveText("START before @src");
+  await editor.press("Meta+ArrowRight");
+  await page.keyboard.insertText(" END");
+  await expect(editor).toHaveText("START before @src END");
 });

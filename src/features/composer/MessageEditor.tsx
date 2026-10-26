@@ -1,4 +1,5 @@
 import { ReferenceNode } from "./reference-node";
+import { navigateMessageEditor } from "./editor-navigation";
 import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import Document from "@tiptap/extension-document";
@@ -89,7 +90,7 @@ export function MessageEditor(props: Props) {
         if (view.composing || event.isComposing || event.keyCode === 229)
           return false;
         latest.current.onKeyDown(event);
-        return event.defaultPrevented;
+        return event.defaultPrevented || navigateMessageEditor(view, event);
       },
       handleClickOn: (_view, _pos, node, _nodePos, event, direct) => {
         if (
@@ -169,14 +170,9 @@ export function MessageEditor(props: Props) {
   useEffect(() => {
     // Suspense can reconnect effects after Tiptap has disposed the captured editor.
     if (!editor || editor.isDestroyed) return;
-    editor.setEditable(!props.disabled, false);
-  }, [
-    editor,
-    props.disabled,
-    props.hasCompletions,
-    props.completionId,
-    props.placeholder,
-  ]);
+    if (editor.isEditable === props.disabled)
+      editor.setEditable(!props.disabled, false);
+  }, [editor, props.disabled]);
 
   useEffect(() => {
     // Suspense can reconnect effects after Tiptap has disposed the captured editor.
