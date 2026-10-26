@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { AccountStatus } from "../connection/AccountStatus";
 import { useEffect, useState } from "react";
 import { Button, Modal } from "../../components/ui";
@@ -11,6 +12,7 @@ import {
 } from "./settings-ui";
 
 export function AccountAccess({ connection }: { connection: ConnectionStore }) {
+  useLocale();
   const state = useStore(connection.accountAccess);
   const { status, epoch } = useStore(connection);
   const connected = status === "connected";
@@ -29,8 +31,10 @@ export function AccountAccess({ connection }: { connection: ConnectionStore }) {
     );
   return (
     <SettingsSection
-      title="账号与用量"
-      description="登录与退出影响所选环境的 Codex 账户。远端环境建议使用设备码登录。"
+      title={t("账号与用量")}
+      description={t(
+        "登录与退出影响所选环境的 Codex 账户。远端环境建议使用设备码登录。",
+      )}
     >
       <AccountStatus connection={connection} />
       {login ? (
@@ -42,21 +46,24 @@ export function AccountAccess({ connection }: { connection: ConnectionStore }) {
               target="_blank"
               rel="noopener noreferrer"
             >
-              打开登录授权页面
+              {t("打开登录授权页面")}
             </a>
           ) : (
-            <p role="alert">服务端返回的授权链接不可用，请取消后重试。</p>
+            <p role="alert">
+              {t("服务端返回的授权链接不可用，请取消后重试。")}
+            </p>
           )}
           {login.type === "chatgptDeviceCode" && (
             <p>
-              设备验证码：<code className="select-all">{login.userCode}</code>
+              {t("设备验证码：")}
+              <code className="select-all">{login.userCode}</code>
             </p>
           )}
           <Button
             disabled={disabled}
             onClick={() => void connection.accountAccess.cancel()}
           >
-            取消登录
+            {t("取消登录")}
           </Button>
         </div>
       ) : (
@@ -70,7 +77,7 @@ export function AccountAccess({ connection }: { connection: ConnectionStore }) {
                 })
               }
             >
-              设备码登录
+              {t("设备码登录")}
             </Button>
             <Button
               disabled={disabled}
@@ -78,10 +85,10 @@ export function AccountAccess({ connection }: { connection: ConnectionStore }) {
                 void connection.accountAccess.start({ type: "chatgpt" })
               }
             >
-              浏览器登录
+              {t("浏览器登录")}
             </Button>
             <Button disabled={disabled} onClick={() => setConfirmLogout(true)}>
-              退出账户
+              {t("退出账户")}
             </Button>
           </div>
           <form
@@ -109,7 +116,7 @@ export function AccountAccess({ connection }: { connection: ConnectionStore }) {
               />
             </SettingsField>
             <Button type="submit" disabled={disabled || !apiKey.trim()}>
-              使用 API Key 登录
+              {t("使用 API Key 登录")}
             </Button>
           </form>
         </>
@@ -127,11 +134,13 @@ export function AccountAccess({ connection }: { connection: ConnectionStore }) {
       <Modal
         open={confirmLogout}
         onOpenChange={setConfirmLogout}
-        title="退出当前环境账户"
-        description="退出会影响此环境中的其他 Codex 客户端及后续任务。正在执行的任务可能失败。"
+        title={t("退出当前环境账户")}
+        description={t(
+          "退出会影响此环境中的其他 Codex 客户端及后续任务。正在执行的任务可能失败。",
+        )}
       >
         <div className="flex justify-end gap-2">
-          <Button onClick={() => setConfirmLogout(false)}>取消</Button>
+          <Button onClick={() => setConfirmLogout(false)}>{t("取消")}</Button>
           <Button
             disabled={disabled}
             onClick={() => {
@@ -139,7 +148,7 @@ export function AccountAccess({ connection }: { connection: ConnectionStore }) {
               void connection.accountAccess.logout();
             }}
           >
-            确认退出
+            {t("确认退出")}
           </Button>
         </div>
       </Modal>

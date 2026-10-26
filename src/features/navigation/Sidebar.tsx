@@ -1,3 +1,4 @@
+import { getLocale, t, useLocale } from "../../lib/i18n";
 import { memo, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Tabs } from "radix-ui";
 import {
@@ -85,13 +86,36 @@ type Row = NavigationListRow &
   );
 const PROJECT_PREVIEW_SIZE = 5;
 const filters: { value: NavigationStatus; label: string }[] = [
-  { value: "all", label: "全部会话" },
-  { value: "attention", label: "待处理" },
-  { value: "running", label: "运行中" },
-  { value: "unread", label: "未读结果" },
+  {
+    value: "all",
+    get label() {
+      return t("全部会话");
+    },
+  },
+  {
+    value: "attention",
+    get label() {
+      return t("待处理");
+    },
+  },
+  {
+    value: "running",
+    get label() {
+      return t("运行中");
+    },
+  },
+  {
+    value: "unread",
+    get label() {
+      return t("未读结果");
+    },
+  },
 ];
 
 export const Sidebar = memo(function Sidebar(props: SidebarProps) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const state = useStore(environments),
     preferences = useStore(navigationState),
     personal = useStore(navigationPersonalization);
@@ -186,10 +210,10 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
   const threadDescription = (item: NavigationThread, nested: boolean) => {
     const statusLabel = threadStatus(item);
     const status = item.source.sessions.localDrafts[item.thread.id]
-      ? "草稿 · 未发送"
+      ? t("草稿 · 未发送")
       : !item.source.connected && !item.thread.turns.length
-        ? "离线 · 正文未缓存"
-        : statusLabel === "运行中"
+        ? t("离线 · 正文未缓存")
+        : statusLabel === t("运行中")
           ? ""
           : statusLabel;
     if (nested) return status;
@@ -243,7 +267,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
     let previousLabel = "";
     for (const item of sorted) {
       const label = isThreadPinned(item)
-        ? "收藏会话"
+        ? t("收藏会话")
         : recentDateLabel(navigationActivityAt(item.thread) * 1000);
       if (label !== previousLabel) {
         rows.push({
@@ -399,8 +423,8 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
       <div className="flex h-[62px] shrink-0 items-center gap-2.5 px-4">
         <ProductIcon className="size-7 shrink-0" />
         <strong className="text-brand tracking-[-0.6px]">Codex</strong>
-        <span className="flex-1 text-meta text-muted">工作台</span>
-        <IconButton label="收起导航" onClick={props.onCollapse}>
+        <span className="flex-1 text-meta text-muted">{t("工作台")}</span>
+        <IconButton label={t("收起导航")} onClick={props.onCollapse}>
           <PanelLeftClose size={17} />
         </IconButton>
       </div>
@@ -411,7 +435,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           onClick={() => props.onNew(undefined, newTarget?.environment.id)}
         >
           <Plus size={17} />
-          新建会话
+          {t("新建会话")}
           <span className="ml-auto text-fine text-subtle">
             {mac ? "⌘ ⇧ O" : "Ctrl ⇧ O"}
           </span>
@@ -422,7 +446,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           onClick={props.onSearch}
         >
           <Search size={16} />
-          搜索会话
+          {t("搜索会话")}
           <span className="ml-auto text-fine text-subtle">
             {mac ? "⌘ K" : "Ctrl K"}
           </span>
@@ -431,14 +455,14 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           variant="quiet"
           className="w-full justify-start"
           onClick={props.onTasks}
-          aria-label="待办中心"
+          aria-label={t("待办中心")}
         >
           <CircleHelp size={16} />
-          待办中心
+          {t("待办中心")}
           {taskCount > 0 && (
             <span
               className="ml-auto rounded-full bg-warning/10 px-2 text-xs text-warning"
-              aria-label={`${taskCount} 项待办`}
+              aria-label={t("{{value0}} 项待办", { value0: taskCount })}
             >
               {taskCount}
             </span>
@@ -449,7 +473,8 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             className="pl-8 text-fine text-warning"
             onClick={props.onTasks}
           >
-            其他环境有 {otherTasks} 项待处理
+            {t("其他环境有")}
+            {otherTasks} {t("项待处理")}
           </button>
         )}
       </div>
@@ -469,24 +494,24 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             }
             className="min-w-0 flex-1"
           >
-            <Tabs.List aria-label="会话视图" className="flex gap-4">
+            <Tabs.List aria-label={t("会话视图")} className="flex gap-4">
               <Tabs.Trigger value="projects" className="navigation-view">
-                项目
+                {t("项目")}
               </Tabs.Trigger>
               <Tabs.Trigger value="recent" className="navigation-view">
-                最近
+                {t("最近")}
               </Tabs.Trigger>
             </Tabs.List>
           </Tabs.Root>
           <IconButton
             size="sm"
-            label="定位当前会话"
+            label={t("定位当前会话")}
             title={
               outsideCurrentScope
-                ? "当前会话不在此范围 · 定位当前会话"
+                ? t("当前会话不在此范围 · 定位当前会话")
                 : hiddenCurrent
-                  ? "当前会话不在可见区域 · 定位当前会话"
-                  : "定位当前会话"
+                  ? t("当前会话不在可见区域 · 定位当前会话")
+                  : t("定位当前会话")
             }
             data-slot="locate-current-session"
             disabled={!canLocateCurrent}
@@ -499,7 +524,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           {preferences.view === "projects" && (
             <IconButton
               size="sm"
-              label={allCollapsed ? "展开全部项目" : "折叠全部项目"}
+              label={allCollapsed ? t("展开全部项目") : t("折叠全部项目")}
               disabled={!projects.length}
               onClick={() =>
                 navigationState.collapseAll(
@@ -516,9 +541,9 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             </IconButton>
           )}
           <Menu
-            label="导航选项"
+            label={t("导航选项")}
             trigger={
-              <IconButton size="sm" label="导航选项">
+              <IconButton size="sm" label={t("导航选项")}>
                 <MoreHorizontal size={16} />
               </IconButton>
             }
@@ -532,10 +557,10 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
               }}
             >
               {anySection
-                ? "清除分区筛选"
+                ? t("清除分区筛选")
                 : showSections
-                  ? "隐藏分区筛选"
-                  : "分区筛选与管理"}
+                  ? t("隐藏分区筛选")
+                  : t("分区筛选与管理")}
             </MenuItem>
             <MenuItem
               onSelect={() => {
@@ -543,17 +568,17 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                 props.onFilterChange("current");
               }}
             >
-              恢复默认视图范围
+              {t("恢复默认视图范围")}
             </MenuItem>
             <MenuSeparator />
             <MenuItem onSelect={props.onArchived}>
               <Archive size={15} />
-              已归档的会话
+              {t("已归档的会话")}
             </MenuItem>
           </Menu>
         </div>
         <SelectField
-          label="会话状态"
+          label={t("会话状态")}
           value={preferences.status}
           options={filters.map((filter) => ({
             value: filter.value,
@@ -566,7 +591,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
         />
         {(showSections || anySection) && (
           <div className="mt-2 flex items-center justify-between gap-2 text-fine text-muted">
-            <span>分区</span>
+            <span>{t("分区")}</span>
             <SectionControls
               entries={data
                 .filter((source) => source.connected)
@@ -611,8 +636,12 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                     <ChevronDown size={13} />
                   )}
                   {row.expanded
-                    ? `收起为 ${PROJECT_PREVIEW_SIZE} 条`
-                    : `展开其余 ${row.remaining} 条会话`}
+                    ? t("收起为 {{value0}} 条", {
+                        value0: PROJECT_PREVIEW_SIZE,
+                      })
+                    : t("展开其余 {{value0}} 条会话", {
+                        value0: row.remaining,
+                      })}
                 </button>
               );
             if (row.kind === "label")
@@ -660,7 +689,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                         <span className="truncate">{project.name}</span>
                         {project.attention > 0 && (
                           <span className="ml-auto text-fine text-warning">
-                            {project.attention} 待处理
+                            {project.attention} {t("待处理")}
                           </span>
                         )}
                       </span>
@@ -672,9 +701,13 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                           ? project.cwd
                           : project.source.connected
                             ? project.source.sessions.historyComplete
-                              ? `${project.threads.length} 条会话`
-                              : `已加载 ${project.threads.length} 条`
-                            : "离线缓存 · 状态待同步"}
+                              ? t("{{value0}} 条会话", {
+                                  value0: project.threads.length,
+                                })
+                              : t("已加载 {{value0}} 条", {
+                                  value0: project.threads.length,
+                                })
+                            : t("离线缓存 · 状态待同步")}
                       </span>
                     </span>
                   </button>
@@ -682,7 +715,10 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                     size="sm"
                     tabIndex={tabStop ? 0 : -1}
                     className="navigation-row-menu"
-                    label={`${pinned ? "取消收藏项目" : "收藏项目"}：${project.name}`}
+                    label={t("{{value0}}：{{value1}}", {
+                      value0: pinned ? t("取消收藏项目") : t("收藏项目"),
+                      value1: project.name,
+                    })}
                     aria-pressed={pinned}
                     onClick={() =>
                       navigationPersonalization.toggleProject(
@@ -699,7 +735,9 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                   <IconButton
                     size="sm"
                     tabIndex={tabStop ? 0 : -1}
-                    label={`在 ${project.name} 新建会话`}
+                    label={t("在 {{value0}} 新建会话", {
+                      value0: project.name,
+                    })}
                     disabled={!project.source.connected}
                     onClick={() =>
                       props.onNew(project.cwd, project.source.environment.id)
@@ -720,7 +758,11 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             const updated = !item.running && (
               <time
                 dateTime={new Date(activityAt * 1000).toISOString()}
-                title={`最近活动：${new Date(activityAt * 1000).toLocaleString("zh-CN")}`}
+                title={t("最近活动：{{value0}}", {
+                  value0: new Date(activityAt * 1000).toLocaleString(
+                    getLocale(),
+                  ),
+                })}
                 className="shrink-0 text-fine text-subtle"
               >
                 {relativeTime(activityAt, now)}
@@ -732,27 +774,27 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                 size={14}
                 className="animate-spin text-accent"
                 role="img"
-                aria-label={item.initializing}
+                aria-label={t(item.initializing)}
               >
-                <title>{item.initializing}</title>
+                <title>{t(item.initializing)}</title>
               </LoaderCircle>
             ) : !source.connected && item.running ? (
               <CircleAlert
                 size={13}
                 className="text-subtle"
-                aria-label="状态待同步"
+                aria-label={t("状态待同步")}
               />
-            ) : item.waiting || status === "待核实" ? (
+            ) : item.waiting || status === t("待核实") ? (
               <CircleHelp
                 size={13}
                 className="text-warning"
-                aria-label={item.waiting || "待核实"}
+                aria-label={t(item.waiting || "待核实")}
               />
             ) : item.failed ? (
               <CircleAlert
                 size={13}
                 className="text-danger"
-                aria-label="执行失败"
+                aria-label={t("执行失败")}
               />
             ) : item.running ? (
               <LoaderCircle
@@ -760,7 +802,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                 size={13}
                 className="animate-spin text-accent"
                 role="img"
-                aria-label="运行中"
+                aria-label={t("运行中")}
               />
             ) : item.unread ? (
               <CircleCheck
@@ -769,9 +811,9 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                 strokeWidth={2.5}
                 className="shrink-0 text-success"
                 role="img"
-                aria-label="已完成，结果未读"
+                aria-label={t("已完成，结果未读")}
               >
-                <title>已完成，结果未读</title>
+                <title>{t("已完成，结果未读")}</title>
               </CircleCheck>
             ) : null;
             return (
@@ -795,7 +837,17 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                       data-navigation-primary
                       data-slot="thread-link"
                       tabIndex={tabStop ? 0 : -1}
-                      title={`${titleOf(thread)}\n${source.environment.name} · ${thread.cwd}\n最近更新：${new Date(thread.updatedAt * 1000).toLocaleString("zh-CN")}`}
+                      title={t(
+                        "{{value0}}\n{{value1}} · {{value2}}\n最近更新：{{value3}}",
+                        {
+                          value0: titleOf(thread),
+                          value1: source.environment.name,
+                          value2: thread.cwd,
+                          value3: new Date(
+                            thread.updatedAt * 1000,
+                          ).toLocaleString(getLocale()),
+                        },
+                      )}
                       className={`flex h-full min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left ${row.nested ? "pl-5" : "pl-2"}`}
                       onClick={() => {
                         setOpenError("");
@@ -807,7 +859,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                             setOpenError(
                               error instanceof Error
                                 ? error.message
-                                : "打开失败，请重试。",
+                                : t("打开失败，请重试。"),
                             ),
                           );
                       }}
@@ -828,7 +880,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                           >
                             {navigationTitle(thread)}
                           </span>
-                          {pinned && <Pin size={10} aria-label="已收藏" />}
+                          {pinned && <Pin size={10} aria-label={t("已收藏")} />}
                           {!description && updated}
                         </span>
                         {description && (
@@ -837,7 +889,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                             className="mt-0.5 flex min-w-0 items-center gap-1 text-fine text-subtle"
                           >
                             <span
-                              className={`min-w-0 flex-1 truncate ${item.waiting || status === "待核实" ? "text-warning" : item.failed ? "text-danger" : ""}`}
+                              className={`min-w-0 flex-1 truncate ${item.waiting || status === t("待核实") ? "text-warning" : item.failed ? "text-danger" : ""}`}
                             >
                               {description}
                             </span>
@@ -855,7 +907,9 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                         size="sm"
                         tabIndex={tabStop ? 0 : -1}
                         className="navigation-row-menu mr-1"
-                        label={`会话操作：${titleOf(thread)}`}
+                        label={t("会话操作：{{value0}}", {
+                          value0: titleOf(thread),
+                        })}
                       >
                         <MoreHorizontal size={15} />
                       </IconButton>
@@ -874,23 +928,23 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           {anyHistoryLoading ? (
             <>
               <LoaderCircle size={18} className="mb-3 animate-spin" />
-              正在加载会话…
+              {t("正在加载会话…")}
             </>
           ) : preferences.status !== "all" || anySection ? (
             <>
-              <p>当前筛选条件下没有会话。</p>
+              <p>{t("当前筛选条件下没有会话。")}</p>
               <Button
                 size="sm"
                 variant="quiet"
                 className="mt-3"
                 onClick={clearFilters}
               >
-                清除筛选
+                {t("清除筛选")}
               </Button>
             </>
           ) : visible.some((source) => source.connected) ? (
             <>
-              <p>还没有会话，从一个新任务开始。</p>
+              <p>{t("还没有会话，从一个新任务开始。")}</p>
               <Button
                 size="sm"
                 className="mt-3"
@@ -898,14 +952,14 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                   props.onNew(undefined, newTarget?.environment.id)
                 }
               >
-                创建第一个会话
+                {t("创建第一个会话")}
               </Button>
             </>
           ) : (
             <>
-              <p>工作环境未连接。</p>
+              <p>{t("工作环境未连接。")}</p>
               <Button size="sm" className="mt-3" onClick={props.onSettings}>
-                打开连接设置
+                {t("打开连接设置")}
               </Button>
             </>
           )}
@@ -922,17 +976,17 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
               <p className="my-2">
                 {source.environment.name} ·{" "}
                 {source.environment.runtime.connection.getSnapshot().error
-                  ? "连接失败"
-                  : "未连接"}
+                  ? t("连接失败")
+                  : t("未连接")}
                 {source.sessions.listIds.length
-                  ? " · 显示缓存，状态待同步"
-                  : " · 历史尚未同步"}
+                  ? t(" · 显示缓存，状态待同步")
+                  : t(" · 历史尚未同步")}
               </p>
             )}
             {source.sessions.historyLoading && (
               <p className="my-2 flex items-center gap-1.5">
                 <LoaderCircle size={11} className="animate-spin" />
-                {source.environment.name} · 正在补齐历史…
+                {source.environment.name} {t("· 正在补齐历史…")}
               </p>
             )}
             {(source.sessions.historyError || source.sessions.error) && (
@@ -940,8 +994,8 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                 <p>
                   {source.environment.name} ·{" "}
                   {source.sessions.listIds.length
-                    ? "部分历史未加载"
-                    : "会话加载失败"}
+                    ? t("部分历史未加载")
+                    : t("会话加载失败")}
                 </p>
                 <Button
                   size="sm"
@@ -953,7 +1007,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                       .catch(() => {})
                   }
                 >
-                  重试
+                  {t("重试")}
                 </Button>
               </div>
             )}
@@ -963,7 +1017,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           <div role="alert" className="my-2 text-danger">
             {openError}
             <button className="ml-2 underline" onClick={() => setOpenError("")}>
-              关闭
+              {t("关闭")}
             </button>
           </div>
         )}
@@ -972,16 +1026,16 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
         data-slot="sidebar-footer"
         className="shrink-0 border-t border-border px-3 py-2"
       >
-        <nav aria-label="工作台工具" className="grid grid-cols-2 gap-1">
+        <nav aria-label={t("工作台工具")} className="grid grid-cols-2 gap-1">
           <Button
             size="sm"
             variant="quiet"
             className="justify-start"
-            aria-label="已归档的会话"
+            aria-label={t("已归档的会话")}
             onClick={props.onArchived}
           >
             <Archive size={15} />
-            归档
+            {t("归档")}
           </Button>
           <Button
             size="sm"
@@ -992,15 +1046,17 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             onClick={props.onSettings}
           >
             <Settings size={15} />
-            <strong className="font-medium">设置</strong>
+            <strong className="font-medium">{t("设置")}</strong>
           </Button>
         </nav>
         <div
           className="flex items-center gap-1.5 px-2 pt-1 text-fine text-subtle"
           title={data
-            .map(
-              (source) =>
-                `${source.environment.name}：${source.connected ? "已连接" : "未连接"}`,
+            .map((source) =>
+              t("{{value0}}：{{value1}}", {
+                value0: source.environment.name,
+                value1: source.connected ? t("已连接") : t("未连接"),
+              }),
             )
             .join("\n")}
         >
@@ -1010,10 +1066,13 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           />
           <span>
             {connectedCount === data.length
-              ? `${connectedCount} 个环境已连接`
+              ? t("{{value0}} 个环境已连接", { value0: connectedCount })
               : connectedCount
-                ? `${connectedCount} / ${data.length} 个环境已连接`
-                : "工作环境未连接"}
+                ? t("{{value0}} / {{value1}} 个环境已连接", {
+                    value0: connectedCount,
+                    value1: data.length,
+                  })
+                : t("工作环境未连接")}
           </span>
         </div>
       </footer>

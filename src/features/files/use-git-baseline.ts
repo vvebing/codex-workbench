@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { isLargeFile, MAX_NORMAL_FILE_BYTES } from "./file-limits";
 import { useEffect, useRef, useState } from "react";
 import { useRuntime } from "../../lib/runtime-context";
@@ -49,7 +50,7 @@ export function useGitBaseline(document: FileDocument | undefined) {
     if (!enabled || !git.connected || !root || !relativePath) return;
     const relative = relativePath;
     const exec = async (args: string[]) => {
-      if (!valid()) throw new Error("连接已变化");
+      if (!valid()) throw new Error(t("连接已变化"));
       const response = await connection.client.request<CommandExecResponse>(
         "command/exec",
         {
@@ -66,7 +67,7 @@ export function useGitBaseline(document: FileDocument | undefined) {
         },
       );
       if (!valid() || response.exitCode !== 0)
-        throw new Error("Git 行标记暂不可用");
+        throw new Error(t("Git 行标记暂不可用"));
       return response.stdout;
     };
     void (async () => {
@@ -78,7 +79,7 @@ export function useGitBaseline(document: FileDocument | undefined) {
       const records = listing.split("\0").filter(Boolean);
       const match = /^(\d+) ([a-f0-9]{40,64}) 0\t/.exec(records[0]);
       if (records.length !== 1 || !match || match[1] === "160000")
-        throw new Error("冲突或子模块暂不显示 Git 行标记");
+        throw new Error(t("冲突或子模块暂不显示 Git 行标记"));
       const oid = match[2];
       const cacheKey = JSON.stringify([epoch, scope, oid]);
       let text = cache.current.get(cacheKey);
@@ -89,7 +90,7 @@ export function useGitBaseline(document: FileDocument | undefined) {
           size < 0 ||
           size > MAX_NORMAL_FILE_BYTES
         )
-          throw new Error("Git 基线超过 1 MB");
+          throw new Error(t("Git 基线超过 1 MB"));
         text = await exec(["cat-file", "blob", oid]);
         if (
           text.includes("\0") ||
@@ -97,7 +98,7 @@ export function useGitBaseline(document: FileDocument | undefined) {
           new TextEncoder().encode(text).length > MAX_NORMAL_FILE_BYTES ||
           isLargeFile(text)
         )
-          throw new Error("Git 基线不是可预览的 UTF-8 文本");
+          throw new Error(t("Git 基线不是可预览的 UTF-8 文本"));
         if (cache.current.size >= 16) cache.current.clear();
         cache.current.set(cacheKey, text);
       }

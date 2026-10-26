@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
 import type { TurnStatus } from "../../generated/v2/TurnStatus";
 
@@ -66,15 +67,20 @@ export function commandTitle(
   const action = item.commandActions[0];
   switch (action.type) {
     case "read":
-      return `读取 ${action.name || action.path}`;
+      return t("读取 {{value0}}", { value0: action.name || action.path });
     case "listFiles":
-      return action.path ? `浏览 ${action.path}` : "浏览文件";
+      return action.path
+        ? t("浏览 {{value0}}", { value0: action.path })
+        : t("浏览文件");
     case "search":
       return action.query
-        ? `搜索 ${action.query}${action.path ? ` · ${action.path}` : ""}`
+        ? t("搜索 {{value0}}{{value1}}", {
+            value0: action.query,
+            value1: action.path ? ` · ${action.path}` : "",
+          })
         : action.path
-          ? `搜索 ${action.path}`
-          : "搜索文件";
+          ? t("搜索 {{value0}}", { value0: action.path })
+          : t("搜索文件");
     default:
       return fallbackCommandTitle(item.command);
   }
@@ -88,7 +94,9 @@ function fallbackCommandTitle(command: string): string {
       compact,
     );
   const preview = shell?.[2] ?? compact;
-  return `执行命令 · ${preview.length > 100 ? `${preview.slice(0, 100)}…` : preview}`;
+  return t("执行命令 · {{value0}}", {
+    value0: preview.length > 100 ? `${preview.slice(0, 100)}…` : preview,
+  });
 }
 
 export interface OperationGroupContext {

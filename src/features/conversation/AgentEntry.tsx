@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { Popover } from "radix-ui";
 import {
@@ -31,16 +33,17 @@ function AgentRow({
   waiting: boolean;
   onSelect: () => void;
 }) {
+  useTranslation();
   const status = resolveAgentStatus(agent.status, thread, waiting);
   const activity = thread
     ? latestAgentActivity(thread)
-    : (agent.message ?? agent.prompt ?? "暂无活动记录");
+    : (agent.message ?? agent.prompt ?? t("暂无活动记录"));
   const name =
     thread?.agentNickname ??
     agent.nickname ??
     thread?.agentRole ??
     agent.role ??
-    `子代理 ${agent.id.slice(0, 8)}`;
+    t("子代理 {{value0}}", { value0: agent.id.slice(0, 8) });
   return (
     <button
       type="button"
@@ -56,13 +59,13 @@ function AgentRow({
             className={`shrink-0 text-meta ${waiting ? "text-accent" : "text-muted"}`}
           >
             {status === "waiting"
-              ? "等待确认"
+              ? t("等待确认")
               : status === "running"
-                ? "执行中"
+                ? t("执行中")
                 : status === "pendingInit"
-                  ? "准备中"
+                  ? t("准备中")
                   : status === "errored"
-                    ? "失败"
+                    ? t("失败")
                     : executionStatusLabel(status)}
           </span>
         </div>
@@ -85,6 +88,7 @@ export function AgentEntry({
   thread: Thread;
   onSelect: (id: string) => void;
 }) {
+  useTranslation();
   const runtime = useRuntime();
   const known = useStore(runtime.sessions).threads;
   const pending = useStore(runtime.requests).pending;
@@ -96,7 +100,33 @@ export function AgentEntry({
   );
   const counts = agentStatusCounts(agents, known, waitingIds);
   const pendingCount = counts.waiting;
-  const summaryLabel = `查看子代理，共 ${agents.length} 个${counts.running ? `，${counts.running} 运行中` : ""}${counts.completed ? `，${counts.completed} 已完成` : ""}${counts.waiting ? `，${counts.waiting} 等待确认` : ""}${counts.failed ? `，${counts.failed} 失败` : ""}${counts.preparing ? `，${counts.preparing} 准备中` : ""}${counts.interrupted ? `，${counts.interrupted} 已中断` : ""}${counts.unknown ? `，${counts.unknown} 状态待确认` : ""}`;
+  const summaryLabel = t(
+    "查看子代理，共 {{value0}} 个{{value1}}{{value2}}{{value3}}{{value4}}{{value5}}{{value6}}{{value7}}",
+    {
+      value0: agents.length,
+      value1: counts.running
+        ? t("，{{value0}} 运行中", { value0: counts.running })
+        : "",
+      value2: counts.completed
+        ? t("，{{value0}} 已完成", { value0: counts.completed })
+        : "",
+      value3: counts.waiting
+        ? t("，{{value0}} 等待确认", { value0: counts.waiting })
+        : "",
+      value4: counts.failed
+        ? t("，{{value0}} 失败", { value0: counts.failed })
+        : "",
+      value5: counts.preparing
+        ? t("，{{value0}} 准备中", { value0: counts.preparing })
+        : "",
+      value6: counts.interrupted
+        ? t("，{{value0}} 已中断", { value0: counts.interrupted })
+        : "",
+      value7: counts.unknown
+        ? t("，{{value0}} 状态待确认", { value0: counts.unknown })
+        : "",
+    },
+  );
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -187,32 +217,32 @@ export function AgentEntry({
             <Bot size={14} />
             {counts.running > 0 && (
               <span className="hidden text-fine @min-[650px]:inline">
-                {counts.running} 运行中
+                {counts.running} {t("运行中")}
               </span>
             )}
             {counts.completed > 0 && (
               <span className="hidden text-fine @min-[650px]:inline">
-                {counts.completed} 已完成
+                {counts.completed} {t("已完成")}
               </span>
             )}
             {counts.preparing > 0 && (
               <span className="hidden text-fine @min-[650px]:inline">
-                {counts.preparing} 准备中
+                {counts.preparing} {t("准备中")}
               </span>
             )}
             {counts.failed > 0 && (
               <span className="hidden text-fine text-danger @min-[650px]:inline">
-                {counts.failed} 失败
+                {counts.failed} {t("失败")}
               </span>
             )}
             {counts.interrupted > 0 && (
               <span className="hidden text-fine @min-[650px]:inline">
-                {counts.interrupted} 已中断
+                {counts.interrupted} {t("已中断")}
               </span>
             )}
             {counts.unknown > 0 && (
               <span className="hidden text-fine @min-[650px]:inline">
-                {counts.unknown} 状态待确认
+                {counts.unknown} {t("状态待确认")}
               </span>
             )}
             <span
@@ -247,7 +277,7 @@ export function AgentEntry({
             </span>
             {pendingCount > 0 && (
               <span className="text-fine text-accent">
-                {pendingCount} 待处理
+                {pendingCount} {t("待处理")}
               </span>
             )}
           </button>
@@ -301,8 +331,11 @@ export function AgentEntry({
             }}
           >
             <p className="px-4 pt-3 pb-2 text-meta text-muted">
-              子代理 · {agents.length}
-              {pendingCount ? ` · ${pendingCount} 待处理` : ""}
+              {t("子代理 ·")}
+              {agents.length}
+              {pendingCount
+                ? t(" · {{value0}} 待处理", { value0: pendingCount })
+                : ""}
             </p>
             <ScrollArea
               className="max-h-72"

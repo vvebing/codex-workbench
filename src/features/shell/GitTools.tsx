@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useMemo, useRef, useState } from "react";
 import { Download, FolderGit2, MoreHorizontal } from "lucide-react";
 import {
@@ -18,10 +19,14 @@ export function GitTools({
   root: string;
   onSelectWorktree?: (path: string) => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { connection } = useRuntime();
   const { epoch, scope } = connection.getSnapshot();
   const tools = useMemo(
-    () =>
+    () => (
+      void i18nLocale,
       new ReadOnlyGitTools(
         root,
         (params) => connection.client.request("command/exec", params),
@@ -33,8 +38,9 @@ export function GitTools({
             now.scope === scope
           );
         },
-      ),
-    [connection, root, epoch, scope],
+      )
+    ),
+    [connection, root, epoch, scope, i18nLocale],
   );
   const [trees, setTrees] = useState<string[]>();
   const [error, setError] = useState("");
@@ -56,15 +62,15 @@ export function GitTools({
   };
   return (
     <section
-      aria-label="Git 只读工具"
+      aria-label={t("Git 只读工具")}
       className="space-y-2 border-b border-border px-3 py-2"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-meta text-muted">查看差异与导出补丁</span>
+        <span className="text-meta text-muted">{t("查看差异与导出补丁")}</span>
         <Menu
-          label="Git 工具"
+          label={t("Git 工具")}
           trigger={
-            <IconButton label="Git 工具" disabled={busy}>
+            <IconButton label={t("Git 工具")} disabled={busy}>
               <MoreHorizontal size={16} />
             </IconButton>
           }
@@ -84,7 +90,7 @@ export function GitTools({
               }
             >
               <Download size={15} />
-              {cached ? "导出已暂存补丁" : "导出未暂存补丁"}
+              {cached ? t("导出已暂存补丁") : t("导出未暂存补丁")}
             </MenuItem>
           ))}
           {onSelectWorktree && (
@@ -96,7 +102,7 @@ export function GitTools({
               }
             >
               <FolderGit2 size={15} />
-              选择已有工作树
+              {t("选择已有工作树")}
             </MenuItem>
           )}
         </Menu>
@@ -104,7 +110,7 @@ export function GitTools({
       {error && <ErrorNotice>{error}</ErrorNotice>}
       {trees && (
         <div className="space-y-1">
-          <p className="text-meta text-muted">选择工作树目录新建会话</p>
+          <p className="text-meta text-muted">{t("选择工作树目录新建会话")}</p>
           {trees.map((tree) => (
             <Button
               key={tree}
@@ -118,7 +124,7 @@ export function GitTools({
             </Button>
           ))}
           {!trees.length && (
-            <p className="text-meta text-muted">没有已记录的工作树。</p>
+            <p className="text-meta text-muted">{t("没有已记录的工作树。")}</p>
           )}
         </div>
       )}

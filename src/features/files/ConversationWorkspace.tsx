@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import {
   useEffect,
   useLayoutEffect,
@@ -28,6 +29,9 @@ function savedRatio() {
 
 /** Keep both views mounted so changing layouts preserves scroll, drafts and undo. */
 export function ConversationWorkspace({ children }: { children: ReactNode }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { files } = useRuntime();
   const state = useStore(files);
   useEffect(() => {
@@ -75,11 +79,7 @@ export function ConversationWorkspace({ children }: { children: ReactNode }) {
     previousMode.current = mode;
     if (mode !== "conversation" || previous === "conversation") return;
     const frame = requestAnimationFrame(() => {
-      container.current
-        ?.querySelector<HTMLElement>(
-          '[role="textbox"][aria-label="消息输入框"]',
-        )
-        ?.focus();
+      container.current?.querySelector<HTMLElement>("#message-input")?.focus();
     });
     return () => cancelAnimationFrame(frame);
   }, [mode]);
@@ -109,7 +109,7 @@ export function ConversationWorkspace({ children }: { children: ReactNode }) {
           <section
             className="@container/conversation flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
             data-slot="conversation-pane"
-            aria-label="会话内容"
+            aria-label={t("会话内容")}
             aria-hidden={mode === "editor" ? true : undefined}
             inert={mode === "editor"}
             style={mode === "editor" ? { display: "none" } : undefined}
@@ -119,8 +119,8 @@ export function ConversationWorkspace({ children }: { children: ReactNode }) {
         </Panel>
         <PanelResizeHandle
           className="conversation-editor-resize"
-          aria-label="调整会话与编辑器宽度"
-          title="拖动调整宽度，双击或按 Enter 恢复均分"
+          aria-label={t("调整会话与编辑器宽度")}
+          title={t("拖动调整宽度，双击或按 Enter 恢复均分")}
           onDoubleClick={() => group.current?.setLayout([50, 50])}
           onKeyDown={(event) => {
             if (event.key === "Enter" && mode === "split") {

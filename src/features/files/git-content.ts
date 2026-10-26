@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { CodexClient } from "../../lib/rpc";
 import type { CommandExecResponse } from "../../generated/v2/CommandExecResponse";
 import type { FsReadFileResponse } from "../../generated/v2/FsReadFileResponse";
@@ -27,7 +28,7 @@ function text(value: string) {
     value.includes("\0") ||
     value.includes("\ufffd")
   )
-    throw new Error("仅支持 256 KB 以内的 UTF-8 文本差异。");
+    throw new Error(t("仅支持 256 KB 以内的 UTF-8 文本差异。"));
   return value;
 }
 function safePath(path: string) {
@@ -37,7 +38,7 @@ function safePath(path: string) {
     path.split("/").some((p) => p === ".." || p === ".") ||
     [...path].some((char) => char.charCodeAt(0) < 32)
   )
-    throw new Error("Git 文件路径无效。");
+    throw new Error(t("Git 文件路径无效。"));
   return path;
 }
 export async function readGitComparison(
@@ -56,33 +57,33 @@ export async function readGitComparison(
     });
     assertCurrent();
     if (response.exitCode !== 0)
-      throw new Error("无法读取 Git 版本，请刷新状态后重试。");
+      throw new Error(t("无法读取 Git 版本，请刷新状态后重试。"));
     return response.stdout;
   };
   const output = await exec(request.cwd, ["rev-parse", "--show-toplevel"]);
-  if (!output.endsWith("\n")) throw new Error("无法确定仓库根目录。");
+  if (!output.endsWith("\n")) throw new Error(t("无法确定仓库根目录。"));
   const root = output.slice(0, -1);
   const status = await client.request<CommandExecResponse>(
     "command/exec",
     gitStatusCommand(root),
   );
   assertCurrent();
-  if (status.exitCode !== 0) throw new Error("无法读取 Git 状态。");
+  if (status.exitCode !== 0) throw new Error(t("无法读取 Git 状态。"));
   const file = parseWorkspaceGitStatus(status.stdout).files.find(
     (f) => f.path === request.path && f.groups.includes(request.group),
   );
   if (!file)
-    throw new Error("此文件的 Git 状态已改变，请刷新 Git 列表后重试。");
+    throw new Error(t("此文件的 Git 状态已改变，请刷新 Git 列表后重试。"));
   if (request.group === "conflict")
-    throw new Error("冲突文件尚不支持三方比较，请打开当前文件处理冲突。");
+    throw new Error(t("冲突文件尚不支持三方比较，请打开当前文件处理冲突。"));
   const path = `${root.replace(/\/$/, "")}/${safePath(file.path)}`;
   const blob = async (spec: string) => {
     // Pin the object before reading so staging/committing cannot mix size and content.
     const oid = (await exec(root, ["rev-parse", "--verify", spec])).trim();
-    if (!/^[a-f0-9]{40,64}$/.test(oid)) throw new Error("Git 对象无效。");
+    if (!/^[a-f0-9]{40,64}$/.test(oid)) throw new Error(t("Git 对象无效。"));
     const size = Number((await exec(root, ["cat-file", "-s", oid])).trim());
     if (!Number.isSafeInteger(size) || size < 0 || size > LIMIT)
-      throw new Error("文件超过 256 KB，无法展示差异。");
+      throw new Error(t("文件超过 256 KB，无法展示差异。"));
     return text(await exec(root, ["cat-file", "blob", oid]));
   };
   const staged = request.group === "staged";
@@ -104,7 +105,7 @@ export async function readGitComparison(
       });
       assertCurrent();
       if (result.dataBase64.length > Math.ceil(LIMIT / 3) * 4)
-        throw new Error("文件超过 256 KB，无法展示差异。");
+        throw new Error(t("文件超过 256 KB，无法展示差异。"));
       modified = text(
         new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
           Uint8Array.from(atob(result.dataBase64), (c) => c.charCodeAt(0)),
@@ -121,9 +122,9 @@ export async function readGitComparison(
       originalLabel: staged
         ? "HEAD"
         : request.group === "untracked"
-          ? "空文件（未跟踪）"
-          : "暂存区",
-      modifiedLabel: staged ? "暂存区" : "磁盘文件",
+          ? t("空文件（未跟踪）")
+          : t("暂存区"),
+      modifiedLabel: staged ? t("暂存区") : t("磁盘文件"),
       canOpen:
         file.worktreeStatus !== "D" && !(staged && file.indexStatus === "D"),
     } satisfies GitComparison,

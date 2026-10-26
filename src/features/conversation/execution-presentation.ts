@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
 import { isInstantOperation } from "./operation";
 
@@ -84,15 +85,34 @@ function summaryLabel(
   const count = items.length;
   switch (kind) {
     case "read":
-      return `${running ? "正在读取" : "读取了"} ${count} 项文件操作`;
+      return t("{{value0}} {{value1}} 项文件操作", {
+        value0: running ? t("正在读取") : t("读取了"),
+        value1: count,
+      });
     case "search":
-      return `${running ? "正在搜索" : "搜索了"} ${count} 项`;
+      return t("{{value0}} {{value1}} 项", {
+        value0: running ? t("正在搜索") : t("搜索了"),
+        value1: count,
+      });
     case "run":
-      return `${running ? "正在执行" : "执行了"} ${count} 条命令`;
+      return t("{{value0}} {{value1}} 条命令", {
+        value0: running ? t("正在执行") : t("执行了"),
+        value1: count,
+      });
     case "tool":
-      return `${running ? "正在调用" : "调用了"} ${items[0].type === "mcpToolCall" || items[0].type === "dynamicToolCall" ? items[0].tool : "工具"} · ${count} 次`;
+      return t("{{value0}} {{value1}} · {{value2}} 次", {
+        value0: running ? t("正在调用") : t("调用了"),
+        value1:
+          items[0].type === "mcpToolCall" || items[0].type === "dynamicToolCall"
+            ? items[0].tool
+            : t("工具"),
+        value2: count,
+      });
     case "web":
-      return `${running ? "正在搜索" : "搜索了"} ${count} 次网页`;
+      return t("{{value0}} {{value1}} 次网页", {
+        value0: running ? t("正在搜索") : t("搜索了"),
+        value1: count,
+      });
     case "file": {
       const paths = new Set(
         items.flatMap((item) =>
@@ -101,7 +121,11 @@ function summaryLabel(
             : [],
         ),
       );
-      return `${running ? "正在修改" : "修改了"} ${paths.size} 个文件${count > 1 ? ` · ${count} 次修改` : ""}`;
+      return t("{{value0}} {{value1}} 个文件{{value2}}", {
+        value0: running ? t("正在修改") : t("修改了"),
+        value1: paths.size,
+        value2: count > 1 ? t(" · {{value0}} 次修改", { value0: count }) : "",
+      });
     }
   }
 }

@@ -1,3 +1,4 @@
+import { t } from "../lib/i18n";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { threadTitle } from "../features/sessions/thread-title";
 export function useStore<T>(store: {
@@ -55,13 +56,14 @@ export function useNarrow() {
 }
 export const titleOf = threadTitle;
 export const folderOf = (path: string) =>
-  path.split("/").filter(Boolean).at(-1) || "工作区";
+  path.split("/").filter(Boolean).at(-1) || t("工作区");
 export function relativeTime(timestamp: number, now = Date.now()) {
   const seconds = Math.max(0, now / 1000 - timestamp);
-  if (seconds < 60) return "刚刚";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时`;
-  return `${Math.floor(seconds / 86400)} 天`;
+  if (seconds < 60) return t("刚刚");
+  if (seconds < 3600) return t("{{v0}} 分钟", { v0: Math.floor(seconds / 60) });
+  if (seconds < 86400)
+    return t("{{v0}} 小时", { v0: Math.floor(seconds / 3600) });
+  return t("{{v0}} 天", { v0: Math.floor(seconds / 86400) });
 }
 
 // Mobile keyboards can resize the visual viewport without changing 100dvh.

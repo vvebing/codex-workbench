@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { sameEnvironmentSessions } from "./environment-summary";
 import { createRuntime } from "../../lib/runtime";
 import { sameEndpoint } from "./store";
@@ -14,7 +15,9 @@ export interface Environment {
 export type EnvironmentProfile = Omit<Environment, "runtime">;
 const local: EnvironmentProfile = {
   id: "local",
-  name: "本机",
+  get name() {
+    return t("本机");
+  },
   kind: "local",
   url: "ws://127.0.0.1:4501",
 };
@@ -50,8 +53,19 @@ export class EnvironmentsStore extends Store<{
   constructor(profiles: EnvironmentProfile[] = savedProfiles()) {
     const entries = profiles.map((profile) => ({
       ...profile,
+
       runtime: createRuntime({}, profile.id, profile.url),
     }));
+    for (const entry of entries) {
+      const profile = profiles.find((item) => item.id === entry.id)!;
+      if (profile.id === "local" && ["本机", "Local"].includes(profile.name)) {
+        Object.defineProperty(entry, "name", {
+          enumerable: true,
+          configurable: true,
+          get: () => t("本机"),
+        });
+      }
+    }
     let activeId = entries[0].id;
     try {
       const saved = localStorage.getItem("codex-active-environment");
@@ -124,7 +138,7 @@ export class EnvironmentsStore extends Store<{
   save(profile: EnvironmentProfile, activate = true): Environment {
     const old = this.state.entries.find((e) => e.id === profile.id);
     if (!old && this.state.entries.length >= 20)
-      throw Error("最多添加 20 个工作环境。");
+      throw Error(t("最多添加 20 个工作环境。"));
     const entry = {
       ...profile,
       autoConnect: profile.autoConnect ?? old?.autoConnect,

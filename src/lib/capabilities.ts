@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { Store } from "./store";
 import type { RpcMethod } from "./rpc";
 
@@ -14,12 +15,24 @@ export interface CapabilityEvidence {
   checkedAt: number;
 }
 export const capabilityLabels: Record<CapabilityState, string> = {
-  supported: "已成功调用",
-  unsupported: "服务端未提供此接口",
-  authentication: "需要登录或重新认证",
-  policy: "权限或受管策略限制",
-  "invalid-request": "请求参数被拒绝，支持情况待核实",
-  temporary: "调用失败，支持情况待核实",
+  get supported() {
+    return t("已成功调用");
+  },
+  get unsupported() {
+    return t("服务端未提供此接口");
+  },
+  get authentication() {
+    return t("需要登录或重新认证");
+  },
+  get policy() {
+    return t("权限或受管策略限制");
+  },
+  get "invalid-request"() {
+    return t("请求参数被拒绝，支持情况待核实");
+  },
+  get temporary() {
+    return t("调用失败，支持情况待核实");
+  },
 };
 /** Observations from real calls, never a guessed minimum-version table. */
 export class CapabilityStore extends Store<

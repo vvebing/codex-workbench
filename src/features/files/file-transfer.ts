@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { CodexClient } from "../../lib/rpc";
 import type { FsReadDirectoryResponse } from "../../generated/v2/FsReadDirectoryResponse";
 import { workspacePath } from "../shell/project-files";
@@ -13,7 +14,7 @@ export function transferName(name: string) {
     name === ".." ||
     name === ".git"
   )
-    throw new Error("无效的文件名。");
+    throw new Error(t("无效的文件名。"));
   return name;
 }
 export function availableName(name: string, occupied: Set<string>) {
@@ -28,7 +29,9 @@ export function availableName(name: string, occupied: Set<string>) {
 }
 export async function encodeFile(file: File) {
   if (file.size > MAX_TRANSFER_BYTES)
-    throw new Error(`${file.name}：每个文件最多 8 MB。`);
+    throw new Error(
+      t("{{value0}}：每个文件最多 8 MB。", { value0: file.name }),
+    );
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = "";
   for (let start = 0; start < bytes.length; start += 32768)
@@ -67,7 +70,7 @@ export async function uploadProjectFile(
         new Set(listing.entries.map((entry) => entry.fileName)),
       );
     else if (!existing.isFile || existing.isDirectory)
-      throw new Error("不能用文件替换目录或特殊文件。");
+      throw new Error(t("不能用文件替换目录或特殊文件。"));
   }
   const relative = directory ? `${directory}/${name}` : name;
   await client.request("fs/writeFile", {
@@ -79,7 +82,7 @@ export async function uploadProjectFile(
 }
 export function saveDownload(dataBase64: string, name: string) {
   if (dataBase64.length > Math.ceil(MAX_TRANSFER_BYTES / 3) * 4)
-    throw new Error("当前支持下载最多 8 MB 的文件。");
+    throw new Error(t("当前支持下载最多 8 MB 的文件。"));
   const bytes = Uint8Array.from(atob(dataBase64), (character) =>
     character.charCodeAt(0),
   );

@@ -1,3 +1,4 @@
+import { t, useLocale, getLocale } from "../../lib/i18n";
 import { ROOT_THREAD_SOURCES } from "../sessions/list";
 import { mergeArchivedThreads } from "./archived-threads";
 import { useEffect, useRef, useState } from "react";
@@ -22,7 +23,7 @@ import type { ThreadSortKey } from "../../generated/v2/ThreadSortKey";
 
 type Page = { data: Thread[]; nextCursor: string | null };
 const date = (timestamp: number) =>
-  new Date(timestamp * 1000).toLocaleString("zh-CN", {
+  new Date(timestamp * 1000).toLocaleString(getLocale(), {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -37,6 +38,7 @@ export function ArchivedThreads({
   environment: Environment;
   onRestored: (id: string) => void;
 }) {
+  useLocale();
   const runtime = environment.runtime;
   const connection = useStore(runtime.connection);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -127,25 +129,25 @@ export function ArchivedThreads({
           <input
             className="min-w-0 w-full border-0 bg-transparent py-2 outline-none"
             type="search"
-            aria-label="搜索已归档会话"
-            placeholder="搜索会话名称"
+            aria-label={t("搜索已归档会话")}
+            placeholder={t("搜索会话名称")}
             value={query}
             disabled={!!restoring}
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
         <SelectField
-          label="归档会话排序"
+          label={t("归档会话排序")}
           value={sort}
           disabled={!!restoring}
           onValueChange={(value) => setSort(value as ThreadSortKey)}
           options={[
-            { value: "updated_at", label: "最近更新" },
-            { value: "created_at", label: "创建时间" },
+            { value: "updated_at", label: t("最近更新") },
+            { value: "created_at", label: t("创建时间") },
           ]}
         />
         <IconButton
-          label="刷新归档会话"
+          label={t("刷新归档会话")}
           disabled={!connected || busy}
           onClick={() => setRevision((value) => value + 1)}
         >
@@ -155,9 +157,11 @@ export function ArchivedThreads({
       {!connected && (
         <div className="mt-6 flex flex-col items-center rounded-xl border border-dashed border-border bg-surface px-4 py-8 text-center text-muted">
           <Archive size={30} strokeWidth={1.5} />
-          <h4 className="mt-4 mb-2 text-sm text-foreground">先连接工作环境</h4>
+          <h4 className="mt-4 mb-2 text-sm text-foreground">
+            {t("先连接工作环境")}
+          </h4>
           <p className="text-xs leading-relaxed">
-            连接 {environment.name} 后查看已归档会话。
+            {t("连接 {{name}} 后查看已归档会话。", { name: environment.name })}
           </p>
         </div>
       )}
@@ -170,14 +174,17 @@ export function ArchivedThreads({
             disabled={busy || !connected}
             onClick={() => setRevision((value) => value + 1)}
           >
-            重新加载
+            {t("重新加载")}
           </Button>
         </ErrorNotice>
       )}
       {connected && threads.length > 0 && (
         <p className="mb-3 text-xs text-muted">
-          {groups.size} 个工作区 · 已加载 {threads.length} 个会话
-          {cursor ? "，还有更多" : ""}
+          {t("工作区：{{workspaces}} · 已加载会话：{{sessions}}", {
+            workspaces: groups.size,
+            sessions: threads.length,
+          })}
+          {cursor ? t("，还有更多") : ""}
         </p>
       )}
       {[...groups].map(([cwd, entries]) => (
@@ -201,7 +208,7 @@ export function ArchivedThreads({
                 className="mt-1 block text-meta text-muted [overflow-wrap:anywhere]"
                 title={cwd}
               >
-                {cwd || "未指定工作区"}
+                {cwd || t("未指定工作区")}
               </small>
             </span>
             <span className="rounded-lg bg-hover px-2 py-1 text-meta text-muted">
@@ -227,7 +234,7 @@ export function ArchivedThreads({
                         : thread.updatedAt) * 1000,
                     ).toISOString()}
                   >
-                    {sort === "created_at" ? "创建于" : "更新于"}{" "}
+                    {sort === "created_at" ? t("创建于") : t("更新于")}{" "}
                     {date(
                       sort === "created_at"
                         ? thread.createdAt
@@ -239,7 +246,7 @@ export function ArchivedThreads({
                   variant="secondary"
                   size="sm"
                   type="button"
-                  aria-label={`恢复 ${titleOf(thread)}`}
+                  aria-label={t("恢复 {{v0}}", { v0: titleOf(thread) })}
                   disabled={busy || !connected}
                   onClick={() =>
                     void action(async (current) => {
@@ -258,7 +265,7 @@ export function ArchivedThreads({
                   }
                 >
                   <RotateCcw size={14} />
-                  {restoring === thread.id ? "正在恢复…" : "恢复"}
+                  {restoring === thread.id ? t("正在恢复…") : t("恢复")}
                 </Button>
               </div>
             ))}
@@ -269,18 +276,18 @@ export function ArchivedThreads({
         <div className="mt-6 flex flex-col items-center rounded-xl border border-dashed border-border bg-surface px-4 py-8 text-center text-muted">
           <Archive size={30} strokeWidth={1.5} />
           <h4 className="mt-4 mb-2 text-sm text-foreground">
-            {search ? "没有匹配的会话" : "还没有归档的会话"}
+            {search ? t("没有匹配的会话") : t("还没有归档的会话")}
           </h4>
           <p className="text-xs leading-relaxed">
             {search
-              ? "试试其他会话名称。"
-              : "归档后的会话会按工作区显示在这里。"}
+              ? t("试试其他会话名称。")
+              : t("归档后的会话会按工作区显示在这里。")}
           </p>
         </div>
       )}
       {busy && (
         <p role="status" className="py-4 text-center text-xs text-muted">
-          {restoring ? "正在恢复会话…" : "正在加载归档会话…"}
+          {restoring ? t("正在恢复会话…") : t("正在加载归档会话…")}
         </p>
       )}
       {cursor && (
@@ -302,14 +309,14 @@ export function ArchivedThreads({
               );
               if (generation.current !== current) return;
               if (page.nextCursor && seenCursors.current.has(page.nextCursor))
-                throw Error("分页游标重复，请刷新后重试。");
+                throw Error(t("分页游标重复，请刷新后重试。"));
               if (page.nextCursor) seenCursors.current.add(page.nextCursor);
               setThreads((old) => mergeArchivedThreads(old, page.data));
               setCursor(page.nextCursor);
             })
           }
         >
-          加载更多会话
+          {t("加载更多会话")}
         </Button>
       )}
     </div>

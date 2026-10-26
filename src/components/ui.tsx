@@ -1,3 +1,4 @@
+import { t, useLocale, getLocale } from "../lib/i18n";
 import {
   Dialog,
   Checkbox as RadixCheckbox,
@@ -20,6 +21,7 @@ export function ErrorNotice({
   onDismiss,
   ...props
 }: ComponentPropsWithoutRef<"div"> & { onDismiss?: () => void }) {
+  useLocale();
   return (
     <div
       role="alert"
@@ -35,7 +37,7 @@ export function ErrorNotice({
         <IconButton
           size="sm"
           onClick={onDismiss}
-          label="关闭错误提示"
+          label={t("关闭错误提示")}
           className="text-danger hover:bg-danger/10"
         >
           <X size={14} aria-hidden="true" />
@@ -59,6 +61,7 @@ export function ScrollArea({
   viewportRef?: Ref<HTMLDivElement>;
   viewportProps?: ComponentPropsWithoutRef<typeof RadixScrollArea.Viewport>;
 }) {
+  useLocale();
   return (
     <RadixScrollArea.Root
       {...props}
@@ -110,6 +113,7 @@ export function Checkbox({
   className = "",
   ...props
 }: ComponentPropsWithoutRef<typeof RadixCheckbox.Root>) {
+  useLocale();
   return (
     <RadixCheckbox.Root
       {...props}
@@ -133,6 +137,7 @@ export function Button({
   variant?: keyof typeof buttonVariants;
   size?: "default" | "sm";
 }) {
+  useLocale();
   return (
     <button
       type={type}
@@ -154,6 +159,7 @@ export function IconButton({
   size?: "default" | "sm" | "composer";
   highlighted?: boolean;
 }) {
+  useLocale();
   return (
     <button
       type="button"
@@ -203,6 +209,7 @@ export function Modal({
   returnFocusElement?: HTMLElement | null;
   dismissible?: boolean;
 }) {
+  useLocale();
   const returnFocus = useRef<HTMLElement | null>(null);
   const drawer = variant === "drawer" || variant === "details";
   const content = (
@@ -222,7 +229,7 @@ export function Modal({
         </Dialog.Title>
         {!drawer && (
           <Dialog.Close asChild>
-            <IconButton label="关闭" disabled={!dismissible}>
+            <IconButton label={t("关闭")} disabled={!dismissible}>
               <X size={18} />
             </IconButton>
           </Dialog.Close>
@@ -337,6 +344,7 @@ export function Menu({
   matchTriggerWidth?: boolean;
   align?: "start" | "center" | "end";
 }) {
+  useLocale();
   return (
     <DropdownMenu.Root open={open} onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
@@ -361,6 +369,7 @@ export const MenuItem = DropdownMenu.Item;
 export function MenuLabel(
   props: React.ComponentProps<typeof DropdownMenu.Label>,
 ) {
+  useLocale();
   return (
     <DropdownMenu.Label
       data-slot="menu-label"
@@ -372,6 +381,7 @@ export function MenuLabel(
 export function MenuSeparator(
   props: React.ComponentProps<typeof DropdownMenu.Separator>,
 ) {
+  useLocale();
   return (
     <DropdownMenu.Separator
       {...props}
@@ -411,6 +421,7 @@ export function SelectField({
   size?: "default" | "field";
   className?: string;
 }) {
+  useLocale();
   const typography =
     size === "field" ? "text-sm max-[900px]:text-base" : "text-caption";
   return (
@@ -496,11 +507,12 @@ export function MultiSelectField({
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
 }) {
+  useLocale();
   const selected = new Set(value);
   const summary = options
     .filter((option) => selected.has(option.value))
     .map((option) => option.label)
-    .join("、");
+    .join(getLocale() === "zh-CN" ? "、" : ", ");
   return (
     <Menu
       label={label}
@@ -516,7 +528,7 @@ export function MultiSelectField({
           className={`inline-flex min-h-9 min-w-0 max-w-full items-center justify-between gap-2 rounded-lg border border-border bg-elevated px-3 py-2 text-caption hover:bg-hover data-[state=open]:bg-hover disabled:opacity-50 max-[900px]:min-h-11 ${className}`}
         >
           <span className="min-w-0 truncate" title={summary || undefined}>
-            {summary || "请选择（可多选）"}
+            {summary || t("请选择（可多选）")}
           </span>
           <ChevronDown size={15} className="shrink-0" aria-hidden="true" />
         </button>

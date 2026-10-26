@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../lib/i18n";
 import {
   useId,
   useLayoutEffect,
@@ -17,6 +19,7 @@ export function CollapsiblePrompt({
   children: ReactNode;
   preview: string;
 }) {
+  useTranslation();
   const id = useId();
   const content = useRef<HTMLDivElement>(null);
   const [long, setLong] = useState(false);
@@ -33,7 +36,10 @@ export function CollapsiblePrompt({
   return (
     <div data-slot="collapsible-prompt">
       {long && !expanded && (
-        <p className="sr-only">{preview.slice(0, 300)}…（内容已折叠）</p>
+        <p className="sr-only">
+          {preview.slice(0, 300)}
+          {t("…（内容已折叠）")}
+        </p>
       )}
       <div
         id={id}
@@ -79,7 +85,7 @@ export function CollapsiblePrompt({
           }}
         >
           {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          {expanded ? "收起问题" : "展开完整问题"}
+          {expanded ? t("收起问题") : t("展开完整问题")}
         </button>
       )}
     </div>

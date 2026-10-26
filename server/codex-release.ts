@@ -61,12 +61,12 @@ export async function serveCodexRelease(
       .writeHead(200)
       .end(req.method === "HEAD" ? undefined : JSON.stringify(release));
   } catch {
-    res
-      .writeHead(503)
-      .end(
-        req.method === "HEAD"
-          ? undefined
-          : JSON.stringify({ error: "暂时无法检查更新，请稍后重试。" }),
-      );
+    res.writeHead(503).end(
+      req.method === "HEAD"
+        ? undefined
+        : JSON.stringify({
+            error: "Unable to check for updates. Try again later.",
+          }),
+    );
   }
 }

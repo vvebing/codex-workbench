@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { Thread } from "../../generated/v2/Thread";
 import type { Turn } from "../../generated/v2/Turn";
 import type { ThreadItemEntry } from "../../generated/v2/ThreadItemEntry";
@@ -22,7 +23,7 @@ export async function readHistory(
   window?: { cursor: string | null; next: (cursor: string | null) => void },
 ): Promise<HydratedThread> {
   const check = () => {
-    if (!current()) throw new Error("连接已改变，请重新操作。");
+    if (!current()) throw new Error(t("连接已改变，请重新操作。"));
   };
   let thread =
     metadata ??
@@ -66,7 +67,7 @@ export async function readHistory(
         });
         check();
         if (page.nextCursor && page.nextCursor === window.cursor)
-          throw new Error("历史分页异常，请重试。");
+          throw new Error(t("历史分页异常，请重试。"));
         nextCursor = page.nextCursor;
         return page.data;
       })()
@@ -159,7 +160,8 @@ async function pages<T>(
     check();
     result.push(...page.data);
     cursor = stop(page.data) ? null : page.nextCursor;
-    if (cursor && seen.has(cursor)) throw new Error("历史分页异常，请重试。");
+    if (cursor && seen.has(cursor))
+      throw new Error(t("历史分页异常，请重试。"));
     if (cursor) seen.add(cursor);
   } while (cursor);
   return result;

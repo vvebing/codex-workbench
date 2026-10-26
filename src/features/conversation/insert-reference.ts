@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { DraftsStore } from "../composer/drafts";
 import { textDocument } from "../composer/editor-document";
 
@@ -9,7 +10,10 @@ export function insertReference(
   location: string,
 ) {
   const draft = drafts.get(threadId);
-  const text = `参考资料：${name}\n${location}`;
+  const text = t("参考资料：{{value0}}\n{{value1}}", {
+    value0: name,
+    value1: location,
+  });
   drafts.setDocument(
     threadId,
     {

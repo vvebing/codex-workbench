@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useEffect, useState } from "react";
 import { useStore } from "../../components/hooks";
 import { Button } from "../../components/ui";
@@ -6,6 +7,9 @@ import { releaseCheck } from "./release-check";
 import { hasStableUpdate } from "../../../server/codex-version";
 
 function CheckOnConnect({ environment }: { environment: Environment }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { status, epoch } = useStore(environment.runtime.connection);
   useEffect(() => {
     if (status === "connected") void releaseCheck.check();
@@ -13,6 +17,9 @@ function CheckOnConnect({ environment }: { environment: Environment }) {
   return null;
 }
 export function AppServerReleaseChecks() {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { entries } = useStore(environments);
   return entries.map((environment) => (
     <CheckOnConnect key={environment.id} environment={environment} />
@@ -23,6 +30,8 @@ export function AppServerUpdateNotice({
 }: {
   environment: Environment;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
   const connection = useStore(environment.runtime.connection);
   const release = useStore(releaseCheck);
   const [dismissed, setDismissed] = useState("");
@@ -43,8 +52,9 @@ export function AppServerUpdateNotice({
       className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-surface px-4 py-2 text-xs"
     >
       <p className="min-w-0 flex-1 break-words">
-        {environment.name} 的 Codex 有更新：{connection.serverVersion} →{" "}
-        {release.latest}。更新该设备并重启 app-server 后重新连接。
+        {environment.name} {t("的 Codex 有更新：")}
+        {connection.serverVersion} → {release.latest}
+        {t("。更新该设备并重启 app-server 后重新连接。")}
       </p>
       <a
         className="text-accent underline"
@@ -52,15 +62,15 @@ export function AppServerUpdateNotice({
         target="_blank"
         rel="noreferrer"
       >
-        查看发布说明
+        {t("查看发布说明")}
       </a>
       <Button
         size="sm"
         variant="quiet"
-        aria-label="关闭更新提示"
+        aria-label={t("关闭更新提示")}
         onClick={() => setDismissed(key)}
       >
-        关闭
+        {t("关闭")}
       </Button>
     </div>
   );

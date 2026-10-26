@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { ContextMenu } from "radix-ui";
 import { settingsInputClass } from "../settings/settings-ui";
 import {
@@ -58,14 +59,16 @@ class EditorBoundary extends Component<
       return (
         <>
           <ErrorNotice className="m-3 shrink-0">
-            编辑器加载失败。草稿仍保留在当前工作区；请先复制未保存的内容，再刷新页面重试。
+            {t(
+              "编辑器加载失败。草稿仍保留在当前工作区；请先复制未保存的内容，再刷新页面重试。",
+            )}
           </ErrorNotice>
           <ScrollArea orientation="both" className="flex-1">
             <pre className="file-readonly" tabIndex={0}>
               <code>
                 {this.props.text.slice(0, 64 * 1024)}
                 {this.props.text.length > 64 * 1024
-                  ? "\n（仅显示前 64 KB，请重新打开编辑器或下载文件查看）"
+                  ? t("\n（仅显示前 64 KB，请重新打开编辑器或下载文件查看）")
                   : ""}
               </code>
             </pre>
@@ -85,6 +88,9 @@ export function FileWorkspace({
   focused?: boolean;
   onToggleFocus?: () => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { files, drafts, connection, sessions } = useRuntime();
   const sessionState = useStore(sessions);
   const currentCwd = sessionState.selectedId
@@ -97,10 +103,12 @@ export function FileWorkspace({
   const largeFile =
     !!document && (document.largeFile ?? isLargeFile(document.text));
   const byteLength = useMemo(
-    () =>
+    () => (
+      void i18nLocale,
       document?.byteLength ??
-      new TextEncoder().encode(document?.text ?? "").length,
-    [document?.byteLength, document?.text],
+        new TextEncoder().encode(document?.text ?? "").length
+    ),
+    [document?.byteLength, document?.text, i18nLocale],
   );
   const sizeLabel =
     byteLength >= 1024 * 1024
@@ -124,6 +132,8 @@ export function FileWorkspace({
   const baseText = document?.baseText;
   const diskText = document?.diskText;
   const comparison = useMemo(() => {
+    void i18nLocale;
+
     if (largeFile) return undefined;
     if (gitComparison)
       return {
@@ -142,10 +152,10 @@ export function FileWorkspace({
       original,
       label:
         compare === "git"
-          ? "Git 暂存区"
+          ? t("Git 暂存区")
           : compare === "disk"
-            ? "磁盘内容"
-            : "上次读取或保存的内容",
+            ? t("磁盘内容")
+            : t("上次读取或保存的内容"),
     };
   }, [
     compare,
@@ -154,6 +164,7 @@ export function FileWorkspace({
     gitComparison,
     gitBaseline?.text,
     largeFile,
+    i18nLocale,
   ]);
   const [saveAs, setSaveAs] = useState<string>();
   const [discard, setDiscard] = useState<{
@@ -210,10 +221,13 @@ export function FileWorkspace({
     <section
       className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background text-inherit"
       style={state.visible ? undefined : { display: "none" }}
-      aria-label="文件编辑工作区"
+      aria-label={t("文件编辑工作区")}
     >
       <header className="file-toolbar">
-        <IconButton label="返回会话" onClick={() => files.setVisible(false)}>
+        <IconButton
+          label={t("返回会话")}
+          onClick={() => files.setVisible(false)}
+        >
           <ArrowLeft size={16} aria-hidden="true" />
         </IconButton>
         <ScrollArea
@@ -223,7 +237,7 @@ export function FileWorkspace({
           <div
             className="flex w-max min-w-full"
             role="tablist"
-            aria-label="已打开文件"
+            aria-label={t("已打开文件")}
           >
             {state.documents.map((item) => (
               <ContextMenu.Root key={item.id}>
@@ -234,7 +248,10 @@ export function FileWorkspace({
                     <button
                       role="tab"
                       aria-selected={item.id === state.activeId}
-                      title={`${item.path}${item.preview ? "（预览，双击固定）" : ""}`}
+                      title={t("{{value0}}{{value1}}", {
+                        value0: item.path,
+                        value1: item.preview ? t("（预览，双击固定）") : "",
+                      })}
                       className={item.preview ? "is-preview" : undefined}
                       onDoubleClick={() => files.pin(item.id)}
                       onKeyDown={(event) => {
@@ -266,13 +283,20 @@ export function FileWorkspace({
                       {item.dirty ? "● " : ""}
                       {item.path.split(/[\\/]/).at(-1)}
                       {item.gitComparison
-                        ? ` · ${{ staged: "已暂存", unstaged: "未暂存", untracked: "未跟踪", conflict: "冲突" }[item.gitComparison.request.group]}`
+                        ? t(" · {{value0}}", {
+                            value0: {
+                              staged: t("已暂存"),
+                              unstaged: t("未暂存"),
+                              untracked: t("未跟踪"),
+                              conflict: t("冲突"),
+                            }[item.gitComparison.request.group],
+                          })
                         : ""}
-                      {item.readonly ? " · 只读" : ""}
+                      {item.readonly ? t(" · 只读") : ""}
                     </button>
                     <IconButton
                       size="sm"
-                      label={`关闭 ${item.path}`}
+                      label={t("关闭 {{value0}}", { value0: item.path })}
                       disabled={item.saving}
                       onClick={() => {
                         if (item.dirty)
@@ -299,7 +323,7 @@ export function FileWorkspace({
                       }
                       onSelect={() => files.revealInTree(item.id)}
                     >
-                      在文件列表中显示
+                      {t("在文件列表中显示")}
                     </ContextMenu.Item>
                   </ContextMenu.Content>
                 </ContextMenu.Portal>
@@ -309,7 +333,7 @@ export function FileWorkspace({
         </ScrollArea>
         {canSplit && onToggleFocus && (
           <IconButton
-            label={focused ? "并排查看会话" : "专注编辑"}
+            label={focused ? t("并排查看会话") : t("专注编辑")}
             aria-pressed={focused}
             onClick={onToggleFocus}
           >
@@ -322,7 +346,7 @@ export function FileWorkspace({
         )}
         {document?.preview && (
           <IconButton
-            label="固定当前标签"
+            label={t("固定当前标签")}
             onClick={() => files.pin(document.id)}
           >
             <Pin size={16} aria-hidden="true" />
@@ -335,10 +359,10 @@ export function FileWorkspace({
               style={image ? { display: "none" } : undefined}
               className="flex items-center gap-1"
               role="group"
-              aria-label="文件操作"
+              aria-label={t("文件操作")}
             >
               <IconButton
-                label={document.saving ? "保存中…" : "保存"}
+                label={document.saving ? t("保存中…") : t("保存")}
                 aria-busy={document.saving}
                 disabled={
                   !connected ||
@@ -362,7 +386,7 @@ export function FileWorkspace({
               </IconButton>
               {!narrow && !gitComparison && !largeFile && (
                 <IconButton
-                  label="比较未保存更改"
+                  label={t("比较未保存更改")}
                   disabled={!document.dirty || document.loading}
                   onClick={() => {
                     setCompare("base");
@@ -377,13 +401,13 @@ export function FileWorkspace({
               <div
                 className="file-view-modes"
                 role="group"
-                aria-label="Markdown 显示方式"
+                aria-label={t("Markdown 显示方式")}
               >
                 {(
                   [
-                    ["edit", "编辑", Pencil],
-                    ["preview", "预览", Eye],
-                    ["split", "分屏", Columns2],
+                    ["edit", t("编辑"), Pencil],
+                    ["preview", t("预览"), Eye],
+                    ["split", t("分屏"), Columns2],
                   ] as const
                 ).map(([mode, label, Icon]) => (
                   <IconButton
@@ -402,7 +426,7 @@ export function FileWorkspace({
               </div>
             )}
             <IconButton
-              label="重新加载"
+              label={t("重新加载")}
               disabled={!connected || document.loading || document.saving}
               onClick={() => {
                 if (document.dirty)
@@ -424,11 +448,11 @@ export function FileWorkspace({
           <div className="file-breadcrumb" title={document.path}>
             <span>{document.path.split(/[\\/]/).join(" / ")}</span>
             <IconButton
-              label="在文件列表中显示"
+              label={t("在文件列表中显示")}
               title={
                 currentCwd && relativeWorkspaceFile(currentCwd, document.path)
-                  ? "在文件列表中显示"
-                  : "不在当前项目目录"
+                  ? t("在文件列表中显示")
+                  : t("不在当前项目目录")
               }
               disabled={
                 !connected ||
@@ -446,7 +470,7 @@ export function FileWorkspace({
                 disabled={selection.tooLarge}
                 title={
                   selection.tooLarge
-                    ? "选中代码超过 64 KB，请缩小选择范围"
+                    ? t("选中代码超过 64 KB，请缩小选择范围")
                     : undefined
                 }
                 onClick={() => {
@@ -458,7 +482,14 @@ export function FileWorkspace({
                     document.path,
                   );
                   const draft = drafts.get(document.threadId!);
-                  const snippet = `选中代码（第 ${selection.startLine}–${selection.endLine} 行，当前编辑内容）：\n${selection.text}`;
+                  const snippet = t(
+                    "选中代码（第 {{value0}}–{{value1}} 行，当前编辑内容）：\n{{value2}}",
+                    {
+                      value0: selection.startLine,
+                      value1: selection.endLine,
+                      value2: selection.text,
+                    },
+                  );
                   const content = structuredClone(draft.document!);
                   content.content = [
                     ...(content.content ?? []),
@@ -470,15 +501,15 @@ export function FileWorkspace({
                     `${draft.text}\n${snippet}`,
                     draft.skills ?? [],
                   );
-                  setNotice("已将选中代码添加到来源会话的输入框");
+                  setNotice(t("已将选中代码添加到来源会话的输入框"));
                 }}
               >
-                添加选中代码到会话
+                {t("添加选中代码到会话")}
               </Button>
             )}
             {document.threadId && (
               <IconButton
-                label="引用到来源会话"
+                label={t("引用到来源会话")}
                 onClick={() => {
                   referenceProjectFile(
                     drafts,
@@ -486,7 +517,7 @@ export function FileWorkspace({
                     document.path,
                     document.path,
                   );
-                  setNotice("已引用到来源会话的输入框");
+                  setNotice(t("已引用到来源会话的输入框"));
                 }}
               >
                 <MessageSquareQuote size={16} aria-hidden="true" />
@@ -501,29 +532,43 @@ export function FileWorkspace({
           {largeFile && !image && !document.loading && (
             <p className="file-notice" role="status">
               {largeReadonly
-                ? `大文件只读模式（${sizeLabel}）：文件超过 5 MB，仅支持查看和下载。`
+                ? t(
+                    "大文件只读模式（{{value0}}）：文件超过 5 MB，仅支持查看和下载。",
+                    { value0: sizeLabel },
+                  )
                 : narrow
-                  ? `大文件简化模式（${sizeLabel}）：当前屏幕仅支持查看；请在宽屏下编辑和保存。`
+                  ? t(
+                      "大文件简化模式（{{value0}}）：当前屏幕仅支持查看；请在宽屏下编辑和保存。",
+                      { value0: sizeLabel },
+                    )
                   : byteLength > MAX_EDITABLE_FILE_BYTES
-                    ? `大文件简化模式（${sizeLabel}）：编辑内容超过 5 MB 保存上限，请缩减内容后保存；撤销历史保留。`
-                    : `大文件简化模式（${sizeLabel}）：已关闭语法高亮、Markdown 预览和差异比较，可继续编辑和保存。`}
+                    ? t(
+                        "大文件简化模式（{{value0}}）：编辑内容超过 5 MB 保存上限，请缩减内容后保存；撤销历史保留。",
+                        { value0: sizeLabel },
+                      )
+                    : t(
+                        "大文件简化模式（{{value0}}）：已关闭语法高亮、Markdown 预览和差异比较，可继续编辑和保存。",
+                        { value0: sizeLabel },
+                      )}
             </p>
           )}
           {largeFile && document.dirty && !state.recoveryError && (
             <p className="file-notice" role="status">
               {state.recoveryPending
-                ? "正在保存大文件草稿到浏览器…"
-                : "大文件草稿已保存到浏览器"}
+                ? t("正在保存大文件草稿到浏览器…")
+                : t("大文件草稿已保存到浏览器")}
             </p>
           )}
           {document.recovered && (
             <p className="file-notice" role="status">
-              已从浏览器恢复未保存的编辑内容，尚未写入文件。保存前会重新核对磁盘内容。
+              {t(
+                "已从浏览器恢复未保存的编辑内容，尚未写入文件。保存前会重新核对磁盘内容。",
+              )}
             </p>
           )}
           {document.conflict && (
             <div className="file-notice" role="alert">
-              磁盘文件已改变。请比较内容，重新加载或另存为新文件。
+              {t("磁盘文件已改变。请比较内容，重新加载或另存为新文件。")}
               {!narrow && !largeFile && (
                 <Button
                   size="sm"
@@ -534,11 +579,11 @@ export function FileWorkspace({
                     setView("edit");
                   }}
                 >
-                  比较磁盘内容
+                  {t("比较磁盘内容")}
                 </Button>
               )}
               {document.diskText === undefined &&
-                " 磁盘内容不可用，请重新加载或另存为。"}
+                t(" 磁盘内容不可用，请重新加载或另存为。")}
               {!narrow && (
                 <Button
                   size="sm"
@@ -546,7 +591,7 @@ export function FileWorkspace({
                   disabled={!connected}
                   onClick={() => setSaveAs(`${document.path}.copy`)}
                 >
-                  另存为
+                  {t("另存为")}
                 </Button>
               )}
             </div>
@@ -562,11 +607,16 @@ export function FileWorkspace({
           )}
           {comparison && (
             <div className="file-comparison-labels">
-              <strong>{comparison.label}（只读）</strong>
+              <strong>
+                {comparison.label}
+                {t("（只读）")}
+              </strong>
               <strong>
                 {gitComparison
-                  ? `${gitComparison.modifiedLabel}（只读）`
-                  : "当前编辑内容"}
+                  ? t("{{value0}}（只读）", {
+                      value0: gitComparison.modifiedLabel,
+                    })
+                  : t("当前编辑内容")}
               </strong>
               {gitComparison ? (
                 gitComparison.canOpen && (
@@ -583,7 +633,7 @@ export function FileWorkspace({
                       )
                     }
                   >
-                    编辑当前文件
+                    {t("编辑当前文件")}
                   </Button>
                 )
               ) : (
@@ -592,7 +642,7 @@ export function FileWorkspace({
                   variant="quiet"
                   onClick={() => setCompare(null)}
                 >
-                  返回编辑
+                  {t("返回编辑")}
                 </Button>
               )}
             </div>
@@ -600,11 +650,13 @@ export function FileWorkspace({
           {!connected && (
             <p className="file-notice" role="status">
               {image
-                ? "连接已断开。当前图片仍可查看，重新连接后可刷新。"
-                : "连接已断开。可继续编辑草稿，重新连接后再保存。"}
+                ? t("连接已断开。当前图片仍可查看，重新连接后可刷新。")
+                : t("连接已断开。可继续编辑草稿，重新连接后再保存。")}
             </p>
           )}
-          {document.loading && <p className="file-notice">正在读取文件…</p>}
+          {document.loading && (
+            <p className="file-notice">{t("正在读取文件…")}</p>
+          )}
           <div
             className={`relative flex min-h-0 min-w-0 flex-1 ${markdown && !comparison ? `file-view-${view}` : "file-view-edit"}`}
           >
@@ -625,22 +677,27 @@ export function FileWorkspace({
                   <pre className="file-readonly" tabIndex={0}>
                     {gitComparison && (
                       <>
-                        原版本：{gitComparison.originalLabel}
+                        {t("原版本：")}
+                        {gitComparison.originalLabel}
                         {"\n"}
                         {gitComparison.original}
-                        {"\n\n"}新版本：{gitComparison.modifiedLabel}
+                        {"\n\n"}
+                        {t("新版本：")}
+                        {gitComparison.modifiedLabel}
                         {"\n"}
                       </>
                     )}
                     <code>
-                      {document.text || (document.error ? "" : "（空文件）")}
+                      {document.text || (document.error ? "" : t("（空文件）"))}
                     </code>
                   </pre>
                 </ScrollArea>
               ) : (
                 <EditorBoundary text={document.text}>
                   <Suspense
-                    fallback={<p className="file-notice">正在加载编辑器…</p>}
+                    fallback={
+                      <p className="file-notice">{t("正在加载编辑器…")}</p>
+                    }
                   >
                     <MonacoEditor
                       comparison={comparison}
@@ -690,34 +747,36 @@ export function FileWorkspace({
               <span
                 title={
                   gitComparison
-                    ? "Git 只读快照，不含未保存草稿；重新加载可更新差异。"
+                    ? t("Git 只读快照，不含未保存草稿；重新加载可更新差异。")
                     : document.readonly || narrow
                       ? undefined
-                      : "⌘ / Ctrl S 保存"
+                      : t("⌘ / Ctrl S 保存")
                 }
               >
                 {image
-                  ? "图片预览"
+                  ? t("图片预览")
                   : gitComparison
-                    ? "Git 快照"
+                    ? t("Git 快照")
                     : document.dirty
-                      ? "未保存"
-                      : "已保存"}
+                      ? t("未保存")
+                      : t("已保存")}
               </span>
               {!gitComparison && gitBaseline?.text !== undefined && (
                 <span
                   tabIndex={0}
-                  title="对比 Git 暂存区。绿色：新增；蓝色：修改；红色：删除。包含未保存草稿，点击左侧标记查看差异。"
+                  title={t(
+                    "对比 Git 暂存区。绿色：新增；蓝色：修改；红色：删除。包含未保存草稿，点击左侧标记查看差异。",
+                  )}
                 >
-                  Git 行标记
+                  {t("Git 行标记")}
                 </span>
               )}
               {gitBaseline?.error && (
                 <span tabIndex={0} title={gitBaseline.error}>
-                  Git 行标记不可用
+                  {t("Git 行标记不可用")}
                 </span>
               )}
-              {(document.readonly || narrow) && <span>只读</span>}
+              {(document.readonly || narrow) && <span>{t("只读")}</span>}
             </div>
             <div className="file-status-group ml-auto">
               {!image && (
@@ -730,7 +789,9 @@ export function FileWorkspace({
                 <>
                   <span>{position.language}</span>
                   <span>
-                    第 {position.line} 行，第 {position.column} 列
+                    {t("第")}
+                    {position.line} {t("行，第")}
+                    {position.column} {t("列")}
                   </span>
                 </>
               )}
@@ -739,12 +800,12 @@ export function FileWorkspace({
         </>
       ) : (
         <p className="file-notice">
-          从项目文件树打开文件，或返回会话继续工作。
+          {t("从项目文件树打开文件，或返回会话继续工作。")}
         </p>
       )}
       {saveAs !== undefined && document && (
         <FileDialog
-          title="另存为新文件"
+          title={t("另存为新文件")}
           busy={busy}
           onClose={() => setSaveAs(undefined)}
         >
@@ -770,7 +831,7 @@ export function FileWorkspace({
             }}
           >
             <label>
-              新文件绝对路径
+              {t("新文件绝对路径")}
               <input
                 className={`${settingsInputClass} mt-1.5`}
                 autoFocus
@@ -786,14 +847,14 @@ export function FileWorkspace({
                 disabled={busy}
                 onClick={() => setSaveAs(undefined)}
               >
-                取消
+                {t("取消")}
               </Button>
               <Button
                 type="submit"
                 variant="primary"
                 disabled={busy || !connected}
               >
-                {busy ? "正在保存…" : "创建副本"}
+                {busy ? t("正在保存…") : t("创建副本")}
               </Button>
             </div>
           </form>
@@ -801,21 +862,21 @@ export function FileWorkspace({
       )}
       {discard && (
         <FileDialog
-          title={discard.type === "close" ? "关闭文件" : "重新加载文件"}
+          title={discard.type === "close" ? t("关闭文件") : t("重新加载文件")}
           busy={!!discardTarget?.saving || !!discardTarget?.loading}
           onClose={() => setDiscard(undefined)}
         >
           <div className="file-dialog">
             <p>
-              {discard.type === "close" ? "关闭" : "重新加载"}
-              将丢弃此文件尚未保存的修改，是否继续？
+              {discard.type === "close" ? t("关闭") : t("重新加载")}
+              {t("将丢弃此文件尚未保存的修改，是否继续？")}
             </p>
             <p className="text-muted [overflow-wrap:anywhere]">
               {discard.path}
             </p>
             <div className="file-dialog-actions">
               <Button autoFocus onClick={() => setDiscard(undefined)}>
-                取消
+                {t("取消")}
               </Button>
               <Button
                 variant="danger"
@@ -833,8 +894,8 @@ export function FileWorkspace({
                 }}
               >
                 {discard.type === "close"
-                  ? "放弃修改并关闭"
-                  : "放弃修改并重新加载"}
+                  ? t("放弃修改并关闭")
+                  : t("放弃修改并重新加载")}
               </Button>
             </div>
           </div>

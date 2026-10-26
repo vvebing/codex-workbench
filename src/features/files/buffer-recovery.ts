@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 /** Browser recovery copies; disk contents remain authoritative when saving. */
 export interface SavedFileBuffer {
   path: string;
@@ -9,8 +10,8 @@ export interface SavedFileBuffer {
 const MAX_STORED_LENGTH = 2 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 256 * 1024;
 const MAX_BUFFERS = 20;
-const unavailable =
-  "编辑恢复副本未能保存到浏览器，请在离开前保存文件或复制未保存内容。";
+const unavailable = () =>
+  t("编辑恢复副本未能保存到浏览器，请在离开前保存文件或复制未保存内容。");
 
 function endpointKey(endpoint: string): string {
   try {
@@ -57,7 +58,7 @@ export function readFileBuffers(key: string): {
   } catch {
     return {
       buffers: [],
-      error: "无法读取浏览器中的编辑恢复副本；当前文件仍可正常打开和编辑。",
+      error: t("无法读取浏览器中的编辑恢复副本；当前文件仍可正常打开和编辑。"),
     };
   }
 }
@@ -71,12 +72,12 @@ export function saveFileBuffers(
       return;
     }
     if (buffers.length > MAX_BUFFERS || !buffers.every(isBuffer))
-      return unavailable;
+      return unavailable();
     const raw = JSON.stringify({ version: 1, buffers });
-    if (raw.length > MAX_STORED_LENGTH) return unavailable;
+    if (raw.length > MAX_STORED_LENGTH) return unavailable();
     localStorage.setItem(key, raw);
   } catch {
-    return unavailable;
+    return unavailable();
   }
 }
 
@@ -191,8 +192,9 @@ export async function readLargeFileBuffers(key: string): Promise<{
   } catch {
     return {
       buffers: [],
-      error:
+      error: t(
         "无法读取浏览器中的大文件编辑恢复副本；当前文件仍可正常打开和编辑。",
+      ),
     };
   }
 }
@@ -203,12 +205,12 @@ export async function saveLargeFileBuffers(
   buffers: SavedFileBuffer[],
 ): Promise<string | undefined> {
   if (buffers.length > MAX_BUFFERS || !buffers.every(isLargeBuffer))
-    return unavailable;
+    return unavailable();
   // No large copies exist on a browser without this capability.
   if (!buffers.length && typeof indexedDB === "undefined") return;
   try {
     await largeRecoveryRecord(key, buffers);
   } catch {
-    return unavailable;
+    return unavailable();
   }
 }

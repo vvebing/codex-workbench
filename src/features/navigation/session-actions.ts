@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { createRuntime } from "../../lib/runtime";
 import { Store, errorMessage } from "../../lib/store";
 import type { Draft } from "../composer/drafts";
@@ -76,12 +77,12 @@ export class SessionActionsStore extends Store<{ notices: ArchiveNotice[] }> {
       connection.url !== notice.connectionUrl
     ) {
       this.patch(id, {
-        error: "来源环境地址已更改，请连接原环境后从归档会话中恢复。",
+        error: t("来源环境地址已更改，请连接原环境后从归档会话中恢复。"),
       });
       return;
     }
     if (connection.status !== "connected") {
-      this.patch(id, { error: "来源环境未连接，重新连接后可再次撤销。" });
+      this.patch(id, { error: t("来源环境未连接，重新连接后可再次撤销。") });
       return;
     }
     this.patch(id, { busy: true, error: "" });
@@ -94,14 +95,14 @@ export class SessionActionsStore extends Store<{ notices: ArchiveNotice[] }> {
         current.scope !== notice.connectionScope ||
         current.url !== notice.connectionUrl
       )
-        throw new Error("来源环境地址已更改，请在原环境查看恢复结果。");
+        throw new Error(t("来源环境地址已更改，请在原环境查看恢复结果。"));
       await runtime.sessions.refresh();
       const refreshedConnection = runtime.connection.getSnapshot();
       if (
         refreshedConnection.scope !== notice.connectionScope ||
         refreshedConnection.url !== notice.connectionUrl
       )
-        throw new Error("来源环境地址已更改，请在原环境查看恢复结果。");
+        throw new Error(t("来源环境地址已更改，请在原环境查看恢复结果。"));
       const selectedId = runtime.sessions.getSnapshot().selectedId;
       if (notice.wasSelected && (!selectedId || selectedId === notice.threadId))
         await runtime.sessions.open(notice.threadId);

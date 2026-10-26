@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { settingsInputClass } from "../settings/settings-ui";
 import { useEffect, useId, useState } from "react";
 import { Popover } from "radix-ui";
@@ -18,8 +19,8 @@ type Listing = { key: string; directories: string[]; error?: string };
 function directoryError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return /method.*not found|unknown method|unsupported|-32601/i.test(message)
-    ? "此环境暂不支持目录浏览，请手动填写完整路径。"
-    : `无法读取目录，请检查路径和访问权限。${message}`;
+    ? t("此环境暂不支持目录浏览，请手动填写完整路径。")
+    : t("无法读取目录，请检查路径和访问权限。{{value0}}", { value0: message });
 }
 export function WorkspacePicker({
   client,
@@ -38,6 +39,9 @@ export function WorkspacePicker({
   disabled: boolean;
   initialPath?: string;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const listId = useId();
   const [focused, setFocused] = useState(false),
     [active, setActive] = useState(-1);
@@ -107,7 +111,7 @@ export function WorkspacePicker({
   };
   const go = () => {
     if (absolutePath(address.trim())) navigate(address.trim());
-    else setAddressError("请输入完整的绝对路径，例如 /home 或 C:\\Users。");
+    else setAddressError(t("请输入完整的绝对路径，例如 /home 或 C:\\Users。"));
   };
   return (
     <div className="mt-2">
@@ -175,7 +179,7 @@ export function WorkspacePicker({
                     choose(suggestions[active]);
                   }
                 }}
-                placeholder="输入或粘贴项目目录的完整路径"
+                placeholder={t("输入或粘贴项目目录的完整路径")}
                 autoComplete="off"
                 spellCheck={false}
                 disabled={disabled}
@@ -201,7 +205,7 @@ export function WorkspacePicker({
                     className="max-h-[min(10rem,var(--radix-popover-content-available-height))]"
                     viewportProps={{ className: "p-1" }}
                   >
-                    <ul id={listId} role="listbox" aria-label="目录建议">
+                    <ul id={listId} role="listbox" aria-label={t("目录建议")}>
                       {suggestions.map((name, index) => (
                         <li
                           key={name}
@@ -239,26 +243,29 @@ export function WorkspacePicker({
             navigate(absolutePath(start) ? start : "/");
           }}
         >
-          浏览目录
+          {t("浏览目录")}
         </Button>
       </div>
       <p
         id="new-workspace-help"
         className="mt-2 text-caption leading-copy text-muted"
       >
-        目录位于「{environmentName}」所在机器。留空使用该环境的默认目录。
+        {t("目录位于「")}
+        {environmentName}
+        {t("」所在机器。留空使用该环境的默认目录。")}
       </p>
       {browsePath !== null && (
         <section
-          aria-label="目录浏览器"
+          aria-label={t("目录浏览器")}
           className="mt-3 rounded-lg border border-border p-3"
         >
           <p className="mb-2 text-caption text-muted">
-            正在浏览：{environmentName}
+            {t("正在浏览：")}
+            {environmentName}
           </p>
           <div className="flex items-center gap-2">
             <input
-              aria-label="浏览路径"
+              aria-label={t("浏览路径")}
               value={address}
               disabled={disabled}
               onChange={(event) => setAddress(event.target.value)}
@@ -276,7 +283,7 @@ export function WorkspacePicker({
               disabled={disabled || !connected}
               onClick={go}
             >
-              前往
+              {t("前往")}
             </Button>
           </div>
           {addressError && (
@@ -293,7 +300,7 @@ export function WorkspacePicker({
               }
               onClick={() => navigate(parentDirectory(browsePath))}
             >
-              上级目录
+              {t("上级目录")}
             </Button>
             <Button
               type="button"
@@ -301,17 +308,17 @@ export function WorkspacePicker({
               disabled={disabled || !connected}
               onClick={() => setRevision((n) => n + 1)}
             >
-              刷新
+              {t("刷新")}
             </Button>
           </div>
           <ScrollArea className="max-h-48" aria-busy={connected && !current}>
             {!connected ? (
               <p role="status" className="text-caption text-muted">
-                环境已断开，重新连接后可继续浏览。
+                {t("环境已断开，重新连接后可继续浏览。")}
               </p>
             ) : !current ? (
               <p role="status" className="text-caption text-muted">
-                正在读取目录…
+                {t("正在读取目录…")}
               </p>
             ) : current.error ? (
               <p role="status" className="break-all text-caption text-danger">
@@ -319,7 +326,7 @@ export function WorkspacePicker({
               </p>
             ) : current.directories.length === 0 ? (
               <p role="status" className="text-caption text-muted">
-                此目录下没有子文件夹，可以直接选择此目录。
+                {t("此目录下没有子文件夹，可以直接选择此目录。")}
               </p>
             ) : (
               current.directories.map((name) => (
@@ -343,7 +350,7 @@ export function WorkspacePicker({
               disabled={disabled}
               onClick={() => setBrowsePath(null)}
             >
-              收起浏览
+              {t("收起浏览")}
             </Button>
             <Button
               type="button"
@@ -354,7 +361,7 @@ export function WorkspacePicker({
                 setBrowsePath(null);
               }}
             >
-              选择此目录
+              {t("选择此目录")}
             </Button>
           </div>
         </section>

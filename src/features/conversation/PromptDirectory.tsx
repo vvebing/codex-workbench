@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../lib/i18n";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Tooltip } from "radix-ui";
 import { ChevronUp, ChevronDown, Undo2 } from "lucide-react";
@@ -14,7 +16,12 @@ export function PromptDirectory({
   viewport: RefObject<HTMLDivElement | null>;
   onNavigate: () => void;
 }) {
-  const entries = useMemo(() => promptEntries(turns), [turns]);
+  const { i18n } = useTranslation();
+  const entries = useMemo(() => {
+    // Attachment fallback labels follow language changes without resetting navigation.
+    void i18n.language;
+    return promptEntries(turns);
+  }, [turns, i18n.language]);
   const rail = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ above: false, below: false });
   const navigationFrame = useRef(0);
@@ -180,10 +187,10 @@ export function PromptDirectory({
   );
   return (
     <Tooltip.Provider delayDuration={150}>
-      <nav className="prompt-directory-controls" aria-label="会话轮次导航">
+      <nav className="prompt-directory-controls" aria-label={t("会话轮次导航")}>
         <button
           className="prompt-rail-control"
-          aria-label="查看更早的问题"
+          aria-label={t("查看更早的问题")}
           disabled={!edges.above}
           onClick={() => rail.current?.scrollBy({ top: -176 })}
         >
@@ -223,7 +230,10 @@ export function PromptDirectory({
                     type="button"
                     className="prompt-dot"
                     aria-current={active === entry.id ? "location" : undefined}
-                    aria-label={`第 ${index + 1} 条问题：${entry.label.slice(0, 120)}`}
+                    aria-label={t("第 {{value0}} 条问题：{{value1}}", {
+                      value0: index + 1,
+                      value1: entry.label.slice(0, 120),
+                    })}
                     onClick={() => jump(entry.id)}
                   >
                     <span aria-hidden="true" />
@@ -237,7 +247,10 @@ export function PromptDirectory({
                     className="prompt-dot-tooltip"
                   >
                     <span className="mb-1 block text-xs text-muted">
-                      第 {index + 1} 条问题 · 第 {entry.turn} 轮
+                      {t("第 {{value0}} 条问题 · 第 {{value1}} 轮", {
+                        value0: index + 1,
+                        value1: entry.turn,
+                      })}
                     </span>
                     <span className="line-clamp-4">
                       {entry.label.slice(0, 500)}
@@ -251,7 +264,7 @@ export function PromptDirectory({
         </div>
         <button
           className="prompt-rail-control"
-          aria-label="查看后续问题"
+          aria-label={t("查看后续问题")}
           disabled={!edges.below}
           onClick={() => rail.current?.scrollBy({ top: 176 })}
         >
@@ -259,7 +272,10 @@ export function PromptDirectory({
         </button>
         <span
           className="prompt-dot-count"
-          aria-label={`当前第 ${activeIndex + 1} 条，共 ${entries.length} 条问题`}
+          aria-label={t("当前第 {{value0}} 条，共 {{value1}} 条问题", {
+            value0: activeIndex + 1,
+            value1: entries.length,
+          })}
         >
           {activeIndex + 1}/{entries.length}
         </span>
@@ -267,8 +283,8 @@ export function PromptDirectory({
           <button
             type="button"
             className="prompt-rail-control"
-            aria-label="返回阅读位置"
-            title="返回阅读位置"
+            aria-label={t("返回阅读位置")}
+            title={t("返回阅读位置")}
             onClick={returnToReading}
           >
             <Undo2 size={15} />

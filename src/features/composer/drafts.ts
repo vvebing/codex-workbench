@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { readDrafts, writeDrafts } from "./draft-storage";
 import type { UserInput } from "../../generated/v2/UserInput";
 import { restoredMessage } from "./restore-message";
@@ -37,7 +38,7 @@ export class DraftsStore extends Store<Record<string, Draft>> {
     const persisted = writeDrafts(this.scope, state);
     const persistenceWarning = persisted
       ? undefined
-      : "浏览器存储不可用或草稿超过容量，本次修改仅保留在当前页面。";
+      : t("浏览器存储不可用或草稿超过容量，本次修改仅保留在当前页面。");
     super.update(
       Object.fromEntries(
         Object.entries(state).map(([id, draft]) => [
@@ -187,7 +188,7 @@ export class DraftsStore extends Store<Record<string, Draft>> {
   }
   addApp(threadId: string, app: { id: string; name: string }): void {
     if (!app.id.trim() || !app.name.trim())
-      throw new Error("应用信息不完整，无法插入引用。");
+      throw new Error(t("应用信息不完整，无法插入引用。"));
     const draft = this.get(threadId);
     const path = `app://${app.id}`;
     if (documentApps(draft.document).some((entry) => entry.path === path))

@@ -66,7 +66,7 @@ it("handles a missing Codex executable without an unhandled error", async () => 
     Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" }),
   );
   expect(console.warn).toHaveBeenCalledWith(
-    expect.stringContaining("未找到 codex"),
+    expect.stringContaining("The codex command was not found"),
   );
 });
 
@@ -100,7 +100,7 @@ it("retains bounded terminal output and includes missing executable diagnostics"
   child.emit("error", Object.assign(new Error("missing"), { code: "ENOENT" }));
   expect(terminal.snapshot()).toMatchObject({
     status: "unavailable",
-    output: expect.stringContaining("未找到 codex"),
+    output: expect.stringContaining("The codex command was not found"),
   });
   terminal.append("x".repeat(200000));
   expect(terminal.snapshot().output.length).toBe(128 * 1024);

@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
 /** Keep explicit final answers and the last legacy reply outside progress controls. */
 export function isTimelineProgress(
@@ -99,21 +100,21 @@ export function executionStatusLabel(status: string): string {
   return (
     (
       {
-        completed: "已完成",
-        recorded: "已记录",
-        inProgress: "执行中",
-        failed: "失败",
-        declined: "已拒绝",
-        interrupted: "已中断",
-        pending: "待执行",
-        pendingInit: "正在启动",
-        running: "执行中",
-        errored: "失败",
-        shutdown: "已关闭",
-        notFound: "代理不可用",
-        unknown: "状态待确认",
-        waiting: "等待确认",
-        cancelled: "已取消",
+        completed: t("已完成"),
+        recorded: t("已记录"),
+        inProgress: t("执行中"),
+        failed: t("失败"),
+        declined: t("已拒绝"),
+        interrupted: t("已中断"),
+        pending: t("待执行"),
+        pendingInit: t("正在启动"),
+        running: t("执行中"),
+        errored: t("失败"),
+        shutdown: t("已关闭"),
+        notFound: t("代理不可用"),
+        unknown: t("状态待确认"),
+        waiting: t("等待确认"),
+        cancelled: t("已取消"),
       } as Record<string, string>
     )[status] ?? status
   );

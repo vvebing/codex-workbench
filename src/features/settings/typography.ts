@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { useSyncExternalStore } from "react";
 
 export const TYPOGRAPHY_STORAGE_KEY = "codex-workbench.typography";
@@ -9,16 +10,39 @@ export function fontSizeOptions(current: string, defaultSize: string) {
     .sort((a, b) => a - b)
     .map((size) => ({
       value: String(size),
-      label: `${size} px${String(size) === defaultSize ? "（默认）" : ""}`,
+      label: t("{{v0}} px{{v1}}", {
+        v0: size,
+        v1: String(size) === defaultSize ? t("（默认）") : "",
+      }),
     }));
 }
 export const interfaceFontOptions = [
-  { value: "default", label: "默认字体" },
-  { value: "system", label: "系统字体" },
-  { value: "serif", label: "衬线字体" },
+  {
+    value: "default",
+    get label() {
+      return t("默认字体");
+    },
+  },
+  {
+    value: "system",
+    get label() {
+      return t("系统字体");
+    },
+  },
+  {
+    value: "serif",
+    get label() {
+      return t("衬线字体");
+    },
+  },
 ];
 export const codeFontOptions = [
-  { value: "default", label: "默认等宽字体" },
+  {
+    value: "default",
+    get label() {
+      return t("默认等宽字体");
+    },
+  },
   { value: "menlo", label: "Menlo" },
   { value: "courier", label: "Courier New" },
 ];

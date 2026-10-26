@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { LocalMessagesStore } from "./local-messages";
 import { documentApps } from "./editor-document";
 import type { TurnStartParams } from "../../generated/v2/TurnStartParams";
@@ -100,7 +101,7 @@ export class DraftSubmissionStore extends Store<Record<string, boolean>> {
     const targetId =
       this.sessions.getSnapshot().localDrafts[id]?.serverId ?? id;
     if (this.requests.forThread(targetId).length)
-      return Promise.reject(new Error("请先处理当前会话的确认请求。"));
+      return Promise.reject(new Error(t("请先处理当前会话的确认请求。")));
 
     const epoch = this.connection.getSnapshot().epoch;
     const ids = new Set([id]);

@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { settingsInputClass } from "../settings/settings-ui";
 import { useEffect, useState } from "react";
 import { DropdownMenu } from "radix-ui";
@@ -24,6 +25,9 @@ import { draftInput } from "./submission";
 import { hasSkillToken } from "./completion-token";
 
 export function QueuedTasks({ threadId }: { threadId: string }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const runtime = useRuntime();
   const state = useStore(runtime.queue);
   useStore(runtime.sessions);
@@ -46,20 +50,20 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
   const waitingReason =
     queue.paused ||
     (connection.status !== "connected"
-      ? "工作环境未连接，等待连接后调度。"
+      ? t("工作环境未连接，等待连接后调度。")
       : queue.items.some((item) => item.status === "uncertain")
-        ? "发送结果待核实，队列不会继续发送。"
+        ? t("发送结果待核实，队列不会继续发送。")
         : queue.editingId
-          ? "正在编辑排队消息，等待编辑结束。"
+          ? t("正在编辑排队消息，等待编辑结束。")
           : requests.pending.some(
                 (request) =>
                   "threadId" in request.params &&
                   request.params.threadId === threadId,
               )
-            ? "等待处理当前会话的审批或问题。"
+            ? t("等待处理当前会话的审批或问题。")
             : runtime.sessions.getSnapshot().threadAccess[threadId] !==
                 "editable"
-              ? "等待取得此会话的编辑权限。"
+              ? t("等待取得此会话的编辑权限。")
               : null);
   const editingId = editing?.id;
   useEffect(
@@ -91,7 +95,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
   if (!queue.items.length && !state.error && !error) return null;
   return (
     <section
-      aria-label="待发送任务"
+      aria-label={t("待发送任务")}
       data-slot="message-queue"
       className="mb-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs"
     >
@@ -99,7 +103,8 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
         <>
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium">
-              待发送 · {queue.items.length} 条
+              {t("待发送 ·")}
+              {queue.items.length} {t("条")}
             </span>
             <Button
               size="sm"
@@ -117,17 +122,19 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                 )
               }
             >
-              {queue.paused ? "继续队列" : "暂停队列"}
+              {queue.paused ? t("继续队列") : t("暂停队列")}
             </Button>
           </div>
           <p className="mb-1 text-meta text-muted" role="status">
             {waitingReason ||
               (queue.items[0]?.question
-                ? "问题回答的内容与发送状态见上方问题面板"
-                : "当前轮次结束后，按顺序逐条发送")}
+                ? t("问题回答的内容与发送状态见上方问题面板")
+                : t("当前轮次结束后，按顺序逐条发送"))}
           </p>
           <p className="mb-1 text-meta text-muted">
-            由当前浏览器调度；关闭页面后不会发送。发送结果待核实时，先核对会话记录。
+            {t(
+              "由当前浏览器调度；关闭页面后不会发送。发送结果待核实时，先核对会话记录。",
+            )}
           </p>
           <ScrollArea className="max-h-[min(10rem,calc(var(--viewport-height,100dvh)*0.18))]">
             <ol className="m-0 list-none p-0">
@@ -136,32 +143,34 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                   key={task.id}
                   data-slot="queued-task"
                   className="flex items-center gap-2 border-t border-border/60 py-1.5"
-                  aria-label={`待发送任务 ${index + 1}`}
+                  aria-label={t("待发送任务 {{value0}}", { value0: index + 1 })}
                 >
                   <span className="w-4 shrink-0 text-subtle">{index + 1}</span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate" title={task.draft.text}>
                       {task.question
-                        ? "问题回答（详见问题面板）"
-                        : task.draft.text || "图片任务"}
+                        ? t("问题回答（详见问题面板）")
+                        : task.draft.text || t("图片任务")}
                     </p>
                     <p className="truncate text-fine text-muted">
                       {task.status === "sending"
-                        ? "正在发送…"
+                        ? t("正在发送…")
                         : task.status === "uncertain"
-                          ? "发送结果待核实"
-                          : "等待发送"}
+                          ? t("发送结果待核实")
+                          : t("等待发送")}
                       {task.draft.images.length > 0 &&
-                        ` · ${task.draft.images.length} 张图片`}
+                        t(" · {{value0}} 张图片", {
+                          value0: task.draft.images.length,
+                        })}
                       {task.options.model && ` · ${task.options.model}`}
                     </p>
                   </div>
                   <Menu
-                    label={`任务操作 ${index + 1}`}
+                    label={t("任务操作 {{value0}}", { value0: index + 1 })}
                     trigger={
                       <IconButton
                         size="sm"
-                        label={`任务操作 ${index + 1}`}
+                        label={t("任务操作 {{value0}}", { value0: index + 1 })}
                         disabled={busy || task.status === "sending"}
                       >
                         <MoreHorizontal size={15} />
@@ -177,7 +186,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                         }
                       >
                         <ArrowUpToLine size={14} />
-                        移到最前
+                        {t("移到最前")}
                       </DropdownMenu.Item>
                     )}
                     {task.status === "queued" && !task.question && (
@@ -194,7 +203,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                           }
                         >
                           <Pencil size={14} />
-                          编辑
+                          {t("编辑")}
                         </DropdownMenu.Item>
                         <DropdownMenu.Item
                           disabled={!canSteer}
@@ -205,7 +214,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                           }
                         >
                           <CornerUpRight size={14} />
-                          立即引导
+                          {t("立即引导")}
                         </DropdownMenu.Item>
                       </>
                     )}
@@ -215,7 +224,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                           void act(() => runtime.queue.retry(threadId, task.id))
                         }
                       >
-                        确认未发送，允许重试
+                        {t("确认未发送，允许重试")}
                       </DropdownMenu.Item>
                     )}
                     <DropdownMenu.Item
@@ -225,7 +234,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                       }
                     >
                       <X size={14} />
-                      删除
+                      {t("删除")}
                     </DropdownMenu.Item>
                   </Menu>
                 </li>
@@ -239,8 +248,8 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
       )}
       <Modal
         open={!!editing}
-        title="编辑待发送任务"
-        description="保存后保留原来的排队位置和执行配置。"
+        title={t("编辑待发送任务")}
+        description={t("保存后保留原来的排队位置和执行配置。")}
         onOpenChange={(open) => {
           if (!open) void closeEditor();
         }}
@@ -249,7 +258,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
         {editing && (
           <>
             <label htmlFor="queued-task-text" className="mb-2 block text-xs">
-              任务内容
+              {t("任务内容")}
             </label>
             <textarea
               id="queued-task-text"
@@ -287,7 +296,9 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                     />
                     <IconButton
                       size="sm"
-                      label={`移除排队附件 ${image.name}`}
+                      label={t("移除排队附件 {{value0}}", {
+                        value0: image.name,
+                      })}
                       disabled={busy}
                       onClick={() =>
                         setEditing({
@@ -310,7 +321,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
             {error && <ErrorNotice>{error}</ErrorNotice>}
             <div className="mt-3 flex justify-end gap-2">
               <Button onClick={() => void closeEditor()} disabled={busy}>
-                取消
+                {t("取消")}
               </Button>
               <Button
                 variant="primary"
@@ -327,7 +338,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
                   })
                 }
               >
-                保存修改
+                {t("保存修改")}
               </Button>
             </div>
           </>

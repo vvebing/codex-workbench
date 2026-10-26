@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CaseSensitive,
@@ -25,12 +26,21 @@ export function ContentSearch({
   thread: Thread;
   active?: boolean;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { connection } = useRuntime();
   const { epoch, scope, status } = useStore(connection);
   if (status !== "connected")
-    return <p className="p-4 text-xs text-muted">连接环境后可搜索项目内容。</p>;
+    return (
+      <p className="p-4 text-xs text-muted">
+        {t("连接环境后可搜索项目内容。")}
+      </p>
+    );
   if (!thread.cwd)
-    return <p className="p-4 text-xs text-muted">当前会话没有项目目录。</p>;
+    return (
+      <p className="p-4 text-xs text-muted">{t("当前会话没有项目目录。")}</p>
+    );
   return (
     <ConnectedSearch
       key={JSON.stringify([epoch, scope, thread.cwd])}
@@ -47,6 +57,9 @@ function ConnectedSearch({
   thread: Thread;
   active: boolean;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { connection, files } = useRuntime();
   const input = useRef<HTMLInputElement>(null);
   const controller = useRef<AbortController | undefined>(undefined);
@@ -80,6 +93,8 @@ function ConnectedSearch({
     };
   }, []);
   const groups = useMemo(() => {
+    void i18nLocale;
+
     const grouped = new Map<string, Match[]>();
     for (const match of results?.matches ?? []) {
       const matches = grouped.get(match.path) ?? [];
@@ -87,7 +102,7 @@ function ConnectedSearch({
       grouped.set(match.path, matches);
     }
     return [...grouped];
-  }, [results]);
+  }, [results, i18nLocale]);
   const stale =
     submitted &&
     (submitted.query !== query || submitted.caseSensitive !== caseSensitive);
@@ -146,7 +161,10 @@ function ConnectedSearch({
     }
   };
   return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label="项目内容搜索">
+    <section
+      className="flex min-h-0 flex-1 flex-col"
+      aria-label={t("项目内容搜索")}
+    >
       <form
         className="space-y-2 p-3"
         onSubmit={(event) => {
@@ -158,8 +176,8 @@ function ConnectedSearch({
           <input
             ref={input}
             className={`${settingsInputClass} min-w-0 flex-1`}
-            aria-label="搜索文件内容"
-            placeholder="搜索文件内容…"
+            aria-label={t("搜索文件内容")}
+            placeholder={t("搜索文件内容…")}
             value={query}
             onChange={(event) => {
               const value = event.target.value;
@@ -183,8 +201,8 @@ function ConnectedSearch({
             }}
           />
           <IconButton
-            label="区分大小写"
-            title="区分大小写"
+            label={t("区分大小写")}
+            title={t("区分大小写")}
             aria-pressed={caseSensitive}
             className={caseSensitive ? "bg-selected text-accent" : "text-muted"}
             onClick={() => setCaseSensitive((value) => !value)}
@@ -193,8 +211,8 @@ function ConnectedSearch({
           </IconButton>
           {busy ? (
             <IconButton
-              label="取消内容搜索"
-              title="取消搜索 (Esc)"
+              label={t("取消内容搜索")}
+              title={t("取消搜索 (Esc)")}
               onClick={cancel}
             >
               <X size={16} />
@@ -202,17 +220,17 @@ function ConnectedSearch({
           ) : (
             <IconButton
               type="submit"
-              label="搜索内容"
-              title="搜索 (Enter)"
+              label={t("搜索内容")}
+              title={t("搜索 (Enter)")}
               disabled={!query || /[\r\n]/.test(query)}
             >
               <Search size={16} />
             </IconButton>
           )}
         </div>
-        <p className="text-xs text-muted">按 Enter 搜索普通字符串。</p>
+        <p className="text-xs text-muted">{t("按 Enter 搜索普通字符串。")}</p>
         {/[\r\n]/.test(query) && (
-          <p className="text-xs text-danger">请输入单行搜索文本。</p>
+          <p className="text-xs text-danger">{t("请输入单行搜索文本。")}</p>
         )}
       </form>
       {error && <ErrorNotice className="mx-3 mb-2">{error}</ErrorNotice>}
@@ -222,21 +240,33 @@ function ConnectedSearch({
         className="px-3 pb-2 text-xs text-muted"
       >
         {busy
-          ? `正在搜索…已找到 ${results?.matches.length ?? 0} 个匹配行，位于 ${groups.length} 个文件中。`
+          ? t(
+              "正在搜索…已找到 {{value0}} 个匹配行，位于 {{value1}} 个文件中。",
+              { value0: results?.matches.length ?? 0, value1: groups.length },
+            )
           : cancelled
-            ? `搜索已取消，保留 ${results?.matches.length ?? 0} 个匹配行，位于 ${groups.length} 个文件中。`
+            ? t(
+                "搜索已取消，保留 {{value0}} 个匹配行，位于 {{value1}} 个文件中。",
+                { value0: results?.matches.length ?? 0, value1: groups.length },
+              )
             : results
-              ? `${results.matches.length} 个匹配行，位于 ${groups.length} 个文件中${results.matches.length === 0 ? "。" : ""}`
+              ? t("{{value0}} 个匹配行，位于 {{value1}} 个文件中{{value2}}", {
+                  value0: results.matches.length,
+                  value1: groups.length,
+                  value2: results.matches.length === 0 ? "。" : "",
+                })
               : !error
-                ? "搜索当前项目中的文件内容，点击结果跳转到匹配位置。"
+                ? t("搜索当前项目中的文件内容，点击结果跳转到匹配位置。")
                 : ""}
         {stale && !busy && (
           <span className="mt-1 block">
-            搜索条件已更改，按 Enter 更新结果。
+            {t("搜索条件已更改，按 Enter 更新结果。")}
           </span>
         )}
         {results?.truncated && (
-          <span className="mt-1 block">结果已达到上限，请细化搜索。</span>
+          <span className="mt-1 block">
+            {t("结果已达到上限，请细化搜索。")}
+          </span>
         )}
         {results?.warning && (
           <span className="mt-1 block">{results.warning}</span>
@@ -245,7 +275,7 @@ function ConnectedSearch({
       <ScrollArea
         className="flex-1"
         viewportProps={{ className: "pb-3" }}
-        aria-label="内容搜索结果"
+        aria-label={t("内容搜索结果")}
         aria-busy={busy}
       >
         {groups.map(([path, matches]) => (
@@ -282,7 +312,15 @@ function ConnectedSearch({
                   key={`${match.line}:${match.column}`}
                   className="flex w-full gap-2 py-1.5 pl-7 pr-3 text-left font-mono text-xs hover:bg-hover focus-visible:bg-selected"
                   title={`${path}:${match.line}:${match.column}\n${match.text}`}
-                  aria-label={`${path}，第 ${match.line} 行，第 ${match.column} 列：${match.text}`}
+                  aria-label={t(
+                    "{{value0}}，第 {{value1}} 行，第 {{value2}} 列：{{value3}}",
+                    {
+                      value0: path,
+                      value1: match.line,
+                      value2: match.column,
+                      value3: match.text,
+                    },
+                  )}
                   onClick={() => void open(match)}
                 >
                   <span className="w-8 shrink-0 text-right text-muted">
@@ -301,6 +339,8 @@ function ConnectedSearch({
 }
 
 function MatchPreview({ match }: { match: Match }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
   const start = Math.max(0, match.column - 1);
   const from = Math.max(0, start - 50);
   return (

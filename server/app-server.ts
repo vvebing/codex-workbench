@@ -6,6 +6,7 @@ export interface AppServerOutput {
   status:
     "starting" | "running" | "external" | "unavailable" | "exited" | "stopped";
   output: string;
+  messageCode?: "unmanaged";
 }
 
 /** Bound retained terminal output independently of how long the server runs. */
@@ -61,7 +62,7 @@ export function manageAppServer(
       if (!stopped) {
         terminal.setStatus("external");
         report(
-          `Codex app-server: 使用已有服务 ws://${host}:${port}，无法读取该进程的终端输出。`,
+          `Codex app-server: reusing ws://${host}:${port}. Terminal output from this external process is unavailable.`,
         );
       }
       return;
@@ -86,8 +87,8 @@ export function manageAppServer(
       terminal.setStatus("unavailable");
       report(
         error.code === "ENOENT"
-          ? "未找到 codex 命令，跳过本机 app-server 启动。网页服务仍可使用；请安装 Codex CLI 并重启，或连接其他 app-server。"
-          : `Codex app-server 启动失败：${error.message}。网页服务继续运行。`,
+          ? "The codex command was not found; local app-server startup was skipped. The web service remains available. Install Codex CLI and restart, or connect to another app-server."
+          : `Codex app-server failed to start: ${error.message}. The web service remains available.`,
       );
     });
     child.once("exit", (code, signal) => {
@@ -95,13 +96,15 @@ export function manageAppServer(
       if (!stopped) {
         terminal.setStatus("exited");
         report(
-          `Codex app-server 已退出（${signal ?? code}），网页服务继续运行。请检查终端输出。`,
+          `Codex app-server exited (${signal ?? code}). The web service remains available. Check the terminal output.`,
         );
       }
     });
   })().catch((error: unknown) => {
     terminal.setStatus("unavailable");
-    report(`无法启动 Codex app-server，网页服务继续运行：${String(error)}`);
+    report(
+      `Unable to start Codex app-server; the web service remains available: ${String(error)}`,
+    );
   });
   return () => {
     if (stopped) return;

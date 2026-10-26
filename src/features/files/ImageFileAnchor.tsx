@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { Button } from "../../components/ui";
 import {
   useEffect,
@@ -19,6 +20,9 @@ export function ImageFileAnchor({
   children,
   ...props
 }: ComponentPropsWithoutRef<"a"> & { fileTarget: FileLinkTarget }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { connection } = useRuntime();
   const { status, scope, epoch } = useStore(connection);
   const trigger = useRef<HTMLAnchorElement>(null);
@@ -31,7 +35,7 @@ export function ImageFileAnchor({
     path?: string;
   }>({});
   const path = absoluteFilePath(fileTarget.path, fileTarget.cwd);
-  const name = path.split("/").at(-1) || "图片";
+  const name = path.split("/").at(-1) || t("图片");
   useEffect(() => {
     if (!open || status !== "connected") return;
     let cancelled = false;
@@ -50,7 +54,7 @@ export function ImageFileAnchor({
       .catch((error: unknown) => {
         if (!cancelled)
           setResult({
-            error: error instanceof Error ? error.message : "图片无法加载",
+            error: error instanceof Error ? error.message : t("图片无法加载"),
           });
       });
     return () => {
@@ -76,8 +80,8 @@ export function ImageFileAnchor({
       {open && !result.url && (
         <span role="status" className="ml-2 text-xs text-muted">
           {status !== "connected"
-            ? "连接后查看图片"
-            : result.error || "正在加载图片"}
+            ? t("连接后查看图片")
+            : result.error || t("正在加载图片")}
           {result.error && (
             <Button
               size="sm"
@@ -85,7 +89,7 @@ export function ImageFileAnchor({
               className="ml-2"
               onClick={() => setOpen(false)}
             >
-              关闭
+              {t("关闭")}
             </Button>
           )}
         </span>

@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { getLocale, t } from "../../lib/i18n";
 import { asyncAnswerItemId } from "./async-questions";
 import {
   ToolAnswerRecord,
@@ -160,6 +162,7 @@ const ToolItem = memo(function ToolItem({
   onInspectAgent?: (id: string) => void;
   onManualChange?: (id: string, open: boolean) => void;
 }) {
+  useTranslation();
   const [manual, setManual] = useState<boolean | null>(null);
   const pinProcess = useContext(PinProcess);
   const active = lifecycle === "inProgress" || lifecycle === "waiting";
@@ -183,23 +186,26 @@ const ToolItem = memo(function ToolItem({
   switch (item.type) {
     case "commandExecution":
       title = commandTitle(item);
-      content = `${item.cwd}\n$ ${item.command}\n\n${item.aggregatedOutput ?? (active ? "等待命令输出" : "命令未产生输出")}${item.exitCode !== null ? `\n退出码：${item.exitCode}` : ""}`;
+      content = `${item.cwd}\n$ ${item.command}\n\n${item.aggregatedOutput ?? (active ? t("等待命令输出") : t("命令未产生输出"))}${item.exitCode !== null ? t("\n退出码：{{value0}}", { value0: item.exitCode }) : ""}`;
       break;
     case "fileChange":
-      title = `修改 ${item.changes.length} 个文件 · ${item.changes
-        .slice(0, 2)
-        .map((change) => change.path.split("/").at(-1))
-        .join("、")}`;
+      title = t("修改 {{value0}} 个文件 · {{value1}}", {
+        value0: item.changes.length,
+        value1: item.changes
+          .slice(0, 2)
+          .map((change) => change.path.split("/").at(-1))
+          .join(getLocale() === "zh-CN" ? "、" : ", "),
+      });
       content = item.changes
         .map((change) => `${change.path}\n${change.diff}`)
         .join("\n\n");
       break;
     case "reasoning":
-      title = "思考摘要";
+      title = t("思考摘要");
       content = [...item.summary, ...item.content].join("\n\n");
       break;
     case "plan":
-      title = "执行计划";
+      title = t("执行计划");
       content = item.text;
       break;
     case "mcpToolCall":
@@ -210,7 +216,7 @@ const ToolItem = memo(function ToolItem({
       if (item.success === false) status = "failed";
       break;
     case "collabAgentToolCall":
-      title = `协作 · ${item.tool}`;
+      title = t("协作 · {{value0}}", { value0: item.tool });
       content = [
         item.prompt,
         ...Object.entries(item.agentsStates).map(
@@ -223,11 +229,11 @@ const ToolItem = memo(function ToolItem({
       break;
     case "enteredReviewMode":
     case "exitedReviewMode":
-      title = "代码审查";
+      title = t("代码审查");
       content = item.review;
       break;
     case "imageView":
-      title = "查看图片";
+      title = t("查看图片");
       content = item.path;
       break;
     case "functionCallOutput":
@@ -235,11 +241,11 @@ const ToolItem = memo(function ToolItem({
       content = typeof item.output === "string" ? item.output : "";
       break;
     case "hookPrompt":
-      title = "工作流提示";
+      title = t("工作流提示");
       content = item.fragments.map((fragment) => fragment.text).join("\n");
       break;
     case "webSearch":
-      title = "网页搜索";
+      title = t("网页搜索");
       content = [
         item.query,
         item.action?.type === "search"
@@ -258,23 +264,25 @@ const ToolItem = memo(function ToolItem({
         .join("\n");
       break;
     case "sleep":
-      title = "等待";
-      content = `${(item.durationMs / 1000).toFixed(1)} 秒`;
+      title = t("等待");
+      content = t("{{value0}} 秒", {
+        value0: (item.durationMs / 1000).toFixed(1),
+      });
       break;
     case "imageGeneration":
-      title = "生成图片";
+      title = t("生成图片");
       content = item.revisedPrompt ?? item.savedPath ?? item.status;
       break;
     case "contextCompaction":
-      title = "上下文已整理";
+      title = t("上下文已整理");
       break;
     case "subAgentActivity":
-      title = `子代理 · ${item.kind}`;
+      title = t("子代理 · {{value0}}", { value0: item.kind });
       content = item.agentPath;
       break;
     default:
       title = item.type;
-      content = "此事件已记录。";
+      content = t("此事件已记录。");
   }
   const Icon =
     item.type === "fileChange"
@@ -301,7 +309,9 @@ const ToolItem = memo(function ToolItem({
         data-item-type={item.type}
         data-expandable="false"
         title={
-          active ? "摘要到达后可展开查看" : "该操作记录没有可展示的思考摘要"
+          active
+            ? t("摘要到达后可展开查看")
+            : t("该操作记录没有可展示的思考摘要")
         }
         className={`my-1 flex w-fit min-w-0 max-w-full items-center gap-2 rounded-md px-2 py-1.5 text-caption ${active ? "text-muted" : "text-subtle"}`}
       >
@@ -309,12 +319,12 @@ const ToolItem = memo(function ToolItem({
           <LoaderCircle
             size={14}
             className="shrink-0 animate-spin"
-            aria-label="执行中"
+            aria-label={t("执行中")}
           />
         ) : (
           <Brain size={14} className="shrink-0" />
         )}
-        <span>正在思考</span>
+        <span>{t("正在思考")}</span>
       </div>
     );
   }
@@ -337,10 +347,10 @@ const ToolItem = memo(function ToolItem({
           <LoaderCircle
             size={14}
             className="shrink-0 animate-spin"
-            aria-label="执行中"
+            aria-label={t("执行中")}
           />
         ) : status === "failed" ? (
-          <CircleAlert size={14} className="shrink-0" aria-label="失败" />
+          <CircleAlert size={14} className="shrink-0" aria-label={t("失败")} />
         ) : (
           <Icon size={14} className="shrink-0" />
         )}
@@ -374,13 +384,13 @@ const ToolItem = memo(function ToolItem({
             <LoaderCircle
               size={14}
               className="shrink-0 animate-spin"
-              aria-label="执行中"
+              aria-label={t("执行中")}
             />
           ) : status === "failed" ? (
             <CircleAlert
               size={14}
               className="shrink-0 text-danger"
-              aria-label="失败"
+              aria-label={t("失败")}
             />
           ) : (
             <Icon size={14} className="shrink-0" />
@@ -392,19 +402,20 @@ const ToolItem = memo(function ToolItem({
             item.exitCode !== null &&
             item.exitCode !== 0 && (
               <small className="shrink-0 whitespace-nowrap">
-                退出码 {item.exitCode}
+                {t("退出码")}
+                {item.exitCode}
               </small>
             )}
           {"durationMs" in item && item.durationMs !== null && (
             <small className="shrink-0 whitespace-nowrap text-meta text-muted">
-              {(item.durationMs / 1000).toFixed(1)} 秒
+              {(item.durationMs / 1000).toFixed(1)} {t("秒")}
             </small>
           )}
           {status &&
             !["completed", "inProgress", "failed"].includes(status) && (
               <small className="shrink-0 whitespace-nowrap text-meta">
                 {status === "waiting"
-                  ? "等待确认"
+                  ? t("等待确认")
                   : executionStatusLabel(status)}
               </small>
             )}
@@ -431,7 +442,7 @@ const ToolItem = memo(function ToolItem({
       >
         {item.type === "reasoning" || item.type === "plan" ? (
           <div className="pt-2 pb-4">
-            <Markdown text={content || "暂无内容"} />
+            <Markdown text={content || t("暂无内容")} />
           </div>
         ) : (
           <OperationDetails
@@ -456,7 +467,8 @@ const ToolItem = memo(function ToolItem({
                 className="underline text-accent"
                 onClick={() => onInspectAgent(id)}
               >
-                查看子代理 {id.slice(0, 8)}
+                {t("查看子代理")}
+                {id.slice(0, 8)}
               </button>
             ))}
         </div>
@@ -481,6 +493,7 @@ function ExecutionSummary({
   initiallyPresent: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  useTranslation();
   const instant = segment.items.every(isInstantOperation);
   const animate = manualOpen !== undefined || !instant;
   const membership = JSON.stringify(segment.items.map((item) => item.id));
@@ -541,7 +554,7 @@ function ExecutionSummary({
             <LoaderCircle
               size={13}
               className="shrink-0 animate-spin"
-              aria-label="执行中"
+              aria-label={t("执行中")}
             />
           ) : (
             <Check size={13} className="shrink-0" />
@@ -551,7 +564,7 @@ function ExecutionSummary({
           </span>
           {segment.attention > 0 && (
             <span className="shrink-0 text-danger">
-              {segment.attention} 项需关注
+              {segment.attention} {t("项需关注")}
             </span>
           )}
           <ChevronRight
@@ -591,6 +604,7 @@ export function OperationGroup({
   fileOutputs?: Record<string, string>;
   onInspectAgent?: (id: string) => void;
 }) {
+  useTranslation();
   const choiceKey = `operations:${context.turnId}:${items[0]?.id}`;
   const pinProcess = useContext(PinProcess);
   const [manualItems, setManualItems] = useReadingChoice<
@@ -710,6 +724,7 @@ function TurnContent({
     manualFiltering: boolean,
   ) => ReactNode;
 }) {
+  useTranslation();
   const status = context.turnStatus;
   const resolve = useOperationStatus(context);
   const [previousStatus, setPreviousStatus] = useState(status);
@@ -806,7 +821,7 @@ function TurnContent({
           size={14}
           className={`motion-reduce:transition-none ${manualCollapsed !== null || animatedProgress ? "transition-transform duration-200" : ""} ${collapsed ? "" : "rotate-90"}`}
         />
-        {collapsed ? "展开执行过程" : "收起执行过程"}
+        {collapsed ? t("展开执行过程") : t("收起执行过程")}
       </Button>
       <hr className="min-w-0 flex-1 border-0 border-t border-border" />
     </div>
@@ -850,8 +865,10 @@ function TurnContent({
                   </AnimatedExecution>
                   {collapsed && exceptionCount > 0 && (
                     <p role="status" className="mb-3 text-xs text-muted">
-                      有 {exceptionCount}{" "}
-                      项执行记录需要关注，当前仅显示这些记录。展开执行过程可查看全部。
+                      {t(
+                        "有 {{value0}} 项执行记录需要关注，当前仅显示这些记录。展开执行过程可查看全部。",
+                        { value0: exceptionCount },
+                      )}
                     </p>
                   )}
                 </>
@@ -902,6 +919,7 @@ export const Item = memo(function Item({
   streaming?: boolean;
   hideDivider?: boolean;
 }) {
+  useTranslation();
   if (item.type === "agentMessage") {
     if (!item.text.trim()) return null;
     return (
@@ -935,7 +953,7 @@ export const Item = memo(function Item({
         {action}
         <CollapsiblePrompt
           preview={item.content
-            .map((part) => (part.type === "text" ? part.text : "附件"))
+            .map((part) => (part.type === "text" ? part.text : t("附件")))
             .join("\n")}
         >
           {item.content.map((part, index) =>
@@ -945,13 +963,20 @@ export const Item = memo(function Item({
               <ConversationImage
                 key={index}
                 src={part.url}
-                name={`对话附件 ${item.content.slice(0, index + 1).filter((input) => input.type === "image" || input.type === "localImage").length}`}
+                name={t("对话附件 {{value0}}", {
+                  value0: item.content
+                    .slice(0, index + 1)
+                    .filter(
+                      (input) =>
+                        input.type === "image" || input.type === "localImage",
+                    ).length,
+                })}
               />
             ) : part.type === "localImage" ? (
               <LocalMessageImage
                 key={index}
                 path={part.path}
-                name={part.path.split(/[\\/]/).at(-1) || "对话附件"}
+                name={part.path.split(/[\\/]/).at(-1) || t("对话附件")}
               />
             ) : (
               <div
@@ -962,7 +987,7 @@ export const Item = memo(function Item({
                   ? part.name
                   : "path" in part
                     ? part.path
-                    : "音频或图片附件"}
+                    : t("音频或图片附件")}
               </div>
             ),
           )}
@@ -973,6 +998,7 @@ export const Item = memo(function Item({
   return <ToolItem item={item} />;
 });
 export function Timeline(props: TimelineProps) {
+  useTranslation();
   const { submissions } = useRuntime();
   const identity = props.thread
     ? submissions.messages.threadIdentity(props.thread.id)
@@ -1010,6 +1036,7 @@ function TimelineContent({
   waitingItems,
   onRollback,
 }: TimelineProps) {
+  useTranslation();
   const { submissions, requests } = useRuntime();
   const requestState = useSyncExternalStore(
     requests.subscribe,
@@ -1062,7 +1089,7 @@ function TimelineContent({
       await onRollback(turnId, messageId);
     } catch (error) {
       setRollbackError(
-        error instanceof Error ? error.message : "回滚失败，请重试。",
+        error instanceof Error ? error.message : t("回滚失败，请重试。"),
       );
     } finally {
       rollbackLock.current = false;
@@ -1395,7 +1422,7 @@ function TimelineContent({
             {hasOlder && (
               <div className="mb-4 flex justify-center">
                 <Button disabled={loadingOlder} onClick={onLoadOlder}>
-                  {loadingOlder ? "正在加载更早对话…" : "加载更早对话"}
+                  {loadingOlder ? t("正在加载更早对话…") : t("加载更早对话")}
                 </Button>
               </div>
             )}
@@ -1406,21 +1433,21 @@ function TimelineContent({
                 className="flex items-center justify-center gap-2 py-16 text-sm text-muted"
               >
                 <LoaderCircle size={18} className="animate-spin" />
-                正在加载会话…
+                {t("正在加载会话…")}
               </div>
             ) : !thread ? (
               <div
                 data-slot="conversation-empty"
                 className="py-3 text-control leading-copy text-muted"
               >
-                选择一个会话，或开始新的对话。
+                {t("选择一个会话，或开始新的对话。")}
               </div>
             ) : !thread.turns.length && !localMessages.length ? (
               <div
                 data-slot="conversation-empty"
                 className="py-3 text-control leading-copy text-muted"
               >
-                写下你的任务，开始这个会话。
+                {t("写下你的任务，开始这个会话。")}
               </div>
             ) : (
               submissions.messages
@@ -1451,7 +1478,9 @@ function TimelineContent({
                       data-turn-id={turn.id}
                       className={`relative pt-3 pb-6 ${index > 0 ? "border-t border-border" : ""}`}
                       key={submissions.messages.identity(turn.id)}
-                      aria-label={`第 ${index + 1} 轮对话`}
+                      aria-label={t("第 {{value0}} 轮对话", {
+                        value0: index + 1,
+                      })}
                     >
                       <TurnContent
                         items={displayItems}
@@ -1498,10 +1527,15 @@ function TimelineContent({
                                     }
                                     title={
                                       running
-                                        ? "请等待当前会话执行结束后再回滚"
-                                        : "撤销这条消息所在轮及后续对话，在当前会话继续；文件修改不会撤销"
+                                        ? t("请等待当前会话执行结束后再回滚")
+                                        : t(
+                                            "撤销这条消息所在轮及后续对话，在当前会话继续；文件修改不会撤销",
+                                          )
                                     }
-                                    aria-label={`回滚到第 ${index + 1} 轮之前`}
+                                    aria-label={t(
+                                      "回滚到第 {{value0}} 轮之前",
+                                      { value0: index + 1 },
+                                    )}
                                     aria-busy={rollingBack === turn.id}
                                     onClick={() =>
                                       setRollbackTarget({
@@ -1613,17 +1647,21 @@ function TimelineContent({
         onOpenChange={(open) => {
           if (!open) setRollbackTarget(null);
         }}
-        title="确认回滚对话？"
+        title={t("确认回滚对话？")}
       >
         <p className="text-sm text-muted">
-          将移除第 {(rollbackTarget?.index ?? 0) + 1}{" "}
-          轮及其后全部对话，并在此位置继续。共{" "}
-          {(thread?.turns.length ?? 0) - (rollbackTarget?.index ?? 0)}{" "}
-          轮。已修改的文件会保留，不会撤销；原问题将恢复到输入框，可修改后重发。
+          {t(
+            "将移除第 {{value0}} 轮及其后全部对话，并在此位置继续。共 {{value1}} 轮。已修改的文件会保留，不会撤销；原问题将恢复到输入框，可修改后重发。",
+            {
+              value0: (rollbackTarget?.index ?? 0) + 1,
+              value1:
+                (thread?.turns.length ?? 0) - (rollbackTarget?.index ?? 0),
+            },
+          )}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="quiet" onClick={() => setRollbackTarget(null)}>
-            取消
+            {t("取消")}
           </Button>
           <Button
             variant="danger"
@@ -1634,7 +1672,7 @@ function TimelineContent({
               }
             }}
           >
-            确认回滚
+            {t("确认回滚")}
           </Button>
         </div>
       </Modal>
@@ -1655,7 +1693,7 @@ function TimelineContent({
           }}
         >
           <ArrowDown size={14} />
-          回到底部
+          {t("回到底部")}
         </Button>
       )}
     </div>
@@ -1671,6 +1709,7 @@ export function LocalDeliveryMessage({
   onRestore?: () => void;
   onDismiss: () => void;
 }) {
+  useTranslation();
   return (
     <section
       data-slot="local-message"
@@ -1705,18 +1744,22 @@ function TurnFooter({
   turn: Turn;
   confirmed?: boolean;
 }) {
+  useTranslation();
   const status = turnStatusLabel(thread, turn, confirmed);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const refresh = () => setNow(Date.now());
-    const timer = setInterval(refresh, status === "正在执行…" ? 1000 : 60_000);
+    const timer = setInterval(
+      refresh,
+      status === t("正在执行…") ? 1000 : 60_000,
+    );
     document.addEventListener("visibilitychange", refresh);
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", refresh);
     };
   }, [status]);
-  const timing = turnTiming(turn, status === "正在执行…", now);
+  const timing = turnTiming(turn, status === t("正在执行…"), now);
   const completed =
     turn.completedAt == null ? null : new Date(turn.completedAt * 1000);
   return (
@@ -1733,7 +1776,7 @@ function TurnFooter({
             ·{" "}
             <time
               dateTime={completed.toISOString()}
-              title={completed.toLocaleString()}
+              title={completed.toLocaleString(getLocale())}
             >
               {formatCompletionTime(completed, now)}
             </time>

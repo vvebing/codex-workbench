@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { Store } from "../../lib/store";
 import type { EnvironmentsStore } from "../connection/environments";
 
@@ -123,8 +124,9 @@ export class SessionUrlStore extends Store<RouteState> {
     if (!entry) {
       this.update({
         status: "error",
-        message:
+        message: t(
           "此链接对应的工作环境尚未配置或已移除。请在连接设置中检查工作环境。",
+        ),
       });
       return;
     }
@@ -136,13 +138,15 @@ export class SessionUrlStore extends Store<RouteState> {
     if (entry.runtime.connection.getSnapshot().status !== "connected") {
       this.update({
         status: "waiting",
-        message: `等待连接「${entry.name}」，连接成功后将打开此会话。`,
+        message: t("等待连接「{{value0}}」，连接成功后将打开此会话。", {
+          value0: entry.name,
+        }),
       });
       return;
     }
     this.opening = true;
     const generation = this.generation;
-    this.update({ status: "loading", message: "正在打开链接中的会话…" });
+    this.update({ status: "loading", message: t("正在打开链接中的会话…") });
     void entry.runtime.sessions
       .open(target.sessionId)
       .then(() => {
@@ -155,8 +159,10 @@ export class SessionUrlStore extends Store<RouteState> {
         this.update({
           status: "error",
           message: target.sessionId?.startsWith("local-draft-")
-            ? "此草稿只在创建它的页面中可用。请选择历史会话或开始新会话。"
-            : "无法打开此会话：它可能已删除，或当前工作环境暂时无法读取。请确认工作环境后重试。",
+            ? t("此草稿只在创建它的页面中可用。请选择历史会话或开始新会话。")
+            : t(
+                "无法打开此会话：它可能已删除，或当前工作环境暂时无法读取。请确认工作环境后重试。",
+              ),
         });
       })
       .finally(() => {

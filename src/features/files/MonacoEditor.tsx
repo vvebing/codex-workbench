@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { attachGitGutter } from "./git-gutter";
 import { attachDiffModel } from "./diff-model";
 import { isLargeFile } from "./file-limits";
@@ -70,6 +71,9 @@ export default function MonacoEditor({
   ) => void;
   onPosition: (line: number, column: number, language: string) => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const container = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const diffEditor = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
@@ -77,13 +81,14 @@ export default function MonacoEditor({
   const diffModelCleanup = useRef<(() => void) | undefined>(undefined);
   const gutterCleanup = useRef<(() => void) | undefined>(undefined);
   const simplified = useMemo(
-    () => document.largeFile ?? isLargeFile(document.text),
-    [document.largeFile, document.text],
+    () => (void i18nLocale, document.largeFile ?? isLargeFile(document.text)),
+    [document.largeFile, document.text, i18nLocale],
   );
   const comparing = comparison !== undefined && !simplified;
   const simplifiedOptions =
     useMemo<monaco.editor.IStandaloneEditorConstructionOptions>(
-      () =>
+      () => (
+        void i18nLocale,
         simplified
           ? {
               wordWrap: "off",
@@ -110,8 +115,9 @@ export default function MonacoEditor({
                 nonBasicASCII: false,
               },
             }
-          : {},
-      [simplified],
+          : {}
+      ),
+      [simplified, i18nLocale],
     );
   const models = useRef(new Map<string, monaco.editor.ITextModel>());
   const views = useRef(new Map<string, monaco.editor.ICodeEditorViewState>());
@@ -333,6 +339,7 @@ export default function MonacoEditor({
       document.loading
     )
       return;
+    void i18nLocale;
     const dispose = attachGitGutter(editor.current, gitBaseline, () =>
       callbacks.current.onGitCompare?.(),
     );
@@ -343,7 +350,14 @@ export default function MonacoEditor({
         gutterCleanup.current = undefined;
       }
     };
-  }, [comparing, simplified, gitBaseline, document.id, document.loading]);
+  }, [
+    comparing,
+    simplified,
+    gitBaseline,
+    document.id,
+    document.loading,
+    i18nLocale,
+  ]);
   useEffect(() => {
     if (!document.line || document.loading) return;
     if (revealed.current.get(document.id) === document.navigationRevision)
@@ -375,7 +389,7 @@ export default function MonacoEditor({
     <div
       className="file-monaco"
       ref={container}
-      aria-label={`代码编辑器：${document.path}`}
+      aria-label={t("代码编辑器：{{value0}}", { value0: document.path })}
     />
   );
 }

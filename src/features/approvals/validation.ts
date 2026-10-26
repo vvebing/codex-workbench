@@ -1,3 +1,4 @@
+import { getLocale, t } from "../../lib/i18n";
 import type { McpElicitationSchema } from "../../generated/v2/McpElicitationSchema";
 import type { McpElicitationPrimitiveSchema } from "../../generated/v2/McpElicitationPrimitiveSchema";
 
@@ -205,29 +206,42 @@ export function fieldConstraints(
   const field = schema as unknown as Record<string, unknown>;
   const hints: string[] = [];
   if (field.minLength !== undefined)
-    hints.push(`至少 ${field.minLength} 个字符`);
+    hints.push(t("至少 {{value0}} 个字符", { value0: field.minLength }));
   if (field.maxLength !== undefined)
-    hints.push(`最多 ${field.maxLength} 个字符`);
-  if (field.minimum !== undefined) hints.push(`最小值 ${field.minimum}`);
-  if (field.maximum !== undefined) hints.push(`最大值 ${field.maximum}`);
-  if (field.type === "integer") hints.push("请输入整数");
-  if (field.minItems !== undefined) hints.push(`至少选择 ${field.minItems} 项`);
-  if (field.maxItems !== undefined) hints.push(`最多选择 ${field.maxItems} 项`);
+    hints.push(t("最多 {{value0}} 个字符", { value0: field.maxLength }));
+  if (field.minimum !== undefined)
+    hints.push(t("最小值 {{value0}}", { value0: field.minimum }));
+  if (field.maximum !== undefined)
+    hints.push(t("最大值 {{value0}}", { value0: field.maximum }));
+  if (field.type === "integer") hints.push(t("请输入整数"));
+  if (field.minItems !== undefined)
+    hints.push(t("至少选择 {{value0}} 项", { value0: field.minItems }));
+  if (field.maxItems !== undefined)
+    hints.push(t("最多选择 {{value0}} 项", { value0: field.maxItems }));
   if (field.format)
     hints.push(
-      `格式：${{ email: "电子邮箱", uri: "完整 URL", date: "YYYY-MM-DD", "date-time": "含时区的日期时间，如 2026-01-01T12:00:00Z" }[String(field.format) as "email"]}`,
+      t("格式：{{value0}}", {
+        value0: {
+          email: t("电子邮箱"),
+          uri: t("完整 URL"),
+          date: "YYYY-MM-DD",
+          "date-time": t("含时区的日期时间，如 2026-01-01T12:00:00Z"),
+        }[String(field.format) as "email"],
+      }),
     );
-  return hints.join("；");
+  return hints.join(getLocale() === "zh-CN" ? "；" : "; ");
 }
 export function fieldError(
   schema: McpElicitationPrimitiveSchema,
   value: unknown,
   required: boolean,
 ): string | undefined {
-  if (value === undefined) return required ? "请填写此必填项。" : undefined;
+  if (value === undefined) return required ? t("请填写此必填项。") : undefined;
   return validField(schema, value)
     ? undefined
-    : `请检查此项。${fieldConstraints(schema) || "请选择有效的值。"}`;
+    : t("请检查此项。{{value0}}", {
+        value0: fieldConstraints(schema) || t("请选择有效的值。"),
+      });
 }
 export function validFormContent(schema: unknown, content: unknown): boolean {
   return (

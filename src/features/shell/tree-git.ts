@@ -1,3 +1,4 @@
+import { getLocale, t } from "../../lib/i18n";
 import type { GitFile, WorkspaceGitStatus } from "./git-status";
 
 export type TreeGitDecoration = {
@@ -7,14 +8,30 @@ export type TreeGitDecoration = {
   count: number;
 };
 const names: Record<string, string> = {
-  M: "已修改",
-  A: "已添加",
-  D: "已删除",
-  R: "已重命名",
-  C: "已复制",
-  T: "类型已更改",
-  U: "存在冲突",
-  "?": "未跟踪",
+  get M() {
+    return t("已修改");
+  },
+  get A() {
+    return t("已添加");
+  },
+  get D() {
+    return t("已删除");
+  },
+  get R() {
+    return t("已重命名");
+  },
+  get C() {
+    return t("已复制");
+  },
+  get T() {
+    return t("类型已更改");
+  },
+  get U() {
+    return t("存在冲突");
+  },
+  get "?"() {
+    return t("未跟踪");
+  },
 };
 const normalize = (path: string) => path.replace(/\\/g, "/").replace(/\/$/, "");
 function fileDecoration(file: GitFile): TreeGitDecoration {
@@ -30,19 +47,19 @@ function fileDecoration(file: GitFile): TreeGitDecoration {
     ? "U"
     : codes.join("") || (file.groups.includes("untracked") ? "?" : "M");
   const details = conflict
-    ? "存在合并冲突"
+    ? t("存在合并冲突")
     : [
         file.indexStatus && file.indexStatus !== "." && file.indexStatus !== "?"
-          ? `暂存区：${names[file.indexStatus]}`
+          ? t("暂存区：{{value0}}", { value0: names[file.indexStatus] })
           : "",
         file.worktreeStatus && file.worktreeStatus !== "."
-          ? `工作区：${names[file.worktreeStatus]}`
+          ? t("工作区：{{value0}}", { value0: names[file.worktreeStatus] })
           : "",
       ]
         .filter(Boolean)
-        .join("；") ||
+        .join(getLocale() === "zh-CN" ? "；" : "; ") ||
       names[badge] ||
-      "存在更改";
+      t("存在更改");
   return {
     badge,
     label: details,
@@ -99,7 +116,10 @@ export function treeGitDecorations(
     result.set(folder, {
       badge: conflict ? "U" : String(files.size),
       count: files.size,
-      label: `子树有 ${files.size} 个更改文件${conflict ? "，存在合并冲突" : ""}`,
+      label: t("子树有 {{value0}} 个更改文件{{value1}}", {
+        value0: files.size,
+        value1: conflict ? t("，存在合并冲突") : "",
+      }),
       className: conflict ? "text-danger" : "text-warning",
     });
   }

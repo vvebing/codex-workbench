@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useEffect, useState } from "react";
 import type { Model } from "../../generated/v2/Model";
 import { Button, SelectField } from "../../components/ui";
@@ -50,6 +51,7 @@ export function SessionSettings({
   models: Model[];
   environmentName: string;
 }) {
+  useLocale();
   const selectedModel =
     settings.custom ||
     (settings.value && !models.some((model) => model.model === settings.value))
@@ -59,7 +61,7 @@ export function SessionSettings({
         : "environment";
 
   return (
-    <SettingsSection title="本浏览器的新会话模型">
+    <SettingsSection title={t("本浏览器的新会话模型")}>
       <form
         className="space-y-6"
         onSubmit={(event) => {
@@ -69,12 +71,15 @@ export function SessionSettings({
       >
         <SettingsField
           id="new-session-default-model"
-          label="新建会话默认模型"
-          description={`模型列表来自设备「${environmentName}」。此偏好保存在当前浏览器中，适用于所有环境的新建会话；输入区显式选择的模型优先。不同设备可用的模型可能不同，也可填写自定义模型 ID。`}
+          label={t("新建会话默认模型")}
+          description={t(
+            "模型列表来自设备「{{v0}}」。此偏好保存在当前浏览器中，适用于所有环境的新建会话；输入区显式选择的模型优先。不同设备可用的模型可能不同，也可填写自定义模型 ID。",
+            { v0: environmentName },
+          )}
         >
           <SelectField
             id="new-session-default-model"
-            label="新建会话默认模型"
+            label={t("新建会话默认模型")}
             value={selectedModel}
             onValueChange={(value) => {
               if (value === "custom") settings.change(settings.value, true);
@@ -84,12 +89,12 @@ export function SessionSettings({
                 );
             }}
             options={[
-              { value: "environment", label: "跟随设备默认模型" },
+              { value: "environment", label: t("跟随设备默认模型") },
               ...models.map((model) => ({
                 value: `model:${model.model}`,
                 label: model.displayName,
               })),
-              { value: "custom", label: "自定义模型" },
+              { value: "custom", label: t("自定义模型") },
             ]}
             aria-describedby="new-session-default-model-description"
             className={settingsSelectClass}
@@ -98,14 +103,16 @@ export function SessionSettings({
         {selectedModel === "custom" && (
           <SettingsField
             id="new-session-custom-model"
-            label="自定义模型 ID"
-            description="填写目标设备支持的模型 ID；留空跟随该设备提供的默认模型。"
+            label={t("自定义模型 ID")}
+            description={t(
+              "填写目标设备支持的模型 ID；留空跟随该设备提供的默认模型。",
+            )}
           >
             <input
               id="new-session-custom-model"
               value={settings.value}
               onChange={(event) => settings.change(event.target.value, true)}
-              placeholder="输入模型 ID"
+              placeholder={t("输入模型 ID")}
               autoComplete="off"
               aria-describedby="new-session-custom-model-description"
               className={settingsInputClass}
@@ -115,12 +122,12 @@ export function SessionSettings({
         <SettingsActions>
           {settings.feedback && (
             <span role="status" className="mr-auto text-xs text-success">
-              {settings.feedback}
+              {t(settings.feedback)}
             </span>
           )}
           {settings.error && (
             <span role="alert" className="mr-auto text-xs text-danger">
-              {settings.error}
+              {t(settings.error)}
             </span>
           )}
           <Button
@@ -129,10 +136,10 @@ export function SessionSettings({
             size="sm"
             onClick={() => settings.change("")}
           >
-            跟随设备默认
+            {t("跟随设备默认")}
           </Button>
           <Button type="submit" variant="primary" size="sm">
-            保存浏览器偏好
+            {t("保存浏览器偏好")}
           </Button>
         </SettingsActions>
       </form>

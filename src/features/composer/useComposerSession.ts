@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import {
   selectComposerSession,
   sameComposerSession,
@@ -130,14 +131,18 @@ export function useComposerSession(
     if (name === "help" || name === "status") {
       setNotice(
         name === "help"
-          ? "/ 快捷命令 · $ 调用技能 · @ 引用文件 · Shift+Enter 换行"
-          : `模型：${state.modelId || "服务端默认"} · 目录：${state.thread?.cwd || "未知"} · ${state.capabilities.executing ? "执行中" : "空闲"}`,
+          ? t("/ 快捷命令 · $ 调用技能 · @ 引用文件 · Shift+Enter 换行")
+          : t("模型：{{value0}} · 目录：{{value1}} · {{value2}}", {
+              value0: state.modelId || t("服务端默认"),
+              value1: state.thread?.cwd || t("未知"),
+              value2: state.capabilities.executing ? t("执行中") : t("空闲"),
+            }),
       );
       runtime.drafts.setText(state.id, "");
       return;
     }
     if (state.capabilities.running) {
-      setError("请等待当前轮次结束后执行此命令。");
+      setError(t("请等待当前轮次结束后执行此命令。"));
       return;
     }
     commandLock.current = true;
@@ -147,7 +152,7 @@ export function useComposerSession(
         await runtime.sessions.create({ cwd: state.thread?.cwd });
       else if (name === "compact") {
         if (state.localDraft)
-          throw new Error("发送第一条消息后才能压缩上下文。");
+          throw new Error(t("发送第一条消息后才能压缩上下文。"));
         await runtime.connection.client.request("thread/compact/start", {
           threadId: state.id,
         });
@@ -171,7 +176,9 @@ export function useComposerSession(
     const name = draftCommand(state.draft);
     if (name) {
       if (commands.some((entry) => entry.name === name)) return command(name);
-      setError(`未知命令 /${name}，输入 / 查看支持的命令。`);
+      setError(
+        t("未知命令 /{{value0}}，输入 / 查看支持的命令。", { value0: name }),
+      );
       return;
     }
     if (
@@ -180,8 +187,8 @@ export function useComposerSession(
     ) {
       setError(
         state.modelId
-          ? "当前模型未声明支持图片，请切换支持图片的模型。"
-          : "设备默认模型的图片能力未知，请先明确选择支持图片的模型。",
+          ? t("当前模型未声明支持图片，请切换支持图片的模型。")
+          : t("设备默认模型的图片能力未知，请先明确选择支持图片的模型。"),
       );
       return;
     }
@@ -194,7 +201,9 @@ export function useComposerSession(
     try {
       if (mode === "steer" && state.capabilities.running)
         setNotice(
-          "立即引导沿用当前轮次的模型、审批与服务档位；下次发送设置不会应用到本次引导。",
+          t(
+            "立即引导沿用当前轮次的模型、审批与服务档位；下次发送设置不会应用到本次引导。",
+          ),
         );
       await runtime.sendDraft(
         state.id,
@@ -228,7 +237,7 @@ export function useComposerSession(
     setError("");
     try {
       await Promise.all([
-        runtime.queue.pause(state.id, "执行已停止，队列已暂停。"),
+        runtime.queue.pause(state.id, t("执行已停止，队列已暂停。")),
         runtime.sessions.interrupt(state.id),
       ]);
     } catch (error) {

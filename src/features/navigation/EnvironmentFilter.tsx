@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Tabs } from "radix-ui";
 import { SelectField } from "../../components/ui";
@@ -13,6 +14,9 @@ export function EnvironmentFilter({
   value: string;
   onValueChange: (value: string) => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const container = useRef<HTMLDivElement>(null);
   const measure = useRef<HTMLDivElement>(null);
   const moveFocus = useRef(false);
@@ -76,7 +80,9 @@ export function EnvironmentFilter({
           className="navigation-environments flex w-max gap-1 rounded-lg p-1"
         >
           {entries.length > 1 && (
-            <span className="navigation-environment flex-none">全部</span>
+            <span className="navigation-environment flex-none">
+              {t("全部")}
+            </span>
           )}
           {entries.map((environment) => (
             <span
@@ -91,7 +97,7 @@ export function EnvironmentFilter({
       </div>
       {compact ? (
         <SelectField
-          label="按工作环境筛选会话"
+          label={t("按工作环境筛选会话")}
           className="h-full w-full"
           value={value}
           onValueChange={onValueChange}
@@ -110,7 +116,14 @@ export function EnvironmentFilter({
           }}
           options={[
             ...(entries.length > 1
-              ? [{ value: "all", label: `全部环境 · ${entries.length}` }]
+              ? [
+                  {
+                    value: "all",
+                    label: t("全部环境 · {{value0}}", {
+                      value0: entries.length,
+                    }),
+                  },
+                ]
               : []),
             ...entries.map((environment) => ({
               value: environment.id,
@@ -126,12 +139,12 @@ export function EnvironmentFilter({
           className="h-full"
         >
           <Tabs.List
-            aria-label="按工作环境筛选会话"
+            aria-label={t("按工作环境筛选会话")}
             className="navigation-environments flex h-full min-w-0 gap-1 rounded-lg bg-hover p-1"
           >
             {entries.length > 1 && (
               <Tabs.Trigger value="all" className="navigation-environment">
-                全部
+                {t("全部")}
               </Tabs.Trigger>
             )}
             {entries.map((environment) => (

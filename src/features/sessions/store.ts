@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { responseSettings } from "./state";
 import { saveLocalSessions, restoreLocalSessions } from "./draft-storage";
 import type { RpcCall, RpcParams } from "../../lib/rpc";
@@ -43,7 +44,7 @@ import {
 export type { SessionsState, ThreadAccess } from "./state";
 export class TurnBusyError extends Error {
   constructor() {
-    super("当前轮次仍在执行，消息应加入队列。");
+    super(t("当前轮次仍在执行，消息应加入队列。"));
   }
 }
 export class SessionsStore extends Store<SessionsState> {
@@ -70,7 +71,7 @@ export class SessionsStore extends Store<SessionsState> {
         ...state,
         draftPersistenceWarning: saveLocalSessions(this.persistenceScope, state)
           ? undefined
-          : "浏览器存储不可用或草稿超过容量，新会话信息仅保留在当前页面。",
+          : t("浏览器存储不可用或草稿超过容量，新会话信息仅保留在当前页面。"),
       };
     super.update(reconcileNotifications(this.state, state), deferred);
   }
@@ -321,9 +322,9 @@ export class SessionsStore extends Store<SessionsState> {
   }
   activate(id: string): Promise<void> {
     if (this.state.archivedIds[id])
-      return Promise.reject(new Error("此会话已归档，请先恢复会话再继续。"));
+      return Promise.reject(new Error(t("此会话已归档，请先恢复会话再继续。")));
     if (this.state.localDrafts[id])
-      return Promise.reject(new Error("发送第一条消息时才会创建会话。"));
+      return Promise.reject(new Error(t("发送第一条消息时才会创建会话。")));
     if (this.canWrite(id)) return Promise.resolve();
     return this.locked(`activate:${id}`, () =>
       this.perform(async (epoch) => {
@@ -649,7 +650,7 @@ export class SessionsStore extends Store<SessionsState> {
     const epoch = this.connection.getSnapshot().epoch;
     const pending = Promise.resolve().then(() => {
       if (!this.current(epoch))
-        throw new Error("Connection changed before action started.");
+        throw new Error(t("Connection changed before action started."));
       return operation();
     });
     return this.rememberLock(key, pending);
@@ -877,10 +878,10 @@ export class SessionsStore extends Store<SessionsState> {
         });
         if (advance && repeated)
           throw new Error(
-            "会话分页游标重复，已停止加载。请刷新会话列表后重试。",
+            t("会话分页游标重复，已停止加载。请刷新会话列表后重试。"),
           );
         if (advance && invalidCursor)
-          throw new Error("会话分页游标无效，已停止加载。请重试。");
+          throw new Error(t("会话分页游标无效，已停止加载。请重试。"));
         if (
           !append ||
           !result.nextCursor ||
@@ -899,7 +900,7 @@ export class SessionsStore extends Store<SessionsState> {
           return;
         cursor = result.nextCursor;
       }
-      throw new Error("连续多页没有新增会话，请再次加载或刷新列表。");
+      throw new Error(t("连续多页没有新增会话，请再次加载或刷新列表。"));
     };
     const pending = background ? operation() : this.performGlobally(operation);
     return pending.catch((error) => {
@@ -1067,7 +1068,7 @@ export class SessionsStore extends Store<SessionsState> {
     const draft = this.state.localDrafts[id];
     if (!draft) return;
     if (this.locks.has(`send:${id}`))
-      throw new Error("正在发送，请等待发送结束后再删除草稿。");
+      throw new Error(t("正在发送，请等待发送结束后再删除草稿。"));
     this.deletedDrafts([id]);
     let next = removeDraft(this.state, id);
     const acceptedServerId =
@@ -1099,7 +1100,7 @@ export class SessionsStore extends Store<SessionsState> {
     options: Omit<Partial<TurnStartParams>, "threadId" | "input">,
   ): Promise<string> {
     const draft = this.state.localDrafts[id];
-    if (!draft) throw new Error("草稿已移除，请重新新建会话。");
+    if (!draft) throw new Error(t("草稿已移除，请重新新建会话。"));
     if (draft.serverId) return draft.serverId;
     const creating = Symbol(id);
     this.creatingDrafts.add(creating);
@@ -1119,7 +1120,7 @@ export class SessionsStore extends Store<SessionsState> {
       const { thread } = response;
       if (this.current(epoch))
         this.update(responseSettings(this.state, settingsBefore, response));
-      if (!this.current(epoch)) throw new Error("连接已改变，消息未发送。");
+      if (!this.current(epoch)) throw new Error(t("连接已改变，消息未发送。"));
       this.update({
         ...this.state,
         localDrafts: {
@@ -1164,11 +1165,11 @@ export class SessionsStore extends Store<SessionsState> {
 
   fork(id: string, lastTurnId?: string): Promise<Thread> {
     if (this.state.localDrafts[id])
-      return Promise.reject(new Error("草稿尚未发送，无法分叉会话。"));
+      return Promise.reject(new Error(t("草稿尚未发送，无法分叉会话。")));
     return this.locked(`fork:${id}`, () => {
       const source = this.state.threads[id];
       if (source?.status.type === "active" || this.activeTurn(id))
-        throw new Error("请等待当前会话执行结束后再回滚或分叉。");
+        throw new Error(t("请等待当前会话执行结束后再回滚或分叉。"));
       this.historySync.stop();
       const generation = ++this.selectionGeneration;
       return this.perform(async (epoch) => {
@@ -1199,28 +1200,32 @@ export class SessionsStore extends Store<SessionsState> {
     return this.locked(`revert:${id}`, () =>
       this.perform(async (epoch) => {
         const source = this.state.threads[id];
-        if (!source) throw new Error("会话尚未加载。");
+        if (!source) throw new Error(t("会话尚未加载。"));
         if (source.status.type === "active" || this.activeTurn(id))
-          throw new Error("请等待当前会话执行结束后再回滚。");
+          throw new Error(t("请等待当前会话执行结束后再回滚。"));
 
         if (source.historyMode !== "paginated")
-          throw new Error("此会话使用旧格式历史，不支持 thread/revert 回滚。");
+          throw new Error(
+            t("此会话使用旧格式历史，不支持 thread/revert 回滚。"),
+          );
         const index = source.turns.findIndex(
           (turn) => turn.id === beforeTurnId,
         );
-        if (index < 0) throw new Error("未找到要回滚的轮次，请刷新会话。");
+        if (index < 0) throw new Error(t("未找到要回滚的轮次，请刷新会话。"));
         await this.activate(id);
         if (!this.current(epoch))
-          throw new Error("连接已改变，回滚未执行。请重新连接后重试。");
+          throw new Error(t("连接已改变，回滚未执行。请重新连接后重试。"));
         if (!this.canWrite(id)) {
           if (this.state.threadAccess[id] === "occupied")
             throw new Error(
-              "无法回滚：此会话的写入权限由其他客户端持有。请先在原客户端释放或关闭会话，再重试回滚。",
+              t(
+                "无法回滚：此会话的写入权限由其他客户端持有。请先在原客户端释放或关闭会话，再重试回滚。",
+              ),
             );
-          throw new Error("未能取得会话写入权限，回滚未执行。请重试。");
+          throw new Error(t("未能取得会话写入权限，回滚未执行。请重试。"));
         }
         if (conversationExecuting(this.state.threads[id]))
-          throw new Error("请等待当前会话执行结束后再回滚。");
+          throw new Error(t("请等待当前会话执行结束后再回滚。"));
         const { thread } = await this.writeRequest<{
           thread: Thread;
         }>(id, epoch, "thread/revert", { threadId: id, beforeTurnId });
@@ -1284,7 +1289,9 @@ export class SessionsStore extends Store<SessionsState> {
           if (this.current(epoch))
             this.update({
               ...this.state,
-              historySyncError: `回滚已完成，历史暂未刷新：${errorMessage(error)}`,
+              historySyncError: t("回滚已完成，历史暂未刷新：{{value0}}", {
+                value0: errorMessage(error),
+              }),
             });
         }
       }),
@@ -1357,7 +1364,7 @@ export class SessionsStore extends Store<SessionsState> {
   }
   readForExport(id: string): Promise<Thread> {
     if (this.state.localDrafts[id])
-      return Promise.reject(new Error("草稿尚未发送，无法导出会话。"));
+      return Promise.reject(new Error(t("草稿尚未发送，无法导出会话。")));
     return this.locked(`export:${id}`, () =>
       this.perform((epoch) => this.readHistory(id, epoch)),
     );
@@ -1394,7 +1401,7 @@ export class SessionsStore extends Store<SessionsState> {
       !this.current(epoch) ||
       revision !== (this.historyRevisions.get(id) ?? 0)
     )
-      throw new Error("会话已变化，请重新加载历史。");
+      throw new Error(t("会话已变化，请重新加载历史。"));
     this.update({
       ...this.state,
       historyPages: {
@@ -1512,7 +1519,9 @@ export class SessionsStore extends Store<SessionsState> {
       if (this.current(epoch) && this.historyRevisions.get(id) === revision)
         this.update({
           ...this.state,
-          historySyncError: `会话已回滚，历史暂未刷新：${errorMessage(error)}`,
+          historySyncError: t("会话已回滚，历史暂未刷新：{{value0}}", {
+            value0: errorMessage(error),
+          }),
         });
     }
   }
@@ -1520,7 +1529,7 @@ export class SessionsStore extends Store<SessionsState> {
   async setPinned(): Promise<void> {
     // Neither the checked-in contract nor CLI 0.163.0 declares isPinned.
     // Do not send invented fields, even when a server silently accepts them.
-    throw new Error("当前服务端协议不支持持久置顶。");
+    throw new Error(t("当前服务端协议不支持持久置顶。"));
   }
   async loadSections(): Promise<void> {
     const epoch = this.connection.getSnapshot().epoch;
@@ -1540,7 +1549,7 @@ export class SessionsStore extends Store<SessionsState> {
         sections.push(...page.data);
         cursor = page.nextCursor;
         if (cursor && seen.has(cursor))
-          throw new Error("分区分页异常，请重试。");
+          throw new Error(t("分区分页异常，请重试。"));
         if (cursor) seen.add(cursor);
       } while (cursor);
       this.update({ ...this.state, sections, sectionsLoading: false });
@@ -1554,7 +1563,7 @@ export class SessionsStore extends Store<SessionsState> {
     }
   }
   async saveSection(name: string, sectionId?: string): Promise<void> {
-    if (!name.trim()) throw new Error("请填写分区名称。");
+    if (!name.trim()) throw new Error(t("请填写分区名称。"));
     return this.perform(async (epoch) => {
       try {
         const { section } = await this.connection.client.request<{
@@ -1701,7 +1710,7 @@ export class SessionsStore extends Store<SessionsState> {
       | "thread/attachment/remove"]
   ): Promise<T> {
     if (this.state.localDrafts[id])
-      return Promise.reject(new Error("请先发送第一条消息创建会话。"));
+      return Promise.reject(new Error(t("请先发送第一条消息创建会话。")));
     return this.locked(`write:${id}`, () =>
       this.perform(async (epoch) => {
         const target = await this.ensureWritableTarget(id, epoch, {});
@@ -1734,7 +1743,7 @@ export class SessionsStore extends Store<SessionsState> {
     return this.locked(`send:${id}`, () =>
       this.perform(async (epoch) => {
         if (this.state.localDrafts[id])
-          throw new Error("请先发送第一条消息创建会话。");
+          throw new Error(t("请先发送第一条消息创建会话。"));
         const targetId = await this.ensureWritableTarget(id, epoch, {});
         if (this.activeTurn(targetId)) throw new TurnBusyError();
         const result = await this.writeRequest<ReviewStartResponse>(
@@ -1770,13 +1779,15 @@ export class SessionsStore extends Store<SessionsState> {
     const reverting = method === "thread/revert";
     if (!this.current(epoch))
       throw new Error(
-        reverting ? "连接已改变，回滚未执行。" : "连接已改变，消息未发送。",
+        reverting
+          ? t("连接已改变，回滚未执行。")
+          : t("连接已改变，消息未发送。"),
       );
     if (!this.canWrite(id))
       throw new Error(
         reverting
-          ? "会话写入权限已失效，回滚未执行。请重新获取权限后重试。"
-          : "会话写入权限已失效，消息未发送，草稿已保留。",
+          ? t("会话写入权限已失效，回滚未执行。请重新获取权限后重试。")
+          : t("会话写入权限已失效，消息未发送，草稿已保留。"),
       );
     try {
       return await this.connection.client.request<T>(...call);
@@ -1793,8 +1804,10 @@ export class SessionsStore extends Store<SessionsState> {
         if (reverting)
           throw new Error(
             /active writer/i.test(errorMessage(error))
-              ? "无法回滚：此会话的写入权限由其他客户端持有。请先在原客户端释放或关闭会话，再重试回滚。"
-              : "会话写入权限已失效，回滚未执行。请重试。",
+              ? t(
+                  "无法回滚：此会话的写入权限由其他客户端持有。请先在原客户端释放或关闭会话，再重试回滚。",
+                )
+              : t("会话写入权限已失效，回滚未执行。请重试。"),
             { cause: error },
           );
       }
@@ -1815,7 +1828,7 @@ export class SessionsStore extends Store<SessionsState> {
       this.locks.get(`read:${targetId}`);
     if (resume) await resume;
     if (!this.current(epoch))
-      throw new Error("Connection changed while resuming thread.");
+      throw new Error(t("Connection changed while resuming thread."));
     if (!this.canWrite(targetId)) {
       try {
         await this.activate(targetId);
@@ -1849,10 +1862,10 @@ export class SessionsStore extends Store<SessionsState> {
         targetId = await this.ensureDraftThread(draftId, epoch, options);
       }
     }
-    if (!this.current(epoch)) throw new Error("连接已改变，消息未发送。");
+    if (!this.current(epoch)) throw new Error(t("连接已改变，消息未发送。"));
     if (!this.canWrite(targetId))
       throw new Error(
-        "此会话由其他客户端控制，只能查看；消息未发送，草稿已保留。",
+        t("此会话由其他客户端控制，只能查看；消息未发送，草稿已保留。"),
       );
 
     if (draftId) {
@@ -1894,7 +1907,7 @@ export class SessionsStore extends Store<SessionsState> {
         });
     }
     if (!this.current(epoch))
-      throw new Error("连接已改变，请先核实消息是否已发送。");
+      throw new Error(t("连接已改变，请先核实消息是否已发送。"));
     const thread = this.state.threads[id];
     const preview = input
       .filter((item) => item.type === "text")
@@ -1931,7 +1944,7 @@ export class SessionsStore extends Store<SessionsState> {
           const targetId = await this.ensureWritableTarget(id, epoch, options);
           await this.submitTurn(targetId, epoch, input, options, mode);
           if (!this.current(epoch))
-            throw new Error("连接已改变，请先核实消息是否已发送。");
+            throw new Error(t("连接已改变，请先核实消息是否已发送。"));
           if (draftId) this.promoteDraft(draftId, targetId, beforePromote);
           return targetId;
         } finally {
@@ -1971,14 +1984,14 @@ export class SessionsStore extends Store<SessionsState> {
           ...(clientUserMessageId ? { clientUserMessageId } : {}),
         });
         if (!this.current(epoch))
-          throw new Error("连接已改变，请先核实消息是否已发送。");
+          throw new Error(t("连接已改变，请先核实消息是否已发送。"));
       }),
     );
   }
   interrupt(id: string): Promise<void> {
     if (!this.canWrite(id))
       return Promise.reject(
-        new Error("此会话由其他客户端控制，无法停止执行。"),
+        new Error(t("此会话由其他客户端控制，无法停止执行。")),
       );
     const turn = this.activeTurn(id);
     return turn

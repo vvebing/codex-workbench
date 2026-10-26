@@ -9,6 +9,8 @@ export default defineConfig({
   reporter: "list",
   use: {
     baseURL: "http://127.0.0.1:5181",
+    // Existing fixtures assert the Chinese interface explicitly.
+    locale: "zh-CN",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

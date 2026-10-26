@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../lib/i18n";
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
 import { useState } from "react";
 import { useRuntime } from "../../lib/runtime-context";
@@ -8,6 +10,7 @@ import type { LocalMessage } from "../composer/local-messages";
 import { questionDraftKey, writeQuestionDraft } from "./question-drafts";
 
 export function ToolAnswerRecord({ answer }: { answer: SubmittedAnswer }) {
+  useTranslation();
   return (
     <article
       tabIndex={-1}
@@ -17,7 +20,7 @@ export function ToolAnswerRecord({ answer }: { answer: SubmittedAnswer }) {
       data-reading-id={`answer:${answer.epoch}:${answer.id}`}
       className="my-3 rounded-xl border border-border bg-elevated p-4 text-control"
     >
-      <p className="mb-2 font-semibold">你的回答</p>
+      <p className="mb-2 font-semibold">{t("你的回答")}</p>
       <dl className="space-y-2">
         {answer.answers.map((entry, index) => (
           <div key={index}>
@@ -29,8 +32,8 @@ export function ToolAnswerRecord({ answer }: { answer: SubmittedAnswer }) {
       {answer.status !== "resolved" && (
         <p role="status" className="mt-2 text-xs text-muted">
           {answer.status === "uncertain"
-            ? "送达状态待确认，请核实会话；不会自动重发。"
-            : "回答已提交，等待服务端确认。"}
+            ? t("送达状态待确认，请核实会话；不会自动重发。")
+            : t("回答已提交，等待服务端确认。")}
         </p>
       )}
     </article>
@@ -39,6 +42,7 @@ export function ToolAnswerRecord({ answer }: { answer: SubmittedAnswer }) {
 
 /** Recovery belongs beside the submitted answer, never in the outgoing form. */
 export function QuestionAnswerDelivery({ message }: { message: LocalMessage }) {
+  useTranslation();
   const runtime = useRuntime();
   useStore(runtime.queue);
   const connection = useStore(runtime.connection);
@@ -54,7 +58,9 @@ export function QuestionAnswerDelivery({ message }: { message: LocalMessage }) {
     try {
       await action();
     } catch (error) {
-      setError(error instanceof Error ? error.message : "操作失败，请重试。");
+      setError(
+        error instanceof Error ? error.message : t("操作失败，请重试。"),
+      );
     }
   };
   const edit = async () => {
@@ -74,24 +80,24 @@ export function QuestionAnswerDelivery({ message }: { message: LocalMessage }) {
     await runtime.queue.remove(message.threadId, task.id);
   };
   const label = task?.question?.expired
-    ? "问题已结束，本次回答未发送。内容已保留。"
+    ? t("问题已结束，本次回答未发送。内容已保留。")
     : task?.status === "uncertain"
-      ? "送达状态待确认，请先核实会话；不会自动重发。"
+      ? t("送达状态待确认，请先核实会话；不会自动重发。")
       : task?.status === "sending"
-        ? "正在发送回答…"
+        ? t("正在发送回答…")
         : !task
-          ? "服务器已接收，等待消息记录同步…"
+          ? t("服务器已接收，等待消息记录同步…")
           : queue.paused
-            ? `回答已保存。${queue.paused}`
+            ? t("回答已保存。{{value0}}", { value0: queue.paused })
             : connection.status !== "connected"
-              ? "回答已保存，等待连接恢复。"
+              ? t("回答已保存，等待连接恢复。")
               : runtime.requests.forThread(message.threadId).length
-                ? "回答已保存，等待当前请求处理完毕。"
+                ? t("回答已保存，等待当前请求处理完毕。")
                 : runtime.sessions.getSnapshot().threadAccess[
                       message.threadId
                     ] !== "editable"
-                  ? "回答已保存，等待取得写入权限。"
-                  : "回答已保存，等待发送。";
+                  ? t("回答已保存，等待取得写入权限。")
+                  : t("回答已保存，等待发送。");
   return (
     <div
       className="mt-2 text-xs text-muted"
@@ -103,7 +109,7 @@ export function QuestionAnswerDelivery({ message }: { message: LocalMessage }) {
         <div className="mt-1 flex flex-wrap gap-2">
           {task.status === "queued" && !task.question?.expired && !archived && (
             <Button size="sm" variant="quiet" onClick={() => void run(edit)}>
-              修改回答
+              {t("修改回答")}
             </Button>
           )}
           {task.status === "queued" &&
@@ -117,7 +123,7 @@ export function QuestionAnswerDelivery({ message }: { message: LocalMessage }) {
                   void run(() => runtime.queue.resume(message.threadId))
                 }
               >
-                继续发送
+                {t("继续发送")}
               </Button>
             )}
           {task.status === "uncertain" && !archived && (
@@ -131,7 +137,7 @@ export function QuestionAnswerDelivery({ message }: { message: LocalMessage }) {
                 })
               }
             >
-              确认未送达，重试
+              {t("确认未送达，重试")}
             </Button>
           )}
           <Button
@@ -141,7 +147,7 @@ export function QuestionAnswerDelivery({ message }: { message: LocalMessage }) {
               void run(() => navigator.clipboard.writeText(task.draft.text))
             }
           >
-            复制回答
+            {t("复制回答")}
           </Button>
           <Button
             size="sm"
@@ -150,7 +156,9 @@ export function QuestionAnswerDelivery({ message }: { message: LocalMessage }) {
               void run(() => runtime.queue.remove(message.threadId, task.id))
             }
           >
-            {task.status === "uncertain" ? "移除待确认记录" : "取消待发送"}
+            {task.status === "uncertain"
+              ? t("移除待确认记录")
+              : t("取消待发送")}
           </Button>
         </div>
       )}

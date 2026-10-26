@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { useMemo } from "react";
 import { useStore } from "../../components/hooks";
 import { useRuntime } from "../../lib/runtime-context";
@@ -104,7 +105,7 @@ export class WorkspaceGitStore {
         gitStatusCommand(this.cwd),
       );
       if (!this.current() || generation !== this.generation) return;
-      if (result.exitCode !== 0) throw new Error("Git unavailable");
+      if (result.exitCode !== 0) throw new Error(t("Git unavailable"));
       const root = this.repoRoot!;
       const indexSignatures: Record<string, string> = {};
       for (const line of result.stdout.split("\0")) {
@@ -243,7 +244,7 @@ class WorkspaceGitCache {
       return cached;
     this.failedResolutions.delete(cwd);
     const result = (async () => {
-      if (!this.current()) throw new Error("Connection changed");
+      if (!this.current()) throw new Error(t("Connection changed"));
       const response =
         await this.connection.client.request<CommandExecResponse>(
           "command/exec",
@@ -261,7 +262,7 @@ class WorkspaceGitCache {
             timeoutMs: 5000,
           },
         );
-      if (!this.current()) throw new Error("Connection changed");
+      if (!this.current()) throw new Error(t("Connection changed"));
       const output = response.stdout.replace(/\r?\n$/, "");
       const separator = output.lastIndexOf("\n");
       const root =
@@ -277,7 +278,7 @@ class WorkspaceGitCache {
         !/^(?:\/|[a-z]:[\\/])/i.test(root) ||
         root.includes("\0")
       )
-        throw new Error("Git root unavailable");
+        throw new Error(t("Git root unavailable"));
       this.prefixes.set(cwd, prefix);
       this.prefixes.set(root, "");
       if (!this.resolutions.has(root))

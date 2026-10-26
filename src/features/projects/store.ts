@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { Store, errorMessage } from "../../lib/store";
 import { RpcError } from "../../lib/rpc";
 import type { ConnectionStore } from "../connection/store";
@@ -91,7 +92,7 @@ export class ProjectsStore extends Store<ProjectState> {
               run.output.length + text.length > limit,
           });
         } catch {
-          this.patch(processId, { error: "输出解码失败" });
+          this.patch(processId, { error: t("输出解码失败") });
         }
       }),
     ];
@@ -116,7 +117,7 @@ export class ProjectsStore extends Store<ProjectState> {
             ? {
                 ...run,
                 status: "unknown",
-                error: "连接已改变；无法确认最终退出状态",
+                error: t("连接已改变；无法确认最终退出状态"),
               }
             : run,
         ),
@@ -133,7 +134,7 @@ export class ProjectsStore extends Store<ProjectState> {
     try {
       const raw = this.storage?.getItem(key);
       if (raw) {
-        if (raw.length > 500_000) throw new Error("项目配置过大");
+        if (raw.length > 500_000) throw new Error(t("项目配置过大"));
         const data: unknown = JSON.parse(raw);
         if (
           !data ||
@@ -141,7 +142,7 @@ export class ProjectsStore extends Store<ProjectState> {
           !("projects" in data) ||
           !Array.isArray(data.projects)
         )
-          throw new Error("项目配置格式无效");
+          throw new Error(t("项目配置格式无效"));
         projects = data.projects
           .filter(
             (item): item is Project =>
@@ -172,7 +173,7 @@ export class ProjectsStore extends Store<ProjectState> {
               command: run.command,
               status: "unknown" as const,
               output: "",
-              error: "页面重建后无法恢复进程；最终退出状态未知",
+              error: t("页面重建后无法恢复进程；最终退出状态未知"),
             }));
         }
         selected =
@@ -181,7 +182,9 @@ export class ProjectsStore extends Store<ProjectState> {
             : "";
       }
     } catch (error) {
-      warning = `项目配置无法恢复：${errorMessage(error)}`;
+      warning = t("项目配置无法恢复：{{value0}}", {
+        value0: errorMessage(error),
+      });
     }
     this.update({ projects, selected, warning, runs });
   }
@@ -198,16 +201,20 @@ export class ProjectsStore extends Store<ProjectState> {
       });
       if (serialized.length > 500_000)
         throw new Error(
-          "项目配置超过 500,000 字符容量；当前修改仅保留在本页，刷新将恢复上次保存版本。请缩短说明或命令后重试",
+          t(
+            "项目配置超过 500,000 字符容量；当前修改仅保留在本页，刷新将恢复上次保存版本。请缩短说明或命令后重试",
+          ),
         );
       if (!this.storage)
-        throw new Error("本地存储不可用；当前修改仅保留在本页");
+        throw new Error(t("本地存储不可用；当前修改仅保留在本页"));
       this.storage.setItem(this.key, serialized);
       if (this.state.warning) this.update({ ...this.state, warning: null });
     } catch (error) {
       this.update({
         ...this.state,
-        warning: `项目配置未保存：${errorMessage(error)}`,
+        warning: t("项目配置未保存：{{value0}}", {
+          value0: errorMessage(error),
+        }),
       });
     }
   }
@@ -222,7 +229,7 @@ export class ProjectsStore extends Store<ProjectState> {
     if (!this.getProject(cwd) && this.state.projects.length >= 100) {
       this.update({
         ...this.state,
-        warning: "最多保存 100 个项目；请删除不再使用的本地配置后新增。",
+        warning: t("最多保存 100 个项目；请删除不再使用的本地配置后新增。"),
       });
       return;
     }
@@ -239,7 +246,7 @@ export class ProjectsStore extends Store<ProjectState> {
     if (!exists && this.state.projects.length >= 100) {
       this.update({
         ...this.state,
-        warning: "最多保存 100 个项目；请删除不再使用的本地配置后新增。",
+        warning: t("最多保存 100 个项目；请删除不再使用的本地配置后新增。"),
       });
       return;
     }
@@ -264,8 +271,9 @@ export class ProjectsStore extends Store<ProjectState> {
     ) {
       this.update({
         ...this.state,
-        warning:
+        warning: t(
           "该项目存在运行中或状态未知的命令，请先停止或在外部核实后解除运行锁。",
+        ),
       });
       return;
     }
@@ -367,8 +375,11 @@ export class ProjectsStore extends Store<ProjectState> {
       this.patch(id, {
         status: unsupported ? "unsupported" : "unknown",
         error: unsupported
-          ? `当前服务不支持此稳定命令接口/流式参数：${errorMessage(error)}。请在终端手动执行。`
-          : `无法确认退出状态：${errorMessage(error)}`,
+          ? t(
+              "当前服务不支持此稳定命令接口/流式参数：{{value0}}。请在终端手动执行。",
+              { value0: errorMessage(error) },
+            )
+          : t("无法确认退出状态：{{value0}}", { value0: errorMessage(error) }),
       });
     } finally {
       this.decoders.delete(`${id}:stdout`);
@@ -391,7 +402,7 @@ export class ProjectsStore extends Store<ProjectState> {
         return;
       this.patch(id, {
         status: "unknown",
-        error: `停止未确认：${errorMessage(error)}`,
+        error: t("停止未确认：{{value0}}", { value0: errorMessage(error) }),
       });
     }
   }
@@ -412,7 +423,9 @@ export class ProjectsStore extends Store<ProjectState> {
       });
     } catch (error) {
       if (epoch !== this.epoch || key !== this.key) return;
-      this.patch(id, { error: `输入未确认：${errorMessage(error)}` });
+      this.patch(id, {
+        error: t("输入未确认：{{value0}}", { value0: errorMessage(error) }),
+      });
     }
   }
   dispose() {

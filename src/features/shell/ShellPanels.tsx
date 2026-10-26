@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import {
   Panel,
@@ -24,6 +25,9 @@ export function ShellPanels({
   details?: ReactNode;
   children: ReactNode;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const preferred = useSidebarWidths();
   const group = useRef<ImperativePanelGroupHandle>(null);
   const draggingSide = useRef<Side | null>(null);
@@ -86,11 +90,11 @@ export function ShellPanels({
       >
         {navigation}
       </Panel>
-      {handle("navigation", "调整导航宽度", hasNavigation)}
+      {handle("navigation", t("调整导航宽度"), hasNavigation)}
       <Panel id="conversation" order={2} minSize={percent(480)}>
         {children}
       </Panel>
-      {handle("details", "调整详情宽度", hasDetails)}
+      {handle("details", t("调整详情宽度"), hasDetails)}
       <Panel
         id="details"
         order={3}

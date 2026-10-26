@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import {
   ErrorNotice,
   Button,
@@ -43,32 +44,60 @@ import { approvalLabel, approvalOptions } from "./approval-policy";
 const policies = [
   {
     value: "inherit",
-    name: "沿用当前审批设置",
-    description: "不发送新的覆盖，也不会撤销此前已发送的审批设置。",
+    get name() {
+      return t("沿用当前审批设置");
+    },
+    get description() {
+      return t("不发送新的覆盖，也不会撤销此前已发送的审批设置。");
+    },
   },
   {
     value: "on-request",
-    name: "按需审批",
-    description: "由 Codex 决定何时请求批准；沙箱限制仍由服务端执行。",
+    get name() {
+      return t("按需审批");
+    },
+    get description() {
+      return t("由 Codex 决定何时请求批准；沙箱限制仍由服务端执行。");
+    },
   },
   {
     value: "untrusted",
-    name: "谨慎审批",
-    description: "不受信任的命令需要批准，受信任命令由服务端规则决定。",
+    get name() {
+      return t("谨慎审批");
+    },
+    get description() {
+      return t("不受信任的命令需要批准，受信任命令由服务端规则决定。");
+    },
   },
   {
     value: "never",
-    name: "不请求审批",
-    description: "不弹出执行审批；受限制操作可能失败，不代表绕过沙箱。",
+    get name() {
+      return t("不请求审批");
+    },
+    get description() {
+      return t("不弹出执行审批；受限制操作可能失败，不代表绕过沙箱。");
+    },
   },
 ] as const;
 const efforts: Record<string, string> = {
-  none: "无",
-  minimal: "最少",
-  low: "低",
-  medium: "中",
-  high: "高",
-  xhigh: "极高",
+  get none() {
+    return t("无");
+  },
+  get minimal() {
+    return t("最少");
+  },
+  get low() {
+    return t("低");
+  },
+  get medium() {
+    return t("中");
+  },
+  get high() {
+    return t("高");
+  },
+  get xhigh() {
+    return t("极高");
+  },
 };
 export const Composer = memo(function Composer({
   threadId,
@@ -77,6 +106,9 @@ export const Composer = memo(function Composer({
   threadId: string;
   onInspectAgent?: (id: string) => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const [chosenModel, setChosenModel] = useState("");
   const [chosenEffort, setChosenEffort] = useState<ReasoningEffort>();
   const [policyChoices, setPolicyChoices] = useState<
@@ -205,7 +237,7 @@ export const Composer = memo(function Composer({
     )
       return;
     if (attachmentLock.current) {
-      setError("正在准备附件，请稍后再粘贴或拖放。");
+      setError(t("正在准备附件，请稍后再粘贴或拖放。"));
       return;
     }
     attachmentLock.current = true;
@@ -225,7 +257,7 @@ export const Composer = memo(function Composer({
             )
           ) {
             if (!thread?.cwd)
-              throw new Error("当前会话没有项目目录，无法保存文件附件。");
+              throw new Error(t("当前会话没有项目目录，无法保存文件附件。"));
             const current = () =>
               runtime.connection.getSnapshot().epoch === epoch &&
               runtime.sessions.getSnapshot().threadAccess[
@@ -247,7 +279,9 @@ export const Composer = memo(function Composer({
             continue;
           }
           if (file.size > 5 * 1024 * 1024)
-            throw Error(`${file.name} 超过单张 5 MB 限制。`);
+            throw Error(
+              t("{{value0}} 超过单张 5 MB 限制。", { value0: file.name }),
+            );
           const current = runtime.drafts.get(threadId);
           if (
             current.images.length >= 4 ||
@@ -257,14 +291,20 @@ export const Composer = memo(function Composer({
               10 * 1024 * 1024
           )
             throw Error(
-              `${file.name}：最多 4 张图片，编码后总大小不超过 10 MB。`,
+              t("{{value0}}：最多 4 张图片，编码后总大小不超过 10 MB。", {
+                value0: file.name,
+              }),
             );
           const url = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(String(reader.result));
             reader.onerror = () =>
-              reject(Error(`无法读取 ${file.name}，请重试。`));
-            reader.onabort = () => reject(Error("图片读取已取消。"));
+              reject(
+                Error(
+                  t("无法读取 {{value0}}，请重试。", { value0: file.name }),
+                ),
+              );
+            reader.onabort = () => reject(Error(t("图片读取已取消。")));
             reader.readAsDataURL(file);
           });
           if (
@@ -282,11 +322,13 @@ export const Composer = memo(function Composer({
               10 * 1024 * 1024
           )
             throw Error(
-              `${file.name}：最多 4 张图片，编码后总大小不超过 10 MB。`,
+              t("{{value0}}：最多 4 张图片，编码后总大小不超过 10 MB。", {
+                value0: file.name,
+              }),
             );
           runtime.drafts.addImage(threadId, {
             id: crypto.randomUUID(),
-            name: file.name || "粘贴的图片",
+            name: file.name || t("粘贴的图片"),
             url,
           });
         } catch (error) {
@@ -317,51 +359,59 @@ export const Composer = memo(function Composer({
               <LoaderCircle
                 size={12}
                 className="animate-spin"
-                aria-label="运行中"
+                aria-label={t("运行中")}
               />
             )}
             <span>
-              {executing ? "执行中 · " : ""}
+              {executing ? t("执行中 · ") : ""}
               {sessions.historySyncError
-                ? "只读查看 · 同步暂时失败，将自动重试"
-                : "其他客户端正在使用此会话 · 只读查看"}
+                ? t("只读查看 · 同步暂时失败，将自动重试")
+                : t("其他客户端正在使用此会话 · 只读查看")}
             </span>
           </>
         ) : access === "activating" ? (
           <>
             <LoaderCircle size={12} className="animate-spin" />
-            <span>正在确认会话是否可写…</span>
+            <span>{t("正在确认会话是否可写…")}</span>
           </>
         ) : access === "viewing" ? (
           <span>
             {localDraft
-              ? "发送第一条消息后创建会话"
+              ? t("发送第一条消息后创建会话")
               : executing
-                ? "会话正在执行 · 发送时确认是否可继续"
-                : "查看历史 · 发送消息后继续会话"}
+                ? t("会话正在执行 · 发送时确认是否可继续")
+                : t("查看历史 · 发送消息后继续会话")}
           </span>
         ) : inputRequest ? (
-          <span>请先在问题卡片中回答 · 下方普通消息草稿会保留</span>
+          <span>{t("请先在问题卡片中回答 · 下方普通消息草稿会保留")}</span>
         ) : waiting ? (
           <>
             <span className="inline-block size-1.5 shrink-0 rounded-full bg-warning" />
-            等待你的确认
+            {t("等待你的确认")}
           </>
         ) : executing ? (
           <>
             <span className="inline-block size-1.5 shrink-0 animate-pulse rounded-full bg-success ring-[3px] ring-success/10" />
-            Codex 正在执行 ·{" "}
+            {t("Codex 正在执行 ·")}{" "}
             {defaultSteering
-              ? "Enter 引导 · ⌘/Ctrl+Shift+Enter 排队"
-              : "Enter 排队 · ⌘/Ctrl+Enter 立即引导"}
+              ? t("Enter 引导 · ⌘/Ctrl+Shift+Enter 排队")
+              : t("Enter 排队 · ⌘/Ctrl+Enter 立即引导")}
           </>
         ) : (
           <span>
             {draft.restored
-              ? `${draft.restored.source === "draft" ? "草稿已恢复，可修改后发送" : draft.restored.preserved ? "原消息已恢复，未发送草稿已保留" : "原消息已恢复，可修改后发送"}${sessions.historySyncError ? " · 历史暂未刷新" : ""}`
+              ? t("{{value0}}{{value1}}", {
+                  value0:
+                    draft.restored.source === "draft"
+                      ? t("草稿已恢复，可修改后发送")
+                      : draft.restored.preserved
+                        ? t("原消息已恢复，未发送草稿已保留")
+                        : t("原消息已恢复，可修改后发送"),
+                  value1: sessions.historySyncError ? t(" · 历史暂未刷新") : "",
+                })
               : connected
-                ? "准备就绪"
-                : "连接后即可发送消息"}
+                ? t("准备就绪")
+                : t("连接后即可发送消息")}
           </span>
         )}
       </div>
@@ -372,7 +422,7 @@ export const Composer = memo(function Composer({
       )}
       {draft.restored?.unavailableAttachments && (
         <div className="mb-2 px-[5px] text-xs text-muted" role="status">
-          草稿已恢复 · 图片附件需重新添加
+          {t("草稿已恢复 · 图片附件需重新添加")}
         </div>
       )}
       {(inputRequest || asyncQuestion) && (
@@ -382,8 +432,17 @@ export const Composer = memo(function Composer({
         >
           <span>
             {inputRequest
-              ? "回答请在问题卡片中提交；此输入框保留普通消息草稿。"
-              : `有待回答问题。下方输入框发送普通消息，${defaultSteering ? "立即引导当前任务" : queueing ? "加入任务队列" : "发送到会话"}；回答请使用问题卡片。`}
+              ? t("回答请在问题卡片中提交；此输入框保留普通消息草稿。")
+              : t(
+                  "有待回答问题。下方输入框发送普通消息，{{value0}}；回答请使用问题卡片。",
+                  {
+                    value0: defaultSteering
+                      ? t("立即引导当前任务")
+                      : queueing
+                        ? t("加入任务队列")
+                        : t("发送到会话"),
+                  },
+                )}
           </span>
           <Button
             type="button"
@@ -391,7 +450,7 @@ export const Composer = memo(function Composer({
             size="sm"
             onClick={goToQuestion}
           >
-            前往问题卡片回答
+            {t("前往问题卡片回答")}
           </Button>
         </div>
       )}
@@ -464,12 +523,13 @@ export const Composer = memo(function Composer({
             className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-elevated/90 text-sm text-accent"
             role="status"
           >
-            松开以添加文件或引用
+            {t("松开以添加文件或引用")}
           </div>
         )}
         {reading && (
           <p className="px-4 pt-3 text-xs text-muted" role="status">
-            正在准备：{pendingAttachment}
+            {t("正在准备：")}
+            {pendingAttachment}
           </p>
         )}
         {token && !readOnly && (
@@ -484,7 +544,7 @@ export const Composer = memo(function Composer({
           />
         )}
         <label className="sr-only" htmlFor="message-input">
-          消息输入框
+          {t("消息输入框")}
         </label>
         {draft.images.length > 0 && (
           <ScrollArea orientation="horizontal">
@@ -497,7 +557,9 @@ export const Composer = memo(function Composer({
                 >
                   <button
                     type="button"
-                    aria-label={`预览图片 ${image.name}`}
+                    aria-label={t("预览图片 {{value0}}", {
+                      value0: image.name,
+                    })}
                     onClick={(event) => {
                       previewTrigger.current = event.currentTarget;
                       setPreviewId(image.id);
@@ -512,7 +574,7 @@ export const Composer = memo(function Composer({
                   </button>
                   <span className="max-w-[90px] truncate">{image.name}</span>
                   <IconButton
-                    label={`移除附件 ${image.name}`}
+                    label={t("移除附件 {{value0}}", { value0: image.name })}
                     disabled={readOnly}
                     onClick={() =>
                       runtime.drafts.removeImage(threadId, image.id)
@@ -539,20 +601,22 @@ export const Composer = memo(function Composer({
           }
           placeholder={
             readOnly
-              ? "其他客户端正在使用此会话，可在这里查看输出"
+              ? t("其他客户端正在使用此会话，可在这里查看输出")
               : inputRequest
-                ? "普通消息草稿 · 请先前往问题卡片回答…"
+                ? t("普通消息草稿 · 请先前往问题卡片回答…")
                 : asyncQuestion
                   ? defaultSteering
-                    ? "普通消息 · Enter 立即引导；回答请前往问题卡片…"
+                    ? t("普通消息 · Enter 立即引导；回答请前往问题卡片…")
                     : queueing
-                      ? "普通消息 · Enter 排队；回答请前往问题卡片…"
-                      : "普通消息 · Enter 发送；回答请前往问题卡片…"
+                      ? t("普通消息 · Enter 排队；回答请前往问题卡片…")
+                      : t("普通消息 · Enter 发送；回答请前往问题卡片…")
                   : queueing
                     ? defaultSteering
-                      ? "补充当前任务的要求，Enter 立即引导；Shift+Enter 换行…"
-                      : "输入下一项任务，Enter 排队；Shift+Enter 换行…"
-                    : "描述任务，/ 命令 · $ 技能 · @ 文件；可粘贴图片…"
+                      ? t(
+                          "补充当前任务的要求，Enter 立即引导；Shift+Enter 换行…",
+                        )
+                      : t("输入下一项任务，Enter 排队；Shift+Enter 换行…")
+                    : t("描述任务，/ 命令 · $ 技能 · @ 文件；可粘贴图片…")
           }
           onChange={(document, text, skills) => {
             runtime.drafts.setDocument(threadId, document, text, skills);
@@ -635,7 +699,9 @@ export const Composer = memo(function Composer({
           <IconButton
             size="composer"
             label={
-              reading ? "读取附件中" : "添加附件（可粘贴或拖放，每个最多 5 MB）"
+              reading
+                ? t("读取附件中")
+                : t("添加附件（可粘贴或拖放，每个最多 5 MB）")
             }
             disabled={readOnly || reading}
             onClick={() => input.current?.click()}
@@ -647,7 +713,7 @@ export const Composer = memo(function Composer({
             )}
           </IconButton>
           <Menu
-            label="审批策略"
+            label={t("审批策略")}
             open={policyOpen}
             onOpenChange={setPolicyOpen}
             trigger={
@@ -662,23 +728,31 @@ export const Composer = memo(function Composer({
                   {policy &&
                   JSON.stringify(policy) !==
                     JSON.stringify(threadSettings?.approvalPolicy)
-                    ? `下次：${approvalLabel(policy)}`
-                    : `审批：${approvalLabel(threadSettings?.approvalPolicy)}`}
+                    ? t("下次：{{value0}}", { value0: approvalLabel(policy) })
+                    : t("审批：{{value0}}", {
+                        value0: approvalLabel(threadSettings?.approvalPolicy),
+                      })}
                 </span>
                 <ChevronDown size={12} />
               </button>
             }
           >
-            <MenuLabel>审批策略 · 下次发送设置</MenuLabel>
+            <MenuLabel>{t("审批策略 · 下次发送设置")}</MenuLabel>
             <div className="max-w-80 px-3 py-2 text-fine text-muted">
-              当前会话（服务端）：
+              {t("当前会话（服务端）：")}
               {approvalLabel(threadSettings?.approvalPolicy)}
             </div>
             <div className="max-w-80 px-3 py-2 text-fine text-muted">
               {policy
-                ? "来源：本地持续显式选择（即使已与服务端值一致仍保留）。发送新轮次时覆盖当前及后续轮次；排队任务保留入队时的选择。"
-                : "不发送审批覆盖；沿用服务端会话策略。沿用不会撤销此前已发送的覆盖。"}
-              立即引导沿用该轮策略；问题卡片回答沿用会话设置，不使用此处未发送的选择。此菜单不控制沙箱。
+                ? t(
+                    "来源：本地持续显式选择（即使已与服务端值一致仍保留）。发送新轮次时覆盖当前及后续轮次；排队任务保留入队时的选择。",
+                  )
+                : t(
+                    "不发送审批覆盖；沿用服务端会话策略。沿用不会撤销此前已发送的覆盖。",
+                  )}
+              {t(
+                "立即引导沿用该轮策略；问题卡片回答沿用会话设置，不使用此处未发送的选择。此菜单不控制沙箱。",
+              )}
             </div>
             <DropdownMenu.RadioGroup
               value={typeof policy === "string" ? policy : "inherit"}
@@ -707,7 +781,7 @@ export const Composer = memo(function Composer({
             </DropdownMenu.RadioGroup>
           </Menu>
           <Menu
-            label="模型与推理强度"
+            label={t("模型与推理强度")}
             open={modelOpen}
             onOpenChange={setModelOpen}
             trigger={
@@ -721,7 +795,7 @@ export const Composer = memo(function Composer({
                 <span className="max-w-[160px] truncate @max-[650px]:max-w-[90px] @max-[550px]/conversation:max-w-[85px]">
                   {model?.displayName ||
                     modelId ||
-                    (localDraft ? "设备默认" : "服务端默认")}
+                    (localDraft ? t("设备默认") : t("服务端默认"))}
                 </span>
                 {effort && (
                   <small className="text-fine text-subtle">
@@ -732,19 +806,20 @@ export const Composer = memo(function Composer({
               </button>
             }
           >
-            <MenuLabel>模型</MenuLabel>
+            <MenuLabel>{t("模型")}</MenuLabel>
             {!connected ? (
               <p className="p-[9px] text-meta text-muted">
-                连接工作环境后，可选择服务端提供的模型。
+                {t("连接工作环境后，可选择服务端提供的模型。")}
               </p>
             ) : connection.modelsLoading ? (
               <p className="p-[9px] text-meta text-muted" role="status">
-                正在读取可用模型…
+                {t("正在读取可用模型…")}
               </p>
             ) : connection.modelsError ? (
               <>
                 <ErrorNotice className="m-1">
-                  读取模型失败：{connection.modelsError}
+                  {t("读取模型失败：")}
+                  {connection.modelsError}
                 </ErrorNotice>
                 <DropdownMenu.Item
                   onSelect={(event) => {
@@ -752,12 +827,14 @@ export const Composer = memo(function Composer({
                     void runtime.connection.loadModels();
                   }}
                 >
-                  重试读取模型
+                  {t("重试读取模型")}
                 </DropdownMenu.Item>
               </>
             ) : !models.length ? (
               <p className="p-[9px] text-meta text-muted">
-                服务端未返回可选模型，继续使用当前会话模型或服务端默认模型。
+                {t(
+                  "服务端未返回可选模型，继续使用当前会话模型或服务端默认模型。",
+                )}
               </p>
             ) : null}
             <DropdownMenu.RadioGroup
@@ -775,8 +852,8 @@ export const Composer = memo(function Composer({
                     </DropdownMenu.ItemIndicator>
                   </span>
                   <span>
-                    <strong>设备默认</strong>
-                    <small>发送时由设备配置决定</small>
+                    <strong>{t("设备默认")}</strong>
+                    <small>{t("发送时由设备配置决定")}</small>
                   </span>
                 </DropdownMenu.RadioItem>
               )}
@@ -797,7 +874,9 @@ export const Composer = memo(function Composer({
             {model && (
               <>
                 <MenuSeparator />
-                <MenuLabel data-menu-section="reasoning">推理强度</MenuLabel>
+                <MenuLabel data-menu-section="reasoning">
+                  {t("推理强度")}
+                </MenuLabel>
                 <DropdownMenu.RadioGroup
                   value={effort || ""}
                   onValueChange={(value) =>
@@ -824,7 +903,7 @@ export const Composer = memo(function Composer({
             )}
           </Menu>
           <Menu
-            label="服务档位"
+            label={t("服务档位")}
             trigger={
               <button
                 type="button"
@@ -834,26 +913,35 @@ export const Composer = memo(function Composer({
               >
                 <span className="truncate">
                   {tier && tier !== threadSettings?.serviceTier
-                    ? `下次：${serviceTierLabel(model, tier)}`
-                    : `档位：${serviceTierLabel(model, threadSettings?.serviceTier)}`}
+                    ? t("下次：{{value0}}", {
+                        value0: serviceTierLabel(model, tier),
+                      })
+                    : t("档位：{{value0}}", {
+                        value0: serviceTierLabel(
+                          model,
+                          threadSettings?.serviceTier,
+                        ),
+                      })}
                 </span>
                 <ChevronDown size={12} />
               </button>
             }
           >
-            <MenuLabel>服务档位 · 下次发送设置</MenuLabel>
+            <MenuLabel>{t("服务档位 · 下次发送设置")}</MenuLabel>
             <div className="max-w-80 px-3 py-2 text-fine text-muted">
-              当前会话（服务端）：
+              {t("当前会话（服务端）：")}
               {serviceTierLabel(model, threadSettings?.serviceTier)}
-              。模型目录默认：
-              {serviceTierLabel(model, model?.defaultServiceTier)}。
-              新轮次发送后应用到会话及后续轮次；排队任务保留入队时设置。立即引导不改变当前轮次档位。
-              沿用不会撤销此前已发送的覆盖。问题卡片回答沿用会话设置，不使用此处未发送的选择。
+              {t("。模型目录默认：")}
+              {serviceTierLabel(model, model?.defaultServiceTier)}
+              {t(
+                "。 新轮次发送后应用到会话及后续轮次；排队任务保留入队时设置。立即引导不改变当前轮次档位。 沿用不会撤销此前已发送的覆盖。问题卡片回答沿用会话设置，不使用此处未发送的选择。",
+              )}
             </div>
             {tier && (
               <div className="max-w-80 px-3 py-2 text-fine text-muted">
-                本地持续显式选择：{serviceTierLabel(model, tier)}
-                。即使服务端已确认同值，后续新轮次仍会发送此设置。
+                {t("本地持续显式选择：")}
+                {serviceTierLabel(model, tier)}
+                {t("。即使服务端已确认同值，后续新轮次仍会发送此设置。")}
               </div>
             )}
             <DropdownMenu.RadioGroup
@@ -866,7 +954,7 @@ export const Composer = memo(function Composer({
               }
             >
               <DropdownMenu.RadioItem value="inherit">
-                沿用当前服务档位
+                {t("沿用当前服务档位")}
               </DropdownMenu.RadioItem>
               {model?.serviceTiers?.map((item) => (
                 <DropdownMenu.RadioItem key={item.id} value={item.id}>
@@ -880,13 +968,13 @@ export const Composer = memo(function Composer({
             {!model?.serviceTiers?.length && (
               <div className="max-w-80 px-3 py-2 text-fine text-muted">
                 {model
-                  ? "当前模型未声明可选服务档位。"
-                  : "尚未获取模型服务档位。"}
+                  ? t("当前模型未声明可选服务档位。")
+                  : t("尚未获取模型服务档位。")}
               </div>
             )}
             {tierChoices[policyKey] && !tier && (
               <div className="max-w-80 px-3 py-2 text-fine text-warning">
-                之前选择的档位不适用于当前模型，本次将沿用会话设置。
+                {t("之前选择的档位不适用于当前模型，本次将沿用会话设置。")}
               </div>
             )}
           </Menu>
@@ -902,9 +990,9 @@ export const Composer = memo(function Composer({
               size="sm"
               disabled={!capabilities.canStop}
               onClick={() => void stop()}
-              title="停止当前执行并暂停任务队列；不会提交问题回答"
+              title={t("停止当前执行并暂停任务队列；不会提交问题回答")}
             >
-              {stopping ? "正在停止" : "停止当前执行"}
+              {stopping ? t("正在停止") : t("停止当前执行")}
             </Button>
           )}
           {running && hasContent && !inputRequest && (
@@ -916,12 +1004,12 @@ export const Composer = memo(function Composer({
               disabled={!capabilities.canSend || access !== "editable"}
               title={
                 defaultSteering
-                  ? "加入队列，当前轮次结束后发送（⌘/Ctrl+Shift+Enter）"
-                  : "立即引导当前轮次（⌘/Ctrl+Enter）"
+                  ? t("加入队列，当前轮次结束后发送（⌘/Ctrl+Shift+Enter）")
+                  : t("立即引导当前轮次（⌘/Ctrl+Enter）")
               }
               onClick={() => void send(defaultSteering ? "queue" : "steer")}
             >
-              {defaultSteering ? "排队发送" : "立即引导"}
+              {defaultSteering ? t("排队发送") : t("立即引导")}
             </Button>
           )}
           <button
@@ -937,41 +1025,41 @@ export const Composer = memo(function Composer({
             }
             aria-label={
               inputRequest
-                ? "前往问题卡片回答"
+                ? t("前往问题卡片回答")
                 : showStop
                   ? stopping
-                    ? "正在停止"
-                    : "停止执行"
+                    ? t("正在停止")
+                    : t("停止执行")
                   : sending
-                    ? "正在提交"
+                    ? t("正在提交")
                     : access === "occupied"
-                      ? "重试发送"
+                      ? t("重试发送")
                       : defaultSteering
-                        ? "立即引导"
+                        ? t("立即引导")
                         : queueing
-                          ? "排队发送"
-                          : "发送消息"
+                          ? t("排队发送")
+                          : t("发送消息")
             }
             title={
               inputRequest
-                ? "前往问题卡片回答，普通消息草稿会保留"
+                ? t("前往问题卡片回答，普通消息草稿会保留")
                 : !connected
-                  ? "请先连接"
+                  ? t("请先连接")
                   : showStop
                     ? stopping
-                      ? "正在停止"
-                      : "停止执行"
+                      ? t("正在停止")
+                      : t("停止执行")
                     : waiting
-                      ? "请先回答当前请求"
+                      ? t("请先回答当前请求")
                       : !hasContent
-                        ? "输入消息或添加附件"
+                        ? t("输入消息或添加附件")
                         : sending
-                          ? "正在提交"
+                          ? t("正在提交")
                           : defaultSteering
-                            ? "立即引导当前轮次（Enter）"
+                            ? t("立即引导当前轮次（Enter）")
                             : queueing
-                              ? "加入队列，当前轮次结束后发送（Enter）"
-                              : "发送消息"
+                              ? t("加入队列，当前轮次结束后发送（Enter）")
+                              : t("发送消息")
             }
             disabled={
               !inputRequest &&

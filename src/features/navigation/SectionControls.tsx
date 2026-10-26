@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { settingsInputClass } from "../settings/settings-ui";
 import { useEffect, useState } from "react";
 import {
@@ -21,6 +22,9 @@ export function SectionControls({
   deviceFilter: string;
   onDeviceFilterChange: (id: string) => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const [open, setOpen] = useState(false);
   const [deviceId, setDeviceId] = useState<string>();
   const selected =
@@ -47,9 +51,9 @@ export function SectionControls({
       ? filter
       : encode(visible[0].id, filter);
   const options = [
-    { value: "all", label: "全部分区" },
-    { value: "unsectioned", label: "未分区" },
-    ...(mixed ? [{ value: "filtered", label: "已筛选分区" }] : []),
+    { value: "all", label: t("全部分区") },
+    { value: "unsectioned", label: t("未分区") },
+    ...(mixed ? [{ value: "filtered", label: t("已筛选分区") }] : []),
     ...visible.flatMap((entry) =>
       entry.runtime.sessions.getSnapshot().sections.map((section) => ({
         value: encode(entry.id, section.id),
@@ -57,7 +61,7 @@ export function SectionControls({
           visible.length > 1 ? `${entry.name} · ${section.name}` : section.name,
       })),
     ),
-    { value: "manage", label: "管理分区…" },
+    { value: "manage", label: t("管理分区…") },
   ];
   const choose = (next: string) => {
     if (next === "manage") {
@@ -81,7 +85,7 @@ export function SectionControls({
   return (
     <>
       <SelectField
-        label="管理分区"
+        label={t("管理分区")}
         className="min-h-7 min-w-0 max-w-[110px] px-2 py-1 tracking-normal [&>span:first-child]:truncate"
         value={value}
         options={options}
@@ -99,16 +103,16 @@ export function SectionControls({
       <Modal
         open={open}
         onOpenChange={setOpen}
-        title="管理分区"
-        description="用分区整理会话。分区按设备保存，并在客户端之间共享。"
+        title={t("管理分区")}
+        description={t("用分区整理会话。分区按设备保存，并在客户端之间共享。")}
       >
         {selected ? (
           <>
             <label className="mb-2 block text-caption text-muted">
-              分区所属设备
+              {t("分区所属设备")}
             </label>
             <SelectField
-              label="分区所属设备"
+              label={t("分区所属设备")}
               className="mb-4 w-full"
               value={selected.id}
               onValueChange={setDeviceId}
@@ -120,7 +124,7 @@ export function SectionControls({
             <SectionEditor key={selected.id} environment={selected} />
           </>
         ) : (
-          <p className="text-sm text-muted">连接设备后可管理分区。</p>
+          <p className="text-sm text-muted">{t("连接设备后可管理分区。")}</p>
         )}
       </Modal>
     </>
@@ -128,6 +132,9 @@ export function SectionControls({
 }
 
 function SectionEditor({ environment }: { environment: Environment }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { sessions, connection } = environment.runtime;
   const state = useStore(sessions);
   const status = useStore(connection);
@@ -163,7 +170,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
     <div className="space-y-4">
       {!connected && (
         <p role="status" className="text-caption text-warning">
-          设备未连接，连接后可管理分区。
+          {t("设备未连接，连接后可管理分区。")}
         </p>
       )}
       <form
@@ -174,20 +181,20 @@ function SectionEditor({ environment }: { environment: Environment }) {
             void action(async () => {
               await sessions.saveSection(newName);
               setNewName("");
-            }, "分区已创建");
+            }, t("分区已创建"));
         }}
       >
         <label
           htmlFor="section-new-name"
           className="mb-2 block text-control font-medium"
         >
-          新分区名称
+          {t("新分区名称")}
         </label>
         <div className="flex gap-2">
           <input
             id="section-new-name"
             className={`${settingsInputClass} min-w-0 flex-1`}
-            placeholder="输入分区名称"
+            placeholder={t("输入分区名称")}
             value={newName}
             maxLength={100}
             disabled={busy}
@@ -198,14 +205,15 @@ function SectionEditor({ environment }: { environment: Environment }) {
             variant="primary"
             disabled={busy || !newName.trim()}
           >
-            新建分区
+            {t("新建分区")}
           </Button>
         </div>
       </form>
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-control font-medium">
-            已有分区 <span className="text-muted">{state.sections.length}</span>
+            {t("已有分区")}
+            <span className="text-muted">{state.sections.length}</span>
           </h3>
           <Button
             size="sm"
@@ -213,7 +221,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
             disabled={busy || state.sectionsLoading}
             onClick={() => void sessions.loadSections()}
           >
-            {state.sectionsLoading ? "刷新中…" : "刷新"}
+            {state.sectionsLoading ? t("刷新中…") : t("刷新")}
           </Button>
         </div>
         {state.sectionsError && (
@@ -227,10 +235,10 @@ function SectionEditor({ environment }: { environment: Environment }) {
             {state.sections.length === 0 && (
               <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-caption text-muted">
                 {state.sectionsLoading
-                  ? "正在加载分区…"
+                  ? t("正在加载分区…")
                   : state.sectionsError
-                    ? "暂时无法加载分区，请重试。"
-                    : "还没有分区，创建第一个分区来整理会话。"}
+                    ? t("暂时无法加载分区，请重试。")
+                    : t("还没有分区，创建第一个分区来整理会话。")}
               </div>
             )}
             {state.sections.map((section) => (
@@ -245,7 +253,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
                       if (!busy && editName.trim())
                         void action(
                           () => sessions.saveSection(editName, section.id),
-                          "分区名称已更新",
+                          t("分区名称已更新"),
                         );
                     }}
                   >
@@ -253,7 +261,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
                       className="mb-2 block text-caption text-muted"
                       htmlFor="section-edit-name"
                     >
-                      分区新名称
+                      {t("分区新名称")}
                     </label>
                     <input
                       id="section-edit-name"
@@ -276,7 +284,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
                         disabled={pending}
                         onClick={() => setEditing(undefined)}
                       >
-                        取消
+                        {t("取消")}
                       </Button>
                       <Button
                         size="sm"
@@ -284,7 +292,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
                         variant="primary"
                         disabled={busy || !editName.trim()}
                       >
-                        保存名称
+                        {t("保存名称")}
                       </Button>
                     </div>
                   </form>
@@ -305,7 +313,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
                         setNotice("");
                       }}
                     >
-                      重命名
+                      {t("重命名")}
                     </Button>
                     <Button
                       size="sm"
@@ -318,7 +326,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
                         setNotice("");
                       }}
                     >
-                      删除
+                      {t("删除")}
                     </Button>
                   </div>
                 )}
@@ -328,7 +336,9 @@ function SectionEditor({ environment }: { environment: Environment }) {
                     role="alert"
                   >
                     <p className="text-caption leading-relaxed">
-                      确认删除「{section.name}」？其中的会话会保留并移至未分区。
+                      {t("确认删除「")}
+                      {section.name}
+                      {t("」？其中的会话会保留并移至未分区。")}
                     </p>
                     <div className="mt-3 flex justify-end gap-2">
                       <Button
@@ -336,7 +346,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
                         disabled={pending}
                         onClick={() => setDeleting(undefined)}
                       >
-                        取消
+                        {t("取消")}
                       </Button>
                       <Button
                         size="sm"
@@ -345,11 +355,11 @@ function SectionEditor({ environment }: { environment: Environment }) {
                         onClick={() =>
                           void action(
                             () => sessions.deleteSection(section.id),
-                            "分区已删除，会话已保留",
+                            t("分区已删除，会话已保留"),
                           )
                         }
                       >
-                        确认删除分区
+                        {t("确认删除分区")}
                       </Button>
                     </div>
                   </div>
@@ -361,7 +371,9 @@ function SectionEditor({ environment }: { environment: Environment }) {
       </div>
       {error && <ErrorNotice>{error}</ErrorNotice>}
       <p role="status" className="text-caption text-muted">
-        {pending ? "正在保存更改…" : notice || "删除分区不会删除其中的会话。"}
+        {pending
+          ? t("正在保存更改…")
+          : notice || t("删除分区不会删除其中的会话。")}
       </p>
     </div>
   );

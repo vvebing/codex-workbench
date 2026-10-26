@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { getLocale, t } from "../../lib/i18n";
 import { settingsInputClass } from "../settings/settings-ui";
 import { useCapabilities } from "../settings/CapabilityPanel";
 import { insertReference } from "./insert-reference";
@@ -22,14 +24,14 @@ import {
 } from "./thread-tools-model";
 
 const inputClass = `${settingsInputClass} my-1`;
-const statusLabels: Record<ThreadGoalStatus, string> = {
-  active: "进行中",
-  paused: "已暂停",
-  blocked: "受阻",
-  usageLimited: "用量受限",
-  budgetLimited: "预算受限",
-  complete: "已完成",
-};
+const goalStatusLabels = (): Record<ThreadGoalStatus, string> => ({
+  active: t("进行中"),
+  paused: t("已暂停"),
+  blocked: t("受阻"),
+  usageLimited: t("用量受限"),
+  budgetLimited: t("预算受限"),
+  complete: t("已完成"),
+});
 function GoalEditor({
   goal,
   store,
@@ -43,6 +45,7 @@ function GoalEditor({
   setUnsupported: boolean;
   clearUnsupported: boolean;
 }) {
+  useTranslation();
   const [objective, setObjective] = useState(goal?.objective ?? "");
   const [budget, setBudget] = useState(goal?.tokenBudget?.toString() ?? "");
   const [status, setStatus] = useState<ThreadGoalStatus>(
@@ -63,7 +66,7 @@ function GoalEditor({
       }}
     >
       <label className="block text-control font-medium">
-        目标内容
+        {t("目标内容")}
         <textarea
           className={inputClass}
           required
@@ -74,21 +77,21 @@ function GoalEditor({
         />
       </label>
       <label className="block text-control font-medium">
-        目标状态
+        {t("目标状态")}
         <SelectField
-          label="目标状态"
+          label={t("目标状态")}
           className="my-1 w-full"
           disabled={disabled}
           value={status}
           onValueChange={(value) => setStatus(value as ThreadGoalStatus)}
-          options={Object.entries(statusLabels).map(([value, label]) => ({
+          options={Object.entries(goalStatusLabels()).map(([value, label]) => ({
             value,
             label,
           }))}
         />
       </label>
       <label className="block text-control font-medium">
-        Token 预算（留空不限）
+        {t("Token 预算（留空不限）")}
         <input
           className={inputClass}
           type="number"
@@ -100,7 +103,7 @@ function GoalEditor({
         />
       </label>
       <p className="my-2 text-xs text-muted">
-        更换目标内容会重置用量记录。保存目标可能让会话继续执行。
+        {t("更换目标内容会重置用量记录。保存目标可能让会话继续执行。")}
       </p>
       {error && <ErrorNotice>{error}</ErrorNotice>}
       <div className="flex flex-wrap gap-2">
@@ -108,14 +111,14 @@ function GoalEditor({
           type="submit"
           disabled={disabled || setUnsupported || !objective.trim()}
         >
-          保存目标
+          {t("保存目标")}
         </Button>
         {goal && (
           <Button
             disabled={disabled || clearUnsupported}
             onClick={() => void store.clearGoal()}
           >
-            清除目标
+            {t("清除目标")}
           </Button>
         )}
       </div>
@@ -123,6 +126,7 @@ function GoalEditor({
   );
 }
 export function ThreadTools({ thread }: { thread: Thread }) {
+  useTranslation();
   const runtime = useRuntime();
   const connection = useStore(runtime.connection);
   const capabilities = useCapabilities(runtime.connection);
@@ -178,42 +182,56 @@ export function ThreadTools({ thread }: { thread: Thread }) {
     }
   };
   return (
-    <div className="space-y-5" aria-label="会话工具">
+    <div className="space-y-5" aria-label={t("会话工具")}>
       {unavailable.length > 0 && (
         <p role="status" className="text-xs text-muted">
-          服务端未提供：{unavailable.join("、")}
-          。对应操作已禁用；可在设置的「服务端功能支持」清除具体接口记录后重新验证，其他接口仍可使用。
+          {t("服务端未提供：")}
+          {unavailable.join(getLocale() === "zh-CN" ? "、" : ", ")}
+          {t(
+            "。对应操作已禁用；可在设置的「服务端功能支持」清除具体接口记录后重新验证，其他接口仍可使用。",
+          )}
         </p>
       )}
       {insertedReference && (
         <p role="status" className="text-xs text-muted">
-          参考资料已引用到输入框，请检查后发送。已关联不等于助手已阅读。
+          {t("参考资料已引用到输入框，请检查后发送。已关联不等于助手已阅读。")}
         </p>
       )}
       {running && (
         <p className="text-xs text-muted">
-          会话执行期间可查看工具，结束后可修改。
+          {t("会话执行期间可查看工具，结束后可修改。")}
         </p>
       )}
       {(state.error || formError) && (
         <ErrorNotice>{state.error || formError}</ErrorNotice>
       )}
-      {state.message && <p role="status">{state.message}</p>}
+      {state.message && <p role="status">{t(state.message)}</p>}
       <details>
-        <summary className="cursor-pointer font-semibold">会话目标</summary>
+        <summary className="cursor-pointer font-semibold">
+          {t("会话目标")}
+        </summary>
         <div className="mt-3">
           {state.goalError && (
-            <ErrorNotice>无法读取目标：{state.goalError}</ErrorNotice>
+            <ErrorNotice>
+              {t("无法读取目标：")}
+              {state.goalError}
+            </ErrorNotice>
           )}
           {state.goal && (
             <div className="mb-3 space-y-1 [overflow-wrap:anywhere]">
               <p>{state.goal.objective}</p>
-              <p>状态：{statusLabels[state.goal.status]}</p>
               <p>
-                Token 用量：{state.goal.tokensUsed} /{" "}
-                {state.goal.tokenBudget ?? "不限"}
+                {t("状态：")}
+                {goalStatusLabels()[state.goal.status]}
               </p>
-              <p>运行时间：{state.goal.timeUsedSeconds} 秒</p>
+              <p>
+                {t("Token 用量：")}
+                {state.goal.tokensUsed} / {state.goal.tokenBudget ?? t("不限")}
+              </p>
+              <p>
+                {t("运行时间：")}
+                {state.goal.timeUsedSeconds} {t(" 秒")}
+              </p>
             </div>
           )}
           {state.goalLoaded && (
@@ -242,12 +260,14 @@ export function ThreadTools({ thread }: { thread: Thread }) {
             }
             onClick={() => void store.loadGoal()}
           >
-            刷新目标
+            {t("刷新目标")}
           </Button>
         </div>
       </details>
       <details>
-        <summary className="cursor-pointer font-semibold">代码审查</summary>
+        <summary className="cursor-pointer font-semibold">
+          {t("代码审查")}
+        </summary>
         <form
           className="mt-3"
           onSubmit={(event) => {
@@ -259,9 +279,9 @@ export function ThreadTools({ thread }: { thread: Thread }) {
           }}
         >
           <label className="block text-control font-medium">
-            审查范围
+            {t("审查范围")}
             <SelectField
-              label="审查范围"
+              label={t("审查范围")}
               className="my-1 w-full"
               disabled={disabled}
               value={reviewType}
@@ -270,20 +290,20 @@ export function ThreadTools({ thread }: { thread: Thread }) {
                 setReviewValue("");
               }}
               options={[
-                { value: "uncommittedChanges", label: "未提交修改" },
-                { value: "baseBranch", label: "与分支比较" },
-                { value: "commit", label: "指定提交" },
-                { value: "custom", label: "自定义审查" },
+                { value: "uncommittedChanges", label: t("未提交修改") },
+                { value: "baseBranch", label: t("与分支比较") },
+                { value: "commit", label: t("指定提交") },
+                { value: "custom", label: t("自定义审查") },
               ]}
             />
           </label>
           {reviewType !== "uncommittedChanges" && (
             <label className="block text-control font-medium">
               {reviewType === "baseBranch"
-                ? "基准分支"
+                ? t("基准分支")
                 : reviewType === "commit"
-                  ? "提交 SHA"
-                  : "审查说明"}
+                  ? t("提交 SHA")
+                  : t("审查说明")}
               <input
                 className={inputClass}
                 required
@@ -297,21 +317,28 @@ export function ThreadTools({ thread }: { thread: Thread }) {
             type="submit"
             disabled={disabled || unsupported("review/start")}
           >
-            开始审查
+            {t("开始审查")}
           </Button>
           <p className="mt-2 text-xs text-muted">
-            审查在当前会话执行，结果显示在消息中。
+            {t("审查在当前会话执行，结果显示在消息中。")}
           </p>
         </form>
       </details>
       <details>
-        <summary className="cursor-pointer font-semibold">参考资料</summary>
+        <summary className="cursor-pointer font-semibold">
+          {t("参考资料")}
+        </summary>
         <div className="mt-3">
           <p className="mb-2 text-xs text-muted">
-            保存链接或路径作为会话参考资料；不会上传文件内容。已关联不等于助手已阅读；可显式引用到输入框后发送。
+            {t(
+              "保存链接或路径作为会话参考资料；不会上传文件内容。已关联不等于助手已阅读；可显式引用到输入框后发送。",
+            )}
           </p>
           {state.attachmentError && (
-            <ErrorNotice>无法读取参考资料：{state.attachmentError}</ErrorNotice>
+            <ErrorNotice>
+              {t("无法读取参考资料：")}
+              {state.attachmentError}
+            </ErrorNotice>
           )}
           {state.attachments.map((attachment) => {
             const own = attachment.attachmentType === referenceAttachmentType;
@@ -338,7 +365,8 @@ export function ThreadTools({ thread }: { thread: Thread }) {
                 <p className="text-xs text-muted">{attachment.identityKey}</p>
                 {!own && (
                   <p className="text-xs text-muted">
-                    外部资料（只读）：{attachment.attachmentType}
+                    {t("外部资料（只读）：")}
+                    {attachment.attachmentType}
                   </p>
                 )}
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -354,7 +382,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
                       setInsertedReference(true);
                     }}
                   >
-                    引用到输入框
+                    {t("引用到输入框")}
                   </Button>
                   <Button
                     size="sm"
@@ -365,7 +393,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
                     }
                     onClick={() => void store.findOwners(attachment)}
                   >
-                    查看所属会话
+                    {t("查看所属会话")}
                   </Button>
                   {own && (
                     <Button
@@ -375,7 +403,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
                       }
                       onClick={() => void store.removeAttachment(attachment)}
                     >
-                      移除参考资料
+                      {t("移除参考资料")}
                     </Button>
                   )}
                 </div>
@@ -391,20 +419,20 @@ export function ThreadTools({ thread }: { thread: Thread }) {
               }
               onClick={() => void store.loadAttachments(true)}
             >
-              加载更多参考资料
+              {t("加载更多参考资料")}
             </Button>
           )}
           {state.owners && (
             <div className="my-3">
-              <p className="font-medium">所属会话</p>
-              {!state.owners.length && <p>没有匹配会话。</p>}
+              <p className="font-medium">{t("所属会话")}</p>
+              {!state.owners.length && <p>{t("没有匹配会话。")}</p>}
               {state.owners.map((owner) => (
                 <p
                   key={owner.threadId}
                   className="text-xs [overflow-wrap:anywhere]"
                 >
                   {owner.threadId}
-                  {owner.archived ? "（已归档）" : ""}
+                  {owner.archived ? t("（已归档）") : ""}
                 </p>
               ))}
               {state.ownerCursor && state.ownerIdentity && (
@@ -418,7 +446,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
                     void store.findOwners(state.ownerIdentity!, true)
                   }
                 >
-                  加载更多所属会话
+                  {t("加载更多所属会话")}
                 </Button>
               )}
             </div>
@@ -439,7 +467,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
             }}
           >
             <label className="block text-control font-medium">
-              资料名称
+              {t("资料名称")}
               <input
                 className={inputClass}
                 disabled={disabled}
@@ -448,7 +476,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
               />
             </label>
             <label className="block text-control font-medium">
-              链接或文件路径
+              {t("链接或文件路径")}
               <input
                 className={inputClass}
                 required
@@ -465,7 +493,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
                 !referenceLocation.trim()
               }
             >
-              保存参考资料
+              {t("保存参考资料")}
             </Button>
           </form>
           <Button
@@ -478,7 +506,7 @@ export function ThreadTools({ thread }: { thread: Thread }) {
             }
             onClick={() => void store.loadAttachments()}
           >
-            刷新参考资料
+            {t("刷新参考资料")}
           </Button>
         </div>
       </details>

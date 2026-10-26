@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { QuestionDismissalsStore } from "../features/conversation/question-dismissals";
 import { ConnectionStore, sameEndpoint } from "../features/connection/store";
 import { SessionsStore } from "../features/sessions/store";
@@ -124,7 +125,7 @@ export function createRuntime(
   ): Promise<void> => {
     if (submissions.isSending(id))
       return Promise.reject(
-        new Error("消息正在发送，请等待发送结束后再回滚。"),
+        new Error(t("消息正在发送，请等待发送结束后再回滚。")),
       );
     return sessions.revert(id, beforeTurnId, (turn) => {
       const message = turn.items.find(

@@ -1,3 +1,4 @@
+import { getLocale, t } from "../../lib/i18n";
 type SidebarThread = { id: string; cwd: string; updatedAt: number };
 
 export function groupThreadsByRecency<T extends SidebarThread>(threads: T[]) {
@@ -12,14 +13,16 @@ export function updatedTimeAttributes(timestamp: number) {
   const date = new Date(timestamp * 1000);
   return {
     dateTime: date.toISOString(),
-    title: `最近更新：${date.toLocaleString("zh-CN", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    })}`,
+    title: t("最近更新：{{value0}}", {
+      value0: date.toLocaleString(getLocale(), {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }),
+    }),
   };
 }

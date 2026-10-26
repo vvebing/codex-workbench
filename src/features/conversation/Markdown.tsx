@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../lib/i18n";
 import { promptLineBreaks } from "./prompt-line-breaks";
 import { ConversationImage } from "../../components/ImagePreview";
 import { Button, ScrollArea } from "../../components/ui";
@@ -20,6 +22,7 @@ import rehypeHighlight from "rehype-highlight";
 import { Check, Copy } from "lucide-react";
 const ImageLinkContext = createContext(false);
 function MarkdownAnchor(props: ComponentPropsWithoutRef<"a"> & ExtraProps) {
+  useTranslation();
   return (
     <ImageLinkContext.Provider value={true}>
       <FileAnchor {...props} />
@@ -30,13 +33,14 @@ function MarkdownImage({
   src,
   alt,
 }: ComponentPropsWithoutRef<"img"> & ExtraProps) {
+  useTranslation();
   const linked = useContext(ImageLinkContext);
   if (linked)
     return <img src={src} alt={alt} loading="lazy" decoding="async" />;
   return (
     <ConversationImage
       src={typeof src === "string" ? src : ""}
-      name={alt || "对话图片"}
+      name={alt || t("对话图片")}
     />
   );
 }
@@ -49,6 +53,7 @@ function CodeBlock({
   node,
   ...props
 }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
+  useTranslation();
   const { text, streaming } = useContext(MarkdownContext);
   const [message, setMessage] = useState("");
   const code = node?.children.find(
@@ -83,7 +88,7 @@ function CodeBlock({
         size="sm"
         variant="quiet"
         className="absolute z-10 top-1.5 right-2 min-w-8 gap-1 bg-elevated px-1 text-meta opacity-0 [@media(hover:none)]:opacity-100 [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10 focus:opacity-100 group-hover/code:opacity-100 group-focus-within/code:opacity-100"
-        aria-label="复制代码"
+        aria-label={t("复制代码")}
         onClick={async (event) => {
           const code =
             event.currentTarget.parentElement?.querySelector("pre")
@@ -99,7 +104,7 @@ function CodeBlock({
       >
         {message === "已复制" ? <Check size={14} /> : <Copy size={14} />}
         <span aria-live="polite" className="empty:hidden">
-          {message}
+          {message ? t(message) : ""}
         </span>
       </Button>
       <ScrollArea scrollChaining orientation="both">
@@ -115,6 +120,7 @@ function MarkdownTable({
   node,
   ...props
 }: ComponentPropsWithoutRef<"table"> & ExtraProps) {
+  useTranslation();
   void node;
   return (
     <ScrollArea scrollChaining orientation="both">
@@ -138,6 +144,7 @@ export const Markdown = memo(function Markdown({
   preserveLineBreaks?: boolean;
   imageComponent?: ComponentType<ComponentPropsWithoutRef<"img"> & ExtraProps>;
 }) {
+  useTranslation();
   const value = useMemo(() => ({ text, streaming }), [text, streaming]);
   const components = useMemo(
     () => ({

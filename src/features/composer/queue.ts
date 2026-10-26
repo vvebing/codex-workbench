@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { Store, errorMessage } from "../../lib/store";
 import { RpcError } from "../../lib/rpc";
 import type { ConnectionStore } from "../connection/store";
@@ -82,7 +83,7 @@ export class MessageQueueStore extends Store<QueueState> {
           for (const queue of Object.values(queues)) {
             delete queue.editingId;
             if (queue.items.length)
-              queue.paused = "已恢复待发送任务，请检查后继续队列。";
+              queue.paused = t("已恢复待发送任务，请检查后继续队列。");
             for (const item of queue.items)
               if (item.status === "sending") item.status = "uncertain";
           }
@@ -91,7 +92,7 @@ export class MessageQueueStore extends Store<QueueState> {
         void this.exclusive(async (queues) => {
           for (const queue of Object.values(queues)) {
             if (queue.items.length)
-              queue.paused = "连接已改变，请检查后继续队列。";
+              queue.paused = t("连接已改变，请检查后继续队列。");
             for (const item of queue.items)
               if (item.status === "sending") item.status = "uncertain";
           }
@@ -143,7 +144,7 @@ export class MessageQueueStore extends Store<QueueState> {
       )
         void this.pause(
           event.params.threadId,
-          "当前任务已停止或失败，队列已暂停。",
+          t("当前任务已停止或失败，队列已暂停。"),
         ).catch(() => {});
       if (
         event.method === "thread/deleted" ||
@@ -151,7 +152,7 @@ export class MessageQueueStore extends Store<QueueState> {
       )
         void this.pause(
           event.params.threadId,
-          "会话已归档或删除，队列已暂停。",
+          t("会话已归档或删除，队列已暂停。"),
         ).catch(() => {});
     });
   }
@@ -177,7 +178,7 @@ export class MessageQueueStore extends Store<QueueState> {
         }
       };
       if (generation !== this.generation)
-        throw new Error("工作环境已改变，操作未执行。");
+        throw new Error(t("工作环境已改变，操作未执行。"));
       for (const [id, queue] of Object.entries(queues)) {
         const thread = this.sessions.getSnapshot().threads[id];
         if (!thread || !queue.sentAnswers) continue;
@@ -226,7 +227,7 @@ export class MessageQueueStore extends Store<QueueState> {
     if (this.sessions.getSnapshot().threadAccess[id] !== "editable")
       await this.sessions.activate(id);
     if (this.sessions.getSnapshot().threadAccess[id] !== "editable")
-      throw new Error("此会话由其他客户端控制，消息未发送，草稿已保留。");
+      throw new Error(t("此会话由其他客户端控制，消息未发送，草稿已保留。"));
     const snapshot = structuredClone({
       id: crypto.randomUUID(),
       draft,
@@ -237,7 +238,7 @@ export class MessageQueueStore extends Store<QueueState> {
     await this.exclusive(async (queues) => {
       const queue = (queues[id] ??= emptyQueue());
       if (queue.items.length >= 100)
-        throw new Error("最多排队 100 条任务，请先处理已有任务。");
+        throw new Error(t("最多排队 100 条任务，请先处理已有任务。"));
       queue.items.push(snapshot);
     });
     this.schedule();
@@ -251,7 +252,7 @@ export class MessageQueueStore extends Store<QueueState> {
     id = this.sessions.resolveId(id);
     const assertAnswerable = () => {
       if (this.sessions.getSnapshot().archivedIds[id])
-        throw new Error("此会话已归档，请先恢复会话再回答问题。");
+        throw new Error(t("此会话已归档，请先恢复会话再回答问题。"));
     };
     assertAnswerable();
     if (
@@ -259,13 +260,13 @@ export class MessageQueueStore extends Store<QueueState> {
       item.questions.length !== answers.length ||
       answers.some((answer) => !answer.trim())
     )
-      throw new Error("请填写所有问题的回答。");
+      throw new Error(t("请填写所有问题的回答。"));
     const thread = this.sessions.getSnapshot().threads[id];
     if (
       !thread ||
       !pendingAsyncQuestions(thread).some((question) => question.id === item.id)
     )
-      throw new Error("此问题已有后续回复，请在会话中继续补充。");
+      throw new Error(t("此问题已有后续回复，请在会话中继续补充。"));
     const text = asyncAnswerText(item, answers);
     await this.exclusive(async (queues) => {
       // The page can archive the thread while this operation waits for storage or another tab.
@@ -277,7 +278,7 @@ export class MessageQueueStore extends Store<QueueState> {
       )
         return;
       if (queue.items.length >= 100)
-        throw new Error("最多排队 100 条任务，请先处理已有任务。");
+        throw new Error(t("最多排队 100 条任务，请先处理已有任务。"));
       const task: QueuedTask = {
         id: crypto.randomUUID(),
         draft: { ...emptyDraft(), text },
@@ -298,7 +299,7 @@ export class MessageQueueStore extends Store<QueueState> {
     this.schedule();
   }
 
-  pause(id: string, reason = "队列已暂停。"): Promise<void> {
+  pause(id: string, reason = t("队列已暂停。")): Promise<void> {
     // Prevent dispatch before the storage transaction can take the lock.
     this.stopping.add(id);
     return this.exclusive(async (queues) => {
@@ -309,16 +310,16 @@ export class MessageQueueStore extends Store<QueueState> {
 
   async resume(id: string): Promise<void> {
     if (this.connection.getSnapshot().status !== "connected")
-      throw new Error("请先连接工作环境。");
+      throw new Error(t("请先连接工作环境。"));
     await this.sessions.activate(id);
     if (this.sessions.getSnapshot().threadAccess[id] !== "editable")
-      throw new Error("此会话由其他客户端控制，无法继续队列。");
+      throw new Error(t("此会话由其他客户端控制，无法继续队列。"));
     await this.exclusive(async (queues) => {
       const queue = queues[id];
       if (!queue) return;
       if (queue.items.some((item) => item.status === "uncertain"))
         throw new Error(
-          "请先核实待确认消息；已发送则删除，确认未发送再选择重试。",
+          t("请先核实待确认消息；已发送则删除，确认未发送再选择重试。"),
         );
       queue.paused = null;
     });
@@ -331,7 +332,7 @@ export class MessageQueueStore extends Store<QueueState> {
       const queue = queues[id];
       if (!queue) return;
       if (queue.items.find((item) => item.id === taskId)?.status === "sending")
-        throw new Error("任务正在发送，暂时不能删除。");
+        throw new Error(t("任务正在发送，暂时不能删除。"));
       queue.items = queue.items.filter((item) => item.id !== taskId);
       if (queue.editingId === taskId) delete queue.editingId;
       if (!queue.items.length) {
@@ -348,7 +349,7 @@ export class MessageQueueStore extends Store<QueueState> {
       const task = queue?.items.find((item) => item.id === taskId);
       if (!queue || !task) return;
       if (queue.items.some((item) => item.status !== "queued"))
-        throw new Error("请等待发送完成或先核实待确认消息。");
+        throw new Error(t("请等待发送完成或先核实待确认消息。"));
       queue.items = [task, ...queue.items.filter((item) => item.id !== taskId)];
     });
     this.schedule();
@@ -359,8 +360,8 @@ export class MessageQueueStore extends Store<QueueState> {
       const queue = queues[id];
       const task = queue?.items.find((item) => item.id === taskId);
       if (!task || task.status !== "queued")
-        throw new Error("任务已开始发送，不能编辑。");
-      if (task.question) throw new Error("请先取消待发送回答，再重新填写。");
+        throw new Error(t("任务已开始发送，不能编辑。"));
+      if (task.question) throw new Error(t("请先取消待发送回答，再重新填写。"));
       queue.editingId = taskId;
     });
   }
@@ -376,7 +377,7 @@ export class MessageQueueStore extends Store<QueueState> {
       if (!queue || queue.editingId !== taskId) return;
       const task = queue.items.find((item) => item.id === taskId);
       if (task && draft && input) {
-        if (!input.length) throw new Error("任务内容不能为空。");
+        if (!input.length) throw new Error(t("任务内容不能为空。"));
         task.draft = structuredClone(draft);
         task.input = structuredClone(input);
       }
@@ -486,15 +487,16 @@ export class MessageQueueStore extends Store<QueueState> {
           )
         ) {
           task.question.expired = true;
-          queue.paused =
-            "问题已结束，本次回答未发送。内容已保留，可复制后继续补充。";
+          queue.paused = t(
+            "问题已结束，本次回答未发送。内容已保留，可复制后继续补充。",
+          );
           return;
         }
         if (!this.available(id, true)) return;
       }
       if (expectedTurnId) {
         if (this.requests.forThread(id).length)
-          throw new Error("请先处理当前确认请求。");
+          throw new Error(t("请先处理当前确认请求。"));
         // Never redirect a different turn if the original one completed while waiting.
         if (this.sessions.activeTurn(id)?.id !== expectedTurnId) return;
       } else if (
@@ -508,7 +510,7 @@ export class MessageQueueStore extends Store<QueueState> {
       await publish();
       try {
         if (this.connection.getSnapshot().epoch !== epoch)
-          throw new Error("连接已改变，消息未发送；请核实队列状态。");
+          throw new Error(t("连接已改变，消息未发送；请核实队列状态。"));
         if (this.requests.forThread(id).length) {
           task.status = "queued";
           return;
@@ -535,7 +537,7 @@ export class MessageQueueStore extends Store<QueueState> {
             "start",
           );
         if (this.connection.getSnapshot().epoch !== epoch)
-          throw new Error("连接已改变，请核实消息是否已发送。");
+          throw new Error(t("连接已改变，请核实消息是否已发送。"));
         if (task.question) {
           (queue.sentAnswerTasks ??= {})[task.question.itemId] =
             structuredClone(task);
@@ -557,7 +559,9 @@ export class MessageQueueStore extends Store<QueueState> {
         // Only a definite server rejection is safe to retry. Timeouts/disconnects
         // can happen after acceptance and require explicit user reconciliation.
         task.status = error instanceof RpcError ? "queued" : "uncertain";
-        queue.paused = `${errorMessage(error)} 队列已暂停。`;
+        queue.paused = t("{{value0}} 队列已暂停。", {
+          value0: errorMessage(error),
+        });
       }
     });
     this.schedule();

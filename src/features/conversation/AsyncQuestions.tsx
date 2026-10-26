@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../lib/i18n";
 import { QuestionPresence } from "./QuestionPresence";
 import { useStableQuestionCard } from "./use-stable-question-card";
 import { settingsInputClass } from "../settings/settings-ui";
@@ -22,6 +24,7 @@ export function AsyncQuestions({
   item: QuestionMessage;
   threadId: string;
 }) {
+  useTranslation();
   const runtime = useRuntime();
   const sessions = useStore(runtime.sessions);
   const connection = useStore(runtime.connection);
@@ -102,7 +105,7 @@ export function AsyncQuestions({
       data-async-question-id={item.id}
       tabIndex={-1}
       className="mt-4 mb-3 rounded-xl border border-border bg-elevated p-4 text-control"
-      aria-label={!confirmed && !ignored ? "回答异步问题" : undefined}
+      aria-label={!confirmed && !ignored ? t("回答异步问题") : undefined}
       onSubmit={async (event) => {
         event.preventDefault();
         if (
@@ -124,7 +127,7 @@ export function AsyncQuestions({
           setError(
             error instanceof Error
               ? error.message
-              : "回答发送失败，请核实会话记录后重试。",
+              : t("回答发送失败，请核实会话记录后重试。"),
           );
         } finally {
           lock.current = false;
@@ -133,7 +136,7 @@ export function AsyncQuestions({
       }}
     >
       <p className="mb-3 font-semibold">
-        {saved ? "你的回答" : "需要你的回答"}
+        {saved ? t("你的回答") : t("需要你的回答")}
       </p>
       {saved && (
         <dl className="mb-3 space-y-2">
@@ -181,7 +184,7 @@ export function AsyncQuestions({
                   checked={selection(index) === "custom"}
                   onChange={() => setAnswers({ ...answers, [index]: "custom" })}
                 />
-                自定义回答
+                {t("自定义回答")}
               </label>
             )}
             {(!question.options?.length || selection(index) === "custom") && (
@@ -202,24 +205,26 @@ export function AsyncQuestions({
       {error && <ErrorNotice>{error}</ErrorNotice>}
       {sent && !confirmed ? (
         <p role="status" className="text-muted">
-          回答已发送，等待会话更新。
+          {t("回答已发送，等待会话更新。")}
         </p>
       ) : task && !confirmed ? (
         <>
           <p role="status" className="mb-2 text-muted">
             {task.status === "sending"
-              ? "正在发送回答…"
+              ? t("正在发送回答…")
               : task.status === "uncertain"
-                ? "发送结果待确认，请先核实会话记录，系统不会自动重发。"
+                ? t("发送结果待确认，请先核实会话记录，系统不会自动重发。")
                 : queue.paused
-                  ? `回答已保存，等待发送。${queue.paused}`
+                  ? t("回答已保存，等待发送。{{value0}}", {
+                      value0: queue.paused,
+                    })
                   : connection.status !== "connected"
-                    ? "回答已保存，等待连接恢复后检查并继续发送。"
+                    ? t("回答已保存，等待连接恢复后检查并继续发送。")
                     : occupied
-                      ? "回答已保存，等待取得写入权限后发送。"
+                      ? t("回答已保存，等待取得写入权限后发送。")
                       : blocked
-                        ? "回答已保存，等待当前确认请求处理完毕后发送。"
-                        : "回答已保存，等待发送。"}
+                        ? t("回答已保存，等待当前确认请求处理完毕后发送。")
+                        : t("回答已保存，等待发送。")}
           </p>
           <div className="flex items-center gap-2">
             {task.status === "queued" && (
@@ -252,12 +257,12 @@ export function AsyncQuestions({
                     setError(
                       error instanceof Error
                         ? error.message
-                        : "暂时无法修改回答。",
+                        : t("暂时无法修改回答。"),
                     );
                   }
                 }}
               >
-                修改回答
+                {t("修改回答")}
               </Button>
             )}
             {task.status !== "sending" && (
@@ -271,12 +276,14 @@ export function AsyncQuestions({
                     setError(
                       error instanceof Error
                         ? error.message
-                        : "取消失败，请重试。",
+                        : t("取消失败，请重试。"),
                     );
                   }
                 }}
               >
-                {task.status === "uncertain" ? "移除待确认回答" : "取消待发送"}
+                {task.status === "uncertain"
+                  ? t("移除待确认回答")
+                  : t("取消待发送")}
               </Button>
             )}
             {task.status === "queued" &&
@@ -290,12 +297,12 @@ export function AsyncQuestions({
                       setError(
                         error instanceof Error
                           ? error.message
-                          : "暂时无法继续发送。",
+                          : t("暂时无法继续发送。"),
                       );
                     }
                   }}
                 >
-                  继续发送
+                  {t("继续发送")}
                 </Button>
               )}
           </div>
@@ -303,28 +310,30 @@ export function AsyncQuestions({
       ) : confirmed || ignored ? (
         <>
           <p className="text-muted">
-            此问题已回答或已忽略，可在会话中继续补充。
+            {t("此问题已回答或已忽略，可在会话中继续补充。")}
           </p>
         </>
       ) : !pending ? (
         <p role="status" className="text-muted">
-          正在核实问题状态，请等待会话记录加载。
+          {t("正在核实问题状态，请等待会话记录加载。")}
         </p>
       ) : (
         <>
           {occupied && (
             <p className="mb-2 text-muted">
-              此会话由其他客户端控制，提交后将保留回答，取得写入权限后自动发送。
+              {t(
+                "此会话由其他客户端控制，提交后将保留回答，取得写入权限后自动发送。",
+              )}
             </p>
           )}
           {blocked && (
             <p className="mb-2 text-muted">
-              提交后将保留回答，待当前确认请求处理完毕后发送。
+              {t("提交后将保留回答，待当前确认请求处理完毕后发送。")}
             </p>
           )}
           {connection.status !== "connected" && (
             <p className="mb-2 text-muted">
-              连接已断开，仍可提交并保留回答，重连后请检查并继续发送。
+              {t("连接已断开，仍可提交并保留回答，重连后请检查并继续发送。")}
             </p>
           )}
           <div className="flex items-center gap-2">
@@ -335,7 +344,7 @@ export function AsyncQuestions({
                 !item.questions?.every((_, index) => answer(index).trim())
               }
             >
-              {sending ? "正在保存…" : "提交回答"}
+              {sending ? t("正在保存…") : t("提交回答")}
             </Button>
             <Button
               type="button"
@@ -345,11 +354,13 @@ export function AsyncQuestions({
                 runtime.questionDismissals.ignore(threadId, item.id)
               }
             >
-              忽略
+              {t("忽略")}
             </Button>
           </div>
           <p className="mt-2 text-muted">
-            可忽略此问题；提交的回答会作为会话消息发送，暂时无法发送时会保留。
+            {t(
+              "可忽略此问题；提交的回答会作为会话消息发送，暂时无法发送时会保留。",
+            )}
           </p>
         </>
       )}
@@ -358,6 +369,7 @@ export function AsyncQuestions({
 }
 
 export function AsyncQuestionPanel({ thread }: { thread: Thread }) {
+  useTranslation();
   const runtime = useRuntime();
   useStore(runtime.questionDismissals);
   useStore(runtime.queue);
@@ -381,7 +393,7 @@ export function AsyncQuestionPanel({ thread }: { thread: Thread }) {
   return (
     <ScrollArea
       role="region"
-      aria-label="待回答问题"
+      aria-label={t("待回答问题")}
       data-slot="async-question-panel"
       className="conversation-content max-h-[45vh] shrink-0"
     >
@@ -395,7 +407,7 @@ export function AsyncQuestionPanel({ thread }: { thread: Thread }) {
             )
           }
         >
-          恢复已忽略问题（{ignored.length}）
+          {t("恢复已忽略问题（{{value0}}）", { value0: ignored.length })}
         </Button>
       )}
       <QuestionPresence
@@ -410,14 +422,15 @@ export function AsyncQuestionPanel({ thread }: { thread: Thread }) {
 }
 
 function ArchivedQuestions({ items }: { items: QuestionMessage[] }) {
+  useTranslation();
   return (
     <ScrollArea
       role="region"
-      aria-label="已归档会话中的问题"
+      aria-label={t("已归档会话中的问题")}
       className="conversation-content max-h-[45vh] shrink-0 text-control"
     >
       <p className="mb-2 text-xs text-muted">
-        会话已归档，问题仅供查看。恢复会话后可回答。
+        {t("会话已归档，问题仅供查看。恢复会话后可回答。")}
       </p>
       {items.map((item) => (
         <dl

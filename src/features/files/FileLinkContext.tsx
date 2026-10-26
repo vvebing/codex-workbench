@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { Button } from "../../components/ui";
 import {
   createContext,
@@ -27,7 +28,13 @@ export function FileLinkProvider({
   threadId,
   children,
 }: FileLinkOrigin & { children: ReactNode }) {
-  const origin = useMemo(() => ({ cwd, threadId }), [cwd, threadId]);
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
+  const origin = useMemo(
+    () => (void i18nLocale, { cwd, threadId }),
+    [cwd, threadId, i18nLocale],
+  );
   return (
     <FileLinkContext.Provider value={origin}>
       {children}
@@ -41,6 +48,9 @@ export function FileAnchor({
   node: _node,
   ...props
 }: ComponentPropsWithoutRef<"a"> & ExtraProps) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const origin = useContext(FileLinkContext);
   const runtime = useRuntime();
   const [error, setError] = useState("");
@@ -84,7 +94,9 @@ export function FileAnchor({
         void runtime.files
           .open(target)
           .catch((cause: unknown) =>
-            setError(cause instanceof Error ? cause.message : "无法打开文件"),
+            setError(
+              cause instanceof Error ? cause.message : t("无法打开文件"),
+            ),
           );
       }}
     >
@@ -95,6 +107,8 @@ export function FileAnchor({
 
 /** Explicit current-file action next to the preserved historical patch. */
 export function OpenCurrentFile({ path }: { path: string }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
   const origin = useContext(FileLinkContext);
   const runtime = useRuntime();
   const [error, setError] = useState("");
@@ -108,11 +122,13 @@ export function OpenCurrentFile({ path }: { path: string }) {
         void runtime.files
           .open({ ...origin, path })
           .catch((cause: unknown) =>
-            setError(cause instanceof Error ? cause.message : "无法打开文件"),
+            setError(
+              cause instanceof Error ? cause.message : t("无法打开文件"),
+            ),
           )
       }
     >
-      {error || "打开当前文件"}
+      {error || t("打开当前文件")}
     </Button>
   );
 }

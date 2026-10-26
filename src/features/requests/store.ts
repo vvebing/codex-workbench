@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import {
   permissionSubset,
   validFormContent,
@@ -229,7 +230,7 @@ export class RequestsStore extends Store<RequestsState> {
     if (!request || !validApprovalResponse(request, result)) {
       this.update({
         ...this.state,
-        error: "回答不完整或不符合当前请求，请检查后重试。",
+        error: t("回答不完整或不符合当前请求，请检查后重试。"),
       });
       return false;
     }
@@ -263,7 +264,7 @@ export class RequestsStore extends Store<RequestsState> {
                 answers: request.params.questions.map((question) => ({
                   question: question.question,
                   answer: question.isSecret
-                    ? "（私密回答已隐藏）"
+                    ? t("（私密回答已隐藏）")
                     : answers[question.id].answers.join("\n"),
                 })),
               },

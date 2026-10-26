@@ -1,3 +1,4 @@
+import { getLocale, t } from "../../lib/i18n";
 import type { Thread } from "../../generated/v2/Thread";
 import type { Environment } from "../connection/environments";
 import type { SessionsState } from "../sessions/state";
@@ -105,15 +106,15 @@ export function navigationThreads(
         running,
         initializing:
           source.sessions.openingId === thread.id
-            ? "正在打开"
+            ? t("正在打开")
             : !source.connected
               ? null
               : !running && delivery === "creating"
-                ? "正在创建会话"
+                ? t("正在创建会话")
                 : source.sessions.threadAccess[thread.id] === "activating"
-                  ? "正在初始化"
+                  ? t("正在初始化")
                   : !running && delivery === "sending"
-                    ? "正在发送"
+                    ? t("正在发送")
                     : null,
         unread: !!source.sessions.unreadCompleted[thread.id],
         visited:
@@ -169,26 +170,27 @@ export function navigationProjects(
       b.latestActivityAt - a.latestActivityAt ||
       a.source.environment.name.localeCompare(
         b.source.environment.name,
-        "zh-CN",
+        getLocale(),
       ) ||
-      a.name.localeCompare(b.name, "zh-CN") ||
+      a.name.localeCompare(b.name, getLocale()) ||
       a.key.localeCompare(b.key),
   );
 }
 export function threadStatus(item: NavigationThread) {
-  if (!item.source.connected && item.running) return "状态待同步";
+  if (!item.source.connected && item.running) return t("状态待同步");
   if (
     !item.waiting &&
     item.source.tasks.some(
       (task) =>
         task.threadId === item.thread.id &&
         task.category === "失败或待核实" &&
-        task.title.includes("待核实"),
+        task.uncertain,
     )
   )
-    return "待核实";
+    return t("待核实");
   return (
-    item.waiting || (item.failed ? "执行失败" : item.running ? "运行中" : "")
+    (item.waiting ? t(item.waiting) : "") ||
+    (item.failed ? t("执行失败") : item.running ? t("运行中") : "")
   );
 }
 export function recentDateLabel(timestamp: number, now = new Date()) {
@@ -208,6 +210,6 @@ export function recentDateLabel(timestamp: number, now = new Date()) {
     now.getMonth(),
     now.getDate() - 1,
   ).getTime();
-  return day === today ? "今天" : day === yesterday ? "昨天" : "更早";
+  return day === today ? t("今天") : day === yesterday ? t("昨天") : t("更早");
 }
 export { navigationEnvironmentKey };

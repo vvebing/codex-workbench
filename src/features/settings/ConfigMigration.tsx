@@ -1,3 +1,4 @@
+import { t, useLocale, getLocale } from "../../lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../../components/hooks";
 import { Button } from "../../components/ui";
@@ -12,6 +13,7 @@ export function ConfigMigration({
   connection: ConnectionStore;
   cwd?: string;
 }) {
+  useLocale();
   const session = useStore(connection);
   const store = useMemo(
     () => new ConfigMigrationStore(connection, cwd, session.epoch),
@@ -24,11 +26,14 @@ export function ConfigMigration({
   return (
     <div className="space-y-6 text-xs">
       <SettingsSection
-        title="外部配置迁移"
-        description="先探测可迁移内容，再明确选择导入项。导入会修改当前环境的配置或文件。"
+        title={t("外部配置迁移")}
+        description={t(
+          "先探测可迁移内容，再明确选择导入项。导入会修改当前环境的配置或文件。",
+        )}
       >
         <p className="break-all text-muted">
-          项目目录：{cwd ?? "未选择（仅在开启下方选项后探测用户目录）"}
+          {t("项目目录：")}
+          {cwd ?? t("未选择（仅在开启下方选项后探测用户目录）")}
         </p>
         <label className="flex items-center gap-2">
           <input
@@ -37,7 +42,7 @@ export function ConfigMigration({
             disabled={state.detecting || state.importing}
             onChange={(event) => setIncludeHome(event.target.checked)}
           />
-          包含用户主目录
+          {t("包含用户主目录")}
         </label>
         <Button
           size="sm"
@@ -50,7 +55,7 @@ export function ConfigMigration({
           }
           onClick={() => void store.detect(includeHome)}
         >
-          {state.detecting ? "正在探测…" : "探测可迁移内容"}
+          {state.detecting ? t("正在探测…") : t("探测可迁移内容")}
         </Button>
         {state.detectError && (
           <p role="alert" className="text-danger">
@@ -59,7 +64,7 @@ export function ConfigMigration({
         )}
         {state.detected && (
           <div className="space-y-3">
-            {!state.detected.items.length && <p>未发现可迁移内容。</p>}
+            {!state.detected.items.length && <p>{t("未发现可迁移内容。")}</p>}
             {state.detected.items.map((item, index) => (
               <label
                 key={index}
@@ -75,7 +80,7 @@ export function ConfigMigration({
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block">
-                    {item.itemType} · {item.cwd || "用户主目录"}
+                    {item.itemType} · {item.cwd || t("用户主目录")}
                   </span>
                   <span className="block text-muted">{item.description}</span>
                 </span>
@@ -83,8 +88,9 @@ export function ConfigMigration({
             ))}
             {state.detected.connectors.map((connector, index) => (
               <p key={index} className="text-muted">
-                发现连接器：{connector.name} · {connector.sessionCount}{" "}
-                个会话（仅显示探测结果）
+                {t("发现连接器：")}
+                {connector.name} · {connector.sessionCount}{" "}
+                {t("个会话（仅显示探测结果）")}
               </p>
             ))}
             <Button
@@ -94,7 +100,7 @@ export function ConfigMigration({
               }
               onClick={() => void store.importSelected()}
             >
-              导入所选 {state.selected.length} 项
+              {t("导入所选（{{count}}）", { count: state.selected.length })}
             </Button>
           </div>
         )}
@@ -106,18 +112,20 @@ export function ConfigMigration({
         {(state.importing || state.completed) && (
           <div role="status" className="space-y-2">
             <p>
-              {state.completed ? "导入已完成" : "正在导入…"}
+              {state.completed ? t("导入已完成") : t("正在导入…")}
               {state.importId && ` · ${state.importId}`}
             </p>
             {state.results.map((result) => (
               <div key={result.itemType}>
                 <p>
-                  {result.itemType}：成功 {result.successes.length}，失败{" "}
-                  {result.failures.length}
+                  {result.itemType}
+                  {t("：成功")}
+                  {result.successes.length}
+                  {t("，失败")} {result.failures.length}
                 </p>
                 {result.failures.map((failure, index) => (
                   <p key={index} className="text-danger">
-                    {failure.cwd ?? "用户目录"} · {failure.failureStage}:{" "}
+                    {failure.cwd ?? t("用户目录")} · {failure.failureStage}:{" "}
                     {failure.message}
                   </p>
                 ))}
@@ -127,7 +135,7 @@ export function ConfigMigration({
         )}
       </SettingsSection>
       <SettingsSection
-        title="迁移历史"
+        title={t("迁移历史")}
         trailing={
           <Button
             size="sm"
@@ -135,7 +143,7 @@ export function ConfigMigration({
             disabled={disconnected || state.historyLoading}
             onClick={() => void store.readHistories()}
           >
-            {state.historyLoading ? "加载中…" : "刷新历史"}
+            {state.historyLoading ? t("加载中…") : t("刷新历史")}
           </Button>
         }
       >
@@ -145,7 +153,7 @@ export function ConfigMigration({
           </p>
         )}
         {state.histories && !state.histories.data.length && (
-          <p>暂无迁移历史。</p>
+          <p>{t("暂无迁移历史。")}</p>
         )}
         {state.histories?.data.map((history) => (
           <div
@@ -153,12 +161,15 @@ export function ConfigMigration({
             className="space-y-1 rounded-lg border border-border p-3"
           >
             <p>
-              {history.providerId ?? "外部配置"} ·{" "}
-              {new Date(Number(history.completedAtMs)).toLocaleString()}
+              {history.providerId ?? t("外部配置")} ·{" "}
+              {new Date(Number(history.completedAtMs)).toLocaleString(
+                getLocale(),
+              )}
             </p>
             <p>
-              {history.importId} · 成功 {history.successes.length}，失败{" "}
-              {history.failures.length}
+              {history.importId} {t("· 成功")}
+              {history.successes.length}
+              {t("，失败")} {history.failures.length}
             </p>
             {history.failures.map((failure, index) => (
               <p key={index} className="text-danger">

@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { pendingAsyncQuestions } from "../conversation/async-questions";
 import { requestThreadId } from "../requests/store";
 import { isSubagentThread, shouldNotifyThread } from "../sessions/state";
@@ -19,6 +20,9 @@ function CompletionNotice({
   threadId: string;
   environment: Environment;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const runtime = useRuntime();
   const sessions = useStore(runtime.sessions);
   const title = titleOf(sessions.threads[threadId]);
@@ -47,7 +51,7 @@ function CompletionNotice({
         <span>
           <strong className="flex items-center gap-1.5 text-xs">
             <EnvironmentIcon environment={environment} focusable={false} />
-            会话已完成
+            {t("会话已完成")}
           </strong>
           <small className="mt-1 block max-w-[225px] truncate text-xs text-muted">
             {title}
@@ -55,7 +59,7 @@ function CompletionNotice({
         </span>
       </button>
       <IconButton
-        label="关闭完成通知"
+        label={t("关闭完成通知")}
         onClick={() => runtime.sessions.dismissCompletion(id)}
       >
         <X size={14} />
@@ -68,49 +72,61 @@ function EnvironmentNotifications({
 }: {
   environment: Environment;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const runtime = useRuntime();
   const sessions = useStore(runtime.sessions);
   const requests = useStore(runtime.requests);
   const ignoredQuestions = useStore(runtime.questionDismissals);
   const answerQueues = useStore(runtime.queue).threads;
   const actionRequests = useMemo(
-    () => [
-      ...requests.pending.flatMap((request) => {
-        const threadId = requestThreadId(request);
-        return threadId
-          ? [
-              {
-                key: JSON.stringify(request.id),
-                threadId,
-                title: requestNoticeTitle(request),
-              },
-            ]
-          : [];
-      }),
-      ...Object.values(sessions.threads).flatMap((thread) =>
-        pendingAsyncQuestions(thread)
-          .filter(
-            (item) =>
-              !ignoredQuestions[JSON.stringify([thread.id, item.id])] &&
-              !answerQueues[thread.id]?.sentAnswers?.[item.id] &&
-              !requests.pending.some(
-                (request) =>
-                  requestThreadId(request) === thread.id &&
-                  "itemId" in request.params &&
-                  request.params.itemId === item.id,
-              ) &&
-              !answerQueues[thread.id]?.items.some(
-                (task) => task.question?.itemId === item.id,
-              ),
-          )
-          .map((item) => ({
-            key: JSON.stringify(["async-question", thread.id, item.id]),
-            threadId: thread.id,
-            title: "需要你回答问题",
-          })),
-      ),
+    () => (
+      void i18nLocale,
+      [
+        ...requests.pending.flatMap((request) => {
+          const threadId = requestThreadId(request);
+          return threadId
+            ? [
+                {
+                  key: JSON.stringify(request.id),
+                  threadId,
+                  title: requestNoticeTitle(request),
+                },
+              ]
+            : [];
+        }),
+        ...Object.values(sessions.threads).flatMap((thread) =>
+          pendingAsyncQuestions(thread)
+            .filter(
+              (item) =>
+                !ignoredQuestions[JSON.stringify([thread.id, item.id])] &&
+                !answerQueues[thread.id]?.sentAnswers?.[item.id] &&
+                !requests.pending.some(
+                  (request) =>
+                    requestThreadId(request) === thread.id &&
+                    "itemId" in request.params &&
+                    request.params.itemId === item.id,
+                ) &&
+                !answerQueues[thread.id]?.items.some(
+                  (task) => task.question?.itemId === item.id,
+                ),
+            )
+            .map((item) => ({
+              key: JSON.stringify(["async-question", thread.id, item.id]),
+              threadId: thread.id,
+              title: t("需要你回答问题"),
+            })),
+        ),
+      ]
+    ),
+    [
+      requests.pending,
+      sessions.threads,
+      ignoredQuestions,
+      answerQueues,
+      i18nLocale,
     ],
-    [requests.pending, sessions.threads, ignoredQuestions, answerQueues],
   );
   const [dismissedRequests, setDismissedRequests] = useState<Set<string>>(
     new Set(),
@@ -184,7 +200,7 @@ function EnvironmentNotifications({
       )
         continue;
       try {
-        const notification = new Notification("会话已完成", {
+        const notification = new Notification(t("会话已完成"), {
           icon: productIconUrl,
           body: titleOf(sessions.threads[notice.threadId]),
           tag: `${environment.id}:${notice.threadId}`,
@@ -293,6 +309,8 @@ function EnvironmentNotifications({
 }
 
 export function CompletionNotifications() {
+  const i18nLocale = useLocale();
+  void i18nLocale;
   const state = useStore(environments);
   return (
     <div className="fixed top-[68px] right-4 z-70 w-[min(320px,calc(100vw-32px))]">
@@ -323,6 +341,8 @@ function ActionNotice({
   environment: Environment;
   onDismiss: () => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
   const runtime = useRuntime();
   const sessions = useStore(runtime.sessions);
   return (
@@ -349,11 +369,11 @@ function ActionNotice({
             {titleOf(sessions.threads[threadId])}
           </small>
           <small className="mt-1 block text-meta text-muted">
-            点击前往处理
+            {t("点击前往处理")}
           </small>
         </span>
       </button>
-      <IconButton label="关闭待处理通知" onClick={onDismiss}>
+      <IconButton label={t("关闭待处理通知")} onClick={onDismiss}>
         <X size={14} />
       </IconButton>
     </div>

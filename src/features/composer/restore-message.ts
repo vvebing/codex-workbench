@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { UserInput } from "../../generated/v2/UserInput";
 import type { JSONContent } from "@tiptap/core";
 import type { Draft } from "./drafts";
@@ -68,7 +69,7 @@ export function restoredMessage(
       ? [
           {
             id: crypto.randomUUID(),
-            name: `原消息图片 ${index + 1}`,
+            name: t("原消息图片 {{value0}}", { value0: index + 1 }),
             url: part.url,
           },
         ]

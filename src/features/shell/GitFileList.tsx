@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { Fragment, useMemo, type ReactNode } from "react";
 import { ChevronRight, Folder } from "lucide-react";
 import type { GitFile } from "./git-status";
@@ -55,7 +56,13 @@ export function GitFileList({
   directoryKey: string;
   onDirectoryChange: (key: string, open: boolean) => void;
 }) {
-  const tree = useMemo(() => buildTree(files), [files]);
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
+  const tree = useMemo(
+    () => (void i18nLocale, buildTree(files)),
+    [files, i18nLocale],
+  );
   const renderDirectory = (directory: Directory): ReactNode => (
     <ul>
       {[...directory.directories.values()]
@@ -73,7 +80,10 @@ export function GitFileList({
                   onDirectoryChange(key, !(directoryOpen[key] ?? true));
                 }}
                 title={child.path}
-                aria-label={`目录 ${child.path}，${child.descendants.length} 个更改文件`}
+                aria-label={t("目录 {{value0}}，{{value1}} 个更改文件", {
+                  value0: child.path,
+                  value1: child.descendants.length,
+                })}
               >
                 <ChevronRight size={12} className="git-folder-chevron" />
                 <Folder size={14} className="text-muted" />

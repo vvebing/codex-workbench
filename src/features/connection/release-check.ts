@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { Store } from "../../lib/store";
 import { isVersion, parseStableRelease } from "../../../server/codex-version";
 
@@ -22,16 +23,18 @@ export async function readLatestRelease(
       },
     );
     if (!upstream.ok)
-      throw new Error("无法访问官方发布服务，请检查网络或稍后重试。");
+      throw new Error(t("无法访问官方发布服务，请检查网络或稍后重试。"));
     return parseStableRelease(await upstream.json()).version;
   }
   if (!response.ok)
     throw new Error(
-      `更新服务暂时不可用（HTTP ${response.status}），请稍后重试。`,
+      t("更新服务暂时不可用（HTTP {{value0}}），请稍后重试。", {
+        value0: response.status,
+      }),
     );
   const data = (await response.json()) as { version?: unknown } | null;
   if (!isVersion(data?.version) || data.version.includes("-"))
-    throw new Error("更新接口返回了无效的版本信息。");
+    throw new Error(t("更新接口返回了无效的版本信息。"));
   return data.version;
 }
 interface ReleaseState {
@@ -65,7 +68,7 @@ export class ReleaseCheckStore extends Store<ReleaseState> {
           error:
             error instanceof Error
               ? error.message
-              : "无法检查更新，请稍后重试。",
+              : t("无法检查更新，请稍后重试。"),
         });
       })
       .finally(() => {

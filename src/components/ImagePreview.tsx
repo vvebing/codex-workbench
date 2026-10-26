@@ -1,3 +1,4 @@
+import { t, useLocale } from "../lib/i18n";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Dialog } from "radix-ui";
 import { ImageOff, X, ZoomIn } from "lucide-react";
@@ -15,6 +16,7 @@ export function ImagePreview({
   onClose: () => void;
   triggerRef: RefObject<HTMLElement | null>;
 }) {
+  useLocale();
   return (
     <Dialog.Root
       open={!!image}
@@ -37,7 +39,7 @@ export function ImagePreview({
               {image?.name}
             </Dialog.Title>
             <Dialog.Close asChild>
-              <IconButton label="关闭图片预览">
+              <IconButton label={t("关闭图片预览")}>
                 <X size={18} aria-hidden="true" />
               </IconButton>
             </Dialog.Close>
@@ -62,6 +64,7 @@ export function ConversationImage({
   src: string;
   name: string;
 }) {
+  useLocale();
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -78,8 +81,8 @@ export function ConversationImage({
       <button
         ref={trigger}
         type="button"
-        aria-label={`预览图片 ${name}`}
-        title={`预览图片 ${name}`}
+        aria-label={t("预览图片 {{v0}}", { v0: name })}
+        title={t("预览图片 {{v0}}", { v0: name })}
         disabled={!valid}
         onClick={() => setOpen(true)}
         className="group/image relative inline-flex max-w-full cursor-zoom-in items-center justify-center overflow-hidden rounded-lg border border-border bg-elevated p-1 hover:border-accent focus-visible:outline-accent"
@@ -100,7 +103,7 @@ export function ConversationImage({
             className="flex h-24 w-32 flex-col items-center justify-center gap-2 rounded bg-surface text-xs text-muted"
           >
             <ImageOff size={20} aria-hidden="true" />
-            图片无法加载
+            {t("图片无法加载")}
           </span>
         )}
         {valid && !failed && (

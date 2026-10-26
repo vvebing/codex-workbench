@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { AccountAccess } from "./AccountAccess";
 import { AppServerVersion } from "./AppServerVersion";
 import { useEffect, useRef, useState } from "react";
@@ -57,7 +58,7 @@ export function useConnectionSettings({
     setKind(active.kind);
     setUrl(active.url);
     setError("");
-  }, [open, active.id, active.name, active.kind, active.url]);
+  }, [open, active]);
   const clearSensitive = () => {
     setToken("");
     setError("");
@@ -65,7 +66,7 @@ export function useConnectionSettings({
   const add = () => {
     if (lock.current) return;
     setId(crypto.randomUUID());
-    setName("开发机");
+    setName(t("开发机"));
     setKind("remote");
     setUrl("ws://127.0.0.1:4500");
     clearSensitive();
@@ -92,9 +93,9 @@ export function useConnectionSettings({
       address.password ||
       address.hash
     )
-      throw Error("请输入 ws:// 或 wss:// 地址，不要包含账号、密码或片段。");
-    if (/[\r\n]/.test(token)) throw Error("Token 不能包含换行。");
-    if (!name.trim()) throw Error("请填写环境名称。");
+      throw Error(t("请输入 ws:// 或 wss:// 地址，不要包含账号、密码或片段。"));
+    if (/[\r\n]/.test(token)) throw Error(t("Token 不能包含换行。"));
+    if (!name.trim()) throw Error(t("请填写环境名称。"));
     return environments.save(
       { id, name: name.trim(), kind, url: address.toString() },
       false,
@@ -150,6 +151,7 @@ export function ConnectionSettings({
 }: {
   settings: ReturnType<typeof useConnectionSettings>;
 }) {
+  useLocale();
   const Icon = settings.kind === "local" ? Monitor : Server;
   return (
     <div className="space-y-6">
@@ -157,16 +159,20 @@ export function ConnectionSettings({
         title={
           <span className="flex items-center gap-2">
             <Icon size={16} />
-            {settings.selected ? "连接信息" : "添加开发机连接"}
+            {settings.selected ? t("连接信息") : t("添加开发机连接")}
           </span>
         }
         trailing={
           <span className="shrink-0 text-xs text-muted">
             {settings.connected
-              ? `已连接${settings.serverVersion ? ` · ${settings.serverVersion}` : ""}`
+              ? t("已连接{{v0}}", {
+                  v0: settings.serverVersion
+                    ? ` · ${settings.serverVersion}`
+                    : "",
+                })
               : settings.connecting
-                ? "正在连接…"
-                : "未连接"}
+                ? t("正在连接…")
+                : t("未连接")}
           </span>
         }
       >
@@ -184,7 +190,7 @@ export function ConnectionSettings({
           }}
         >
           <div className="grid gap-4">
-            <SettingsField id="environment-name" label="环境名称">
+            <SettingsField id="environment-name" label={t("环境名称")}>
               <input
                 id="environment-name"
                 className={settingsInputClass}
@@ -195,7 +201,7 @@ export function ConnectionSettings({
                 disabled={settings.busy}
               />
             </SettingsField>
-            <SettingsField id="app-server-url" label="App-server 地址">
+            <SettingsField id="app-server-url" label={t("App-server 地址")}>
               <input
                 id="app-server-url"
                 className={settingsInputClass}
@@ -217,7 +223,7 @@ export function ConnectionSettings({
                 <>
                   Bearer Token{" "}
                   <span className="font-normal text-muted">
-                    （可选，仅在当前表单内存中）
+                    {t("（可选，仅在当前表单内存中）")}
                   </span>
                 </>
               }
@@ -236,9 +242,11 @@ export function ConnectionSettings({
           <p className="text-xs leading-relaxed text-muted">
             {settings.kind === "local"
               ? import.meta.env.DEV
-                ? "请先在本机终端手动启动 app-server，再填写监听地址。"
-                : "网页服务会自动启动或复用本机 app-server；若连接失败，请查看终端输出，或在本机终端手动启动后填写监听地址。"
-              : "先在远端启动 app-server，再填写 SSH 端口转发后的本机地址。"}
+                ? t("请先在本机终端手动启动 app-server，再填写监听地址。")
+                : t(
+                    "网页服务会自动启动或复用本机 app-server；若连接失败，请查看终端输出，或在本机终端手动启动后填写监听地址。",
+                  )
+              : t("先在远端启动 app-server，再填写 SSH 端口转发后的本机地址。")}
           </p>
           {settings.error && <ErrorNotice>{settings.error}</ErrorNotice>}
           <SettingsActions>
@@ -251,7 +259,7 @@ export function ConnectionSettings({
                 onClick={settings.disconnect}
               >
                 <Unplug size={15} />
-                断开连接
+                {t("断开连接")}
               </Button>
             )}
             <Button
@@ -261,7 +269,7 @@ export function ConnectionSettings({
               disabled={settings.busy}
               onClick={() => void settings.save()}
             >
-              保存配置
+              {t("保存配置")}
             </Button>
             <Button
               variant="primary"
@@ -275,10 +283,10 @@ export function ConnectionSettings({
                 <Plug size={15} />
               )}
               {settings.busy
-                ? "正在连接…"
+                ? t("正在连接…")
                 : settings.connected
-                  ? "使用此连接"
-                  : "连接"}
+                  ? t("使用此连接")
+                  : t("连接")}
             </Button>
           </SettingsActions>
         </form>
@@ -290,9 +298,9 @@ export function ConnectionSettings({
         />
       )}
       {settings.kind === "local" && (
-        <SettingsSection title="本机启动指引">
+        <SettingsSection title={t("本机启动指引")}>
           <p className="text-xs leading-relaxed text-muted">
-            在终端执行：
+            {t("在终端执行：")}
             <code className="mt-2 block whitespace-normal rounded-lg bg-surface p-3 [overflow-wrap:anywhere]">
               codex app-server --listen ws://127.0.0.1:4501
             </code>
@@ -302,7 +310,7 @@ export function ConnectionSettings({
       {settings.selected && settings.id !== "local" && (
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4">
           <p className="text-xs leading-relaxed text-muted">
-            移除此环境的配置，会断开对应连接。
+            {t("移除此环境的配置，会断开对应连接。")}
           </p>
           <Button
             type="button"
@@ -312,7 +320,7 @@ export function ConnectionSettings({
             onClick={() => void settings.remove()}
           >
             <Trash2 size={14} />
-            移除环境
+            {t("移除环境")}
           </Button>
         </div>
       )}

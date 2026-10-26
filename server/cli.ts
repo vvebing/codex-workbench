@@ -29,15 +29,15 @@ export function parseCli(args: string[], envPort = process.env.PORT) {
   } as const;
 }
 
-export const HELP = `Codex Workbench — 本机 Codex 工作台
+export const HELP = `Codex Workbench — Local workspace for Codex
 
 Usage: codex-workbench [options]
 
-  -p, --port <port>   网页端口（默认：PORT 环境变量或 5180）
-  --no-app-server    不自动启动或复用本机 app-server
-  -h, --help         显示帮助
-  -v, --version      显示版本
+  -p, --port <port>   Web port (default: PORT environment variable or 5180)
+  --no-app-server    Do not automatically start or reuse a local app-server
+  -h, --help         Show help
+  -v, --version      Show version
 
 Example: npx codex-workbench --port 5181
-服务仅监听 127.0.0.1。网页端口不改变 app-server 的 4501 端口。
+Listens only on 127.0.0.1. The web port does not change app-server port 4501.
 `;

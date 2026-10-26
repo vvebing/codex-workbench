@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { Thread } from "../../generated/v2/Thread";
 export function promptEntries(turns: Thread["turns"]) {
   return turns.flatMap((turn, turnIndex) =>
@@ -10,20 +11,24 @@ export function promptEntries(turns: Thread["turns"]) {
               case "text":
                 return part.text;
               case "localImage":
-                return `图片：${part.path.split(/[\\/]/).at(-1)}`;
+                return t("图片：{{value0}}", {
+                  value0: part.path.split(/[\\/]/).at(-1),
+                });
               case "image":
-                return "图片附件";
+                return t("图片附件");
               case "localAudio":
-                return `音频：${part.path.split(/[\\/]/).at(-1)}`;
+                return t("音频：{{value0}}", {
+                  value0: part.path.split(/[\\/]/).at(-1),
+                });
               case "audio":
-                return "音频附件";
+                return t("音频附件");
               case "skill":
               case "mention":
                 return part.name;
             }
           })
           .join("\n")
-          .trim() || "空白消息";
+          .trim() || t("空白消息");
       return [
         {
           id: item.id,

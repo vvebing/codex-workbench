@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { CodexClient } from "../../lib/rpc";
 import type { CommandExecParams } from "../../generated/v2/CommandExecParams";
 import type { CommandExecResponse } from "../../generated/v2/CommandExecResponse";
@@ -23,7 +24,8 @@ export interface WorkspaceGitStatus extends GitStatus {
 
 /** Parse paths from NUL records so whitespace and rename sources remain intact. */
 export function parseWorkspaceGitStatus(output: string): WorkspaceGitStatus {
-  if (!output.endsWith("\0")) throw new Error("Incomplete Git status output.");
+  if (!output.endsWith("\0"))
+    throw new Error(t("Incomplete Git status output."));
   const records = output.slice(0, -1).split("\0");
   let branch: string | undefined;
   const files: GitFile[] = [];
@@ -41,7 +43,7 @@ export function parseWorkspaceGitStatus(output: string): WorkspaceGitStatus {
     if (record.startsWith("# branch.head ")) {
       const head = record.slice("# branch.head ".length);
       if (!head || /[\s\0]/.test(head))
-        throw new Error("Invalid Git branch header.");
+        throw new Error(t("Invalid Git branch header."));
       branch = head === "(detached)" ? "HEAD" : head;
     } else if (record.startsWith("# ")) {
       continue; // Porcelain v2 allows additional headers.
@@ -52,7 +54,8 @@ export function parseWorkspaceGitStatus(output: string): WorkspaceGitStatus {
         groups: groupsOf(record),
       });
     } else if (record.startsWith("2 ") && pathOf(record, 9)) {
-      if (!records[++index]) throw new Error("Incomplete Git rename record.");
+      if (!records[++index])
+        throw new Error(t("Incomplete Git rename record."));
       files.push({
         path: pathOf(record, 9),
         originalPath: records[index],
@@ -75,10 +78,10 @@ export function parseWorkspaceGitStatus(output: string): WorkspaceGitStatus {
     } else if (record.startsWith("! ") && record.length > 2) {
       continue;
     } else {
-      throw new Error("Invalid Git status record.");
+      throw new Error(t("Invalid Git status record."));
     }
   }
-  if (!branch) throw new Error("Git branch header is unavailable.");
+  if (!branch) throw new Error(t("Git branch header is unavailable."));
   return { branch, changedFiles: files.length, files };
 }
 
@@ -86,7 +89,8 @@ function statusesOf(
   record: string,
 ): Pick<GitFile, "indexStatus" | "worktreeStatus"> {
   const xy = record.split(" ")[1];
-  if (!/^[.MADRCTU]{2}$/.test(xy)) throw new Error("Invalid Git file status.");
+  if (!/^[.MADRCTU]{2}$/.test(xy))
+    throw new Error(t("Invalid Git file status."));
   return {
     indexStatus: xy[0] as GitFileStatus,
     worktreeStatus: xy[1] as GitFileStatus,
@@ -137,7 +141,7 @@ export function readGitStatus(
       gitStatusCommand(cwd),
     );
     if (!current()) return null;
-    if (result.exitCode !== 0) throw new Error("Git status unavailable.");
+    if (result.exitCode !== 0) throw new Error(t("Git status unavailable."));
     return parseGitStatus(result.stdout);
   });
   commands.set(

@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import type { ProjectTaskConfig, ProjectsStore } from "./store";
 import {
@@ -32,6 +33,9 @@ export default function ProjectWorkspace({
   sessionTools,
   onCreateTask,
 }: ProjectWorkspaceProps) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [switchOpen, setSwitchOpen] = useState(false);
   const [directory, setDirectory] = useState("");
@@ -48,18 +52,20 @@ export default function ProjectWorkspace({
   const preview = project && previewAddress(project.previewUrl);
   return (
     <section
-      aria-label="工作区"
+      aria-label={t("工作区")}
       className="flex min-w-0 flex-col gap-4 text-sm [overflow-wrap:anywhere] [&_label]:flex [&_label]:min-w-0 [&_label]:flex-col [&_label]:gap-2 [&_label]:font-medium"
     >
       <div className="space-y-2">
-        <h2 className="font-semibold">当前项目</h2>
+        <h2 className="font-semibold">{t("当前项目")}</h2>
         {cwd ? (
           <p className="text-xs text-muted">
             <code>{cwd}</code>
           </p>
         ) : (
           <p className="text-muted">
-            当前会话未设置项目目录。选择目录并新建会话后，即可配置和运行项目命令。
+            {t(
+              "当前会话未设置项目目录。选择目录并新建会话后，即可配置和运行项目命令。",
+            )}
           </p>
         )}
         <Button
@@ -68,15 +74,17 @@ export default function ProjectWorkspace({
             setSwitchOpen(true);
           }}
         >
-          切换项目／新建会话
+          {t("切换项目／新建会话")}
         </Button>
       </div>
       {state.warning && <ErrorNotice>{state.warning}</ErrorNotice>}
       {project && (
         <>
-          <h3 className="font-medium">常用命令与预览</h3>
+          <h3 className="font-medium">{t("常用命令与预览")}</h3>
           <p className="text-xs text-muted">
-            命令仅在点击运行后于当前会话目录执行，通过服务端 /bin/sh 运行。
+            {t(
+              "命令仅在点击运行后于当前会话目录执行，通过服务端 /bin/sh 运行。",
+            )}
           </p>
           {(["test", "build", "dev"] as const).map((kind) => (
             <div
@@ -87,7 +95,7 @@ export default function ProjectWorkspace({
                 {kind}
                 <input
                   className={settingsInputClass}
-                  aria-label={`${kind} 命令`}
+                  aria-label={t("{{value0}} 命令", { value0: kind })}
                   value={project.commands[kind]}
                   onChange={(event) =>
                     store.save({
@@ -104,15 +112,16 @@ export default function ProjectWorkspace({
                 disabled={!connected || busy || !project.commands[kind].trim()}
                 onClick={() => void store.run(kind, cwd)}
               >
-                运行 {kind}
+                {t("运行")}
+                {kind}
               </Button>
             </div>
           ))}
           <label>
-            显式预览地址
+            {t("显式预览地址")}
             <input
               className={settingsInputClass}
-              aria-label="预览地址"
+              aria-label={t("预览地址")}
               placeholder="http://localhost:3000"
               value={project.previewUrl}
               onChange={(event) =>
@@ -127,64 +136,71 @@ export default function ProjectWorkspace({
               target="_blank"
               rel="noreferrer"
             >
-              打开预览（浏览器访问地址，未验证服务就绪）
+              {t("打开预览（浏览器访问地址，未验证服务就绪）")}
             </a>
           )}
           {project.previewUrl && !preview && (
-            <ErrorNotice>请输入不含凭据的 http(s) 地址。</ErrorNotice>
+            <ErrorNotice>{t("请输入不含凭据的 http(s) 地址。")}</ErrorNotice>
           )}
         </>
       )}
       {visibleRuns.length > 0 && (
         <p className="text-xs text-muted">
-          断线或请求超时表示状态未知。开发命令最长运行 24 小时，其他命令最长 10
-          分钟；其他项目的活动命令也可在此停止或核实。
+          {t(
+            "断线或请求超时表示状态未知。开发命令最长运行 24 小时，其他命令最长 10 分钟；其他项目的活动命令也可在此停止或核实。",
+          )}
         </p>
       )}
       {visibleRuns.map((run) => (
         <article
           key={run.id}
           className="space-y-3 rounded-lg border border-border bg-elevated p-3"
-          aria-label="命令运行记录"
+          aria-label={t("命令运行记录")}
         >
           <p>
-            {run.cwd !== cwd && <strong className="block">其他项目运行</strong>}
+            {run.cwd !== cwd && (
+              <strong className="block">{t("其他项目运行")}</strong>
+            )}
             <code>{run.cwd}</code> · <code>{run.command}</code>
-            <span className="block text-xs text-muted">进程：{run.id}</span>
+            <span className="block text-xs text-muted">
+              {t("进程：")}
+              {run.id}
+            </span>
           </p>
           <p>
-            状态：
+            {t("状态：")}
             {
               {
-                running: "进行中",
-                stopping: "等待停止确认",
-                exited: "已退出",
-                unknown: "状态未知",
-                unsupported: "版本不支持",
+                running: t("进行中"),
+                stopping: t("等待停止确认"),
+                exited: t("已退出"),
+                unknown: t("状态未知"),
+                unsupported: t("版本不支持"),
               }[run.status]
             }
-            {run.exitCode !== undefined && ` · 退出码 ${run.exitCode}`}
+            {run.exitCode !== undefined &&
+              t(" · 退出码 {{value0}}", { value0: run.exitCode })}
           </p>
           {run.error && <ErrorNotice>{run.error}</ErrorNotice>}
           {run.status === "unknown" && (
             <Button onClick={() => store.acknowledgeUnknown(run.id)}>
-              已在外部核实进程，解除运行锁
+              {t("已在外部核实进程，解除运行锁")}
             </Button>
           )}
-          {run.truncated && <p>输出已截断，仅保留最近内容。</p>}
+          {run.truncated && <p>{t("输出已截断，仅保留最近内容。")}</p>}
           <ScrollArea className="max-h-80 rounded-lg border border-border bg-surface">
             <pre
               className="p-3 font-mono text-code leading-code whitespace-pre-wrap [overflow-wrap:anywhere]"
-              aria-label="命令输出"
+              aria-label={t("命令输出")}
             >
-              {run.output || "暂无输出"}
+              {run.output || t("暂无输出")}
             </pre>
           </ScrollArea>
           <Button
             disabled={!connected || run.status !== "running"}
             onClick={() => void store.stop(run.id)}
           >
-            停止
+            {t("停止")}
           </Button>
           {run.status === "running" && (
             <form
@@ -196,36 +212,40 @@ export default function ProjectWorkspace({
             >
               <input
                 className={settingsInputClass}
-                aria-label="命令标准输入"
+                aria-label={t("命令标准输入")}
                 value={stdin}
                 onChange={(event) => setStdin(event.target.value)}
               />
               <Button type="submit" disabled={!connected}>
-                发送输入
+                {t("发送输入")}
               </Button>
             </form>
           )}
         </article>
       ))}
       <section
-        aria-label="当前会话"
+        aria-label={t("当前会话")}
         className="space-y-3 border-t border-border pt-3"
       >
-        <h2 className="font-semibold">当前会话</h2>
+        <h2 className="font-semibold">{t("当前会话")}</h2>
         {sessionTools}
       </section>
       {project && (
         <details className="border-t border-border pt-3">
-          <summary className="cursor-pointer font-medium">项目默认设置</summary>
+          <summary className="cursor-pointer font-medium">
+            {t("项目默认设置")}
+          </summary>
           <div className="mt-3 space-y-3">
             <p className="text-xs text-muted">
-              项目说明和默认模型仅用于新建会话，不改变当前会话。配置按环境、服务地址和目录保存在浏览器。
+              {t(
+                "项目说明和默认模型仅用于新建会话，不改变当前会话。配置按环境、服务地址和目录保存在浏览器。",
+              )}
             </p>
             <label>
-              项目说明
+              {t("项目说明")}
               <textarea
                 className={`${settingsInputClass} min-h-24 resize-y`}
-                aria-label="项目说明"
+                aria-label={t("项目说明")}
                 value={project.description}
                 onChange={(event) =>
                   store.save({ ...project, description: event.target.value })
@@ -233,11 +253,11 @@ export default function ProjectWorkspace({
               />
             </label>
             <label>
-              默认模型
+              {t("默认模型")}
               <input
                 className={settingsInputClass}
-                aria-label="默认模型"
-                placeholder="留空使用新会话默认设置"
+                aria-label={t("默认模型")}
+                placeholder={t("留空使用新会话默认设置")}
                 value={project.model}
                 onChange={(event) =>
                   store.save({ ...project, model: event.target.value })
@@ -252,10 +272,12 @@ export default function ProjectWorkspace({
               }
               onClick={() => store.remove(cwd)}
             >
-              删除本地项目配置
+              {t("删除本地项目配置")}
             </Button>
             <p className="text-xs text-muted">
-              仅删除浏览器保存的配置，不删除目录。存在运行中或状态未知的命令时暂不可删除。
+              {t(
+                "仅删除浏览器保存的配置，不删除目录。存在运行中或状态未知的命令时暂不可删除。",
+              )}
             </p>
           </div>
         </details>
@@ -263,8 +285,8 @@ export default function ProjectWorkspace({
       <Modal
         open={switchOpen}
         onOpenChange={setSwitchOpen}
-        title="切换项目／新建会话"
-        description="选择已保存项目或填写服务端目录，继续后确认新建会话。"
+        title={t("切换项目／新建会话")}
+        description={t("选择已保存项目或填写服务端目录，继续后确认新建会话。")}
         className="text-sm"
       >
         <form
@@ -284,10 +306,10 @@ export default function ProjectWorkspace({
             });
           }}
         >
-          <SettingsField id="saved-project" label="已保存项目">
+          <SettingsField id="saved-project" label={t("已保存项目")}>
             <SelectField
               id="saved-project"
-              label="已保存项目"
+              label={t("已保存项目")}
               size="field"
               className="w-full"
               value={
@@ -299,7 +321,7 @@ export default function ProjectWorkspace({
                 setDirectory(value === "__none__" ? "" : value)
               }
               options={[
-                { value: "__none__", label: "选择项目" },
+                { value: "__none__", label: t("选择项目") },
                 ...state.projects.map((item) => ({
                   value: item.cwd,
                   label: item.cwd,
@@ -307,23 +329,23 @@ export default function ProjectWorkspace({
               ]}
             />
           </SettingsField>
-          <SettingsField id="project-switcher-directory" label="项目目录">
+          <SettingsField id="project-switcher-directory" label={t("项目目录")}>
             <input
               id="project-switcher-directory"
               className={settingsInputClass}
-              placeholder="服务端绝对目录"
+              placeholder={t("服务端绝对目录")}
               value={directory}
               onChange={(event) => setDirectory(event.target.value)}
             />
           </SettingsField>
           <SettingsActions>
-            <Button onClick={() => setSwitchOpen(false)}>取消</Button>
+            <Button onClick={() => setSwitchOpen(false)}>{t("取消")}</Button>
             <Button
               variant="primary"
               type="submit"
               disabled={!connected || !directory.trim() || !onCreateTask}
             >
-              新建会话
+              {t("新建会话")}
             </Button>
           </SettingsActions>
         </form>

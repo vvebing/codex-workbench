@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { CodexClient } from "../../lib/rpc";
 import type { Thread } from "../../generated/v2/Thread";
 import type { ThreadListResponse } from "../../generated/v2/ThreadListResponse";
@@ -81,7 +82,7 @@ export class HistorySearch extends Store<{
           ...this.state,
           nextCursor: null,
           loading: false,
-          error: "服务器返回了重复的分页游标，请重新搜索。",
+          error: t("服务器返回了重复的分页游标，请重新搜索。"),
         });
         return;
       }

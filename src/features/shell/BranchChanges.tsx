@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { GitBranch } from "lucide-react";
 import { Tooltip } from "radix-ui";
 import type { Thread } from "../../generated/v2/Thread";
@@ -10,29 +11,41 @@ export function BranchChanges({
   thread?: Pick<Thread, "id" | "cwd" | "gitInfo">;
   onOpenGit?: () => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const state = useWorkspaceGitStatus(thread?.cwd ?? "");
   if (!thread?.cwd) return null;
   const branch = state.connected ? state.value?.branch : undefined;
   const count = state.connected ? (state.value?.changedFiles ?? null) : null;
   const statusLabel = !state.connected
-    ? "环境未连接"
+    ? t("环境未连接")
     : state.failed
-      ? "读取失败"
+      ? t("读取失败")
       : count === null
-        ? "读取中…"
+        ? t("读取中…")
         : count === 0
-          ? "工作区干净"
-          : `改动 ${count} 个文件`;
-  const label = `Git 分支：${branch ?? "未获取"}；工作区改动文件数：${count ?? "未获取"}`;
+          ? t("工作区干净")
+          : t("改动 {{value0}} 个文件", { value0: count });
+  const label = t("Git 分支：{{value0}}；工作区改动文件数：{{value1}}", {
+    value0: branch ?? t("未获取"),
+    value1: count ?? t("未获取"),
+  });
   const explanation =
     count !== null
-      ? `当前工作区有 ${count} 个改动文件，包含已暂存、未暂存、未跟踪和冲突文件；重命名只计一个文件。`
+      ? t(
+          "当前工作区有 {{value0}} 个改动文件，包含已暂存、未暂存、未跟踪和冲突文件；重命名只计一个文件。",
+          { value0: count },
+        )
       : !state.connected
-        ? "环境未连接，未获取工作区改动文件数。"
+        ? t("环境未连接，未获取工作区改动文件数。")
         : state.failed
-          ? "未获取工作区改动文件数，请检查 Git 仓库和环境的命令执行支持。"
-          : "正在读取当前工作区的改动文件数。";
-  const tooltip = `Git 分支：${branch ?? "未获取"}。${explanation}`;
+          ? t("未获取工作区改动文件数，请检查 Git 仓库和环境的命令执行支持。")
+          : t("正在读取当前工作区的改动文件数。");
+  const tooltip = t("Git 分支：{{value0}}。{{value1}}", {
+    value0: branch ?? t("未获取"),
+    value1: explanation,
+  });
   return (
     <Tooltip.Provider delayDuration={250}>
       <Tooltip.Root>

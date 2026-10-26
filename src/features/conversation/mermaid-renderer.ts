@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { Appearance } from "../../lib/appearance";
 
 let sequence = 0;
@@ -56,7 +57,7 @@ export function renderMermaid(
       // Mermaid labels can contain HTML (e.g. <br>); parse the sanitized SVG as HTML.
       const parsed = new DOMParser().parseFromString(svg, "text/html");
       const diagram = parsed.querySelector("svg");
-      if (!diagram) throw new Error("图表渲染结果无效，请检查源码后重试。");
+      if (!diagram) throw new Error(t("图表渲染结果无效，请检查源码后重试。"));
       for (const link of diagram.querySelectorAll("a")) {
         // Preserve node geometry: Mermaid can put its transform on the link itself.
         const group = parsed.createElementNS("http://www.w3.org/2000/svg", "g");

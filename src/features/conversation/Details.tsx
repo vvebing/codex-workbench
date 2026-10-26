@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../lib/i18n";
 import { Tabs } from "radix-ui";
 import { ThreadTools } from "./ThreadTools";
 import { useStore, useStoreSelector } from "../../components/hooks";
@@ -34,6 +36,7 @@ export function Details({
   onCreateProjectTask,
   onSelectWorktree,
 }: DetailsProps) {
+  useTranslation();
   const { connection, sessions } = useRuntime();
   const { epoch, status } = useStore(connection);
   const projects = useMemo(
@@ -47,7 +50,7 @@ export function Details({
   return (
     <aside
       className="flex min-h-0 flex-1 flex-col text-control text-foreground"
-      aria-label="项目面板"
+      aria-label={t("项目面板")}
     >
       <Tabs.Root
         value={tab}
@@ -55,15 +58,15 @@ export function Details({
         className="flex min-h-0 flex-1 flex-col"
       >
         <Tabs.List
-          aria-label="项目工具"
+          aria-label={t("项目工具")}
           className="flex shrink-0 gap-1 border-b border-border p-2"
         >
           {(
             [
-              ["files", "文件"],
-              ["search", "搜索"],
+              ["files", t("文件")],
+              ["search", t("搜索")],
               ["git", "Git"],
-              ["workspace", "工作区"],
+              ["workspace", t("工作区")],
             ] as const
           ).map(([value, label]) => (
             <Tabs.Trigger
@@ -82,7 +85,7 @@ export function Details({
           {thread ? (
             <FilesPanel thread={thread} />
           ) : (
-            <p className="p-4 text-muted">选择会话查看项目文件。</p>
+            <p className="p-4 text-muted">{t("选择会话查看项目文件。")}</p>
           )}
         </Tabs.Content>
         <Tabs.Content
@@ -97,7 +100,7 @@ export function Details({
               active={tab === "search"}
             />
           ) : (
-            <p className="p-4 text-muted">选择会话后搜索项目内容。</p>
+            <p className="p-4 text-muted">{t("选择会话后搜索项目内容。")}</p>
           )}
         </Tabs.Content>
         <Tabs.Content
@@ -111,7 +114,7 @@ export function Details({
               onSelectWorktree={onSelectWorktree}
             />
           ) : (
-            <p className="p-4 text-muted">选择会话查看 Git 工作区。</p>
+            <p className="p-4 text-muted">{t("选择会话查看 Git 工作区。")}</p>
           )}
         </Tabs.Content>
         <Tabs.Content
@@ -140,8 +143,8 @@ export function Details({
                 ) : (
                   <p className="text-xs text-muted">
                     {thread
-                      ? "发送第一条消息后可使用会话工具。"
-                      : "选择会话后查看目标、参考资料和代码审查。"}
+                      ? t("发送第一条消息后可使用会话工具。")
+                      : t("选择会话后查看目标、参考资料和代码审查。")}
                   </p>
                 )
               }
@@ -162,6 +165,7 @@ function GitResource({
   cwd: string;
   onSelectWorktree: (path: string) => void;
 }) {
+  useTranslation();
   const git = useWorkspaceGitStatus(cwd);
   const root = git.value?.repoRoot;
   // Wait for canonical identity before touching the shared scroll entry.

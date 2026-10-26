@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { Thread } from "../../generated/v2/Thread";
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
 
@@ -14,11 +15,13 @@ export function pendingAsyncQuestions(thread: Thread): QuestionMessage[] {
       const text = item.content
         .flatMap((part) => (part.type === "text" ? [part.text] : []))
         .join("\n");
-      if (!text.startsWith("回答问题：\n")) continue;
+      if (!/^(?:回答问题：|Answer to questions:)\n/.test(text)) continue;
       const associated = asyncAnswerItemId(item.clientId);
       const marker = associated
         ? ["", encodeURIComponent(associated)]
-        : text.match(/^回答问题：\n问题编号：([^\n]+)\n/);
+        : text.match(
+            /^(?:回答问题：|Answer to questions:)\n(?:问题编号：|Question ID:)([^\n]+)\n/,
+          );
       if (marker) {
         const index = pending.findIndex(
           (question) => encodeURIComponent(question.id) === marker[1],
@@ -43,7 +46,13 @@ export function asyncAnswerText(
   item: QuestionMessage,
   answers: string[],
 ): string {
-  return `回答问题：\n${item.questions!.map((question, index) => `${question.title}\n${answers[index].trim()}`).join("\n\n")}`;
+  return t("回答问题：\n{{value0}}", {
+    value0: item
+      .questions!.map(
+        (question, index) => `${question.title}\n${answers[index].trim()}`,
+      )
+      .join("\n\n"),
+  });
 }
 
 export function asyncAnswerClientId(

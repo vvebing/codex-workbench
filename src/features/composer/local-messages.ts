@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { TaskQueue } from "./queue";
 import { asyncAnswerClientId } from "../conversation/async-questions";
 import type { Thread } from "../../generated/v2/Thread";
@@ -206,7 +207,7 @@ export class LocalMessagesStore extends Store<LocalMessage[]> {
           ? {
               ...item,
               status: "uncertain",
-              error: "连接已改变，请先核实消息是否已发送；不会自动重发。",
+              error: t("连接已改变，请先核实消息是否已发送；不会自动重发。"),
             }
           : item,
       ),

@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { Store, errorMessage } from "../../lib/store";
 import type { ConnectionStore } from "../connection/store";
 import type { ExternalAgentConfigDetectResponse } from "../../generated/v2/ExternalAgentConfigDetectResponse";
@@ -225,7 +226,9 @@ export class ConfigMigrationStore extends Store<State> {
         this.update({
           ...this.state,
           importing: false,
-          importError: `${errorMessage(error)} 请检查导入历史后再决定是否重试。`,
+          importError: t("{{v0}} 请检查导入历史后再决定是否重试。", {
+            v0: errorMessage(error),
+          }),
         });
     }
   }

@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { ReferenceNode } from "./reference-node";
 import { navigateMessageEditor } from "./editor-navigation";
 import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
@@ -54,6 +55,9 @@ function completionCaret(editor: Editor) {
 }
 
 export function MessageEditor(props: Props) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const latest = useRef(props);
   latest.current = props;
   const editor = useEditor({
@@ -72,7 +76,7 @@ export function MessageEditor(props: Props) {
       attributes: {
         id: "message-input",
         role: "textbox",
-        "aria-label": "消息输入框",
+        "aria-label": t("消息输入框"),
         "aria-multiline": "true",
         "aria-autocomplete": "list",
         class:
@@ -126,6 +130,9 @@ export function MessageEditor(props: Props) {
         return true;
       },
     },
+    onCreate: ({ editor }) => {
+      editor.view.dom.setAttribute("aria-label", t("消息输入框"));
+    },
     onUpdate: ({ editor }) => {
       latest.current.onChange(
         editor.getJSON(),
@@ -167,6 +174,17 @@ export function MessageEditor(props: Props) {
     [editor],
   );
 
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !editor.isInitialized) return;
+    editor.view.dom.setAttribute("aria-label", t("消息输入框"));
+    for (const reference of editor.view.dom.querySelectorAll<HTMLElement>(
+      "[data-composer-reference=file]",
+    )) {
+      reference.title = t("{{value0}} · ⌘ / Ctrl 点击打开文件", {
+        value0: reference.dataset.referencePath,
+      });
+    }
+  }, [editor, i18nLocale]);
   useEffect(() => {
     // Suspense can reconnect effects after Tiptap has disposed the captured editor.
     if (!editor || editor.isDestroyed) return;

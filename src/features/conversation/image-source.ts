@@ -1,7 +1,7 @@
-/** Validate saved image bytes before creating a browser-renderable source. */
+import { t } from "../../lib/i18n";
 export function imageDataUrl(data: string): string {
   if (data.length > 10 * 1024 * 1024)
-    throw new Error("图片编码大小超过 10 MB。");
+    throw new Error(t("图片编码大小超过 10 MB。"));
   const header = atob(data.slice(0, 32));
   const mime = header.startsWith("\x89PNG\r\n\x1a\n")
     ? "image/png"
@@ -12,6 +12,6 @@ export function imageDataUrl(data: string): string {
         : header.startsWith("RIFF") && header.slice(8, 12) === "WEBP"
           ? "image/webp"
           : undefined;
-  if (!mime) throw new Error("图片格式无法识别。");
+  if (!mime) throw new Error(t("图片格式无法识别。"));
   return `data:${mime};base64,${data}`;
 }

@@ -292,6 +292,7 @@ test("uncertain delivery is actionable without claiming the execution failed", (
     {
       id: "uncertain",
       threadId: "a",
+      uncertain: true,
       category: "失败或待核实",
       title: "消息发送结果待核实",
     },

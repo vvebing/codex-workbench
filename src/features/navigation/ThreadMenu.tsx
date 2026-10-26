@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { settingsInputClass } from "../settings/settings-ui";
 import { ContextMenu } from "radix-ui";
 import { useEffect, useState, type ReactNode } from "react";
@@ -51,6 +52,9 @@ export function ThreadMenu({
   trigger?: ReactNode;
   environmentKey?: string;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const contextMenu = !!children && !trigger;
   const Entry = contextMenu ? ContextMenu.Item : MenuItem;
   const Separator = contextMenu ? ContextMenu.Separator : MenuSeparator;
@@ -128,8 +132,8 @@ export function ThreadMenu({
     const history = await runtime.sessions.readForExport(thread.id);
     if (summary) {
       await copyFinalSummary(history);
-      setFeedback("已复制最终总结");
-    } else await copyText(conversationMarkdown(history), "已复制全部对话");
+      setFeedback(t("已复制最终总结"));
+    } else await copyText(conversationMarkdown(history), t("已复制全部对话"));
   }
   async function downloadConversation() {
     const history = await runtime.sessions.readForExport(thread.id);
@@ -138,7 +142,7 @@ export function ThreadMenu({
       exportFilename(history),
       "text/markdown;charset=utf-8",
     );
-    setFeedback("已导出会话");
+    setFeedback(t("已导出会话"));
   }
   return (
     <>
@@ -154,7 +158,7 @@ export function ThreadMenu({
           }
         >
           {pinned ? <PinOff size={15} /> : <Pin size={15} />}
-          {pinned ? "取消收藏" : "收藏会话"}
+          {pinned ? t("取消收藏") : t("收藏会话")}
         </Entry>
         <Entry
           disabled={disabled}
@@ -164,14 +168,14 @@ export function ThreadMenu({
           }}
         >
           <Pencil size={15} />
-          重命名
+          {t("重命名")}
         </Entry>
         <Entry
           disabled={disabled || localDraft}
           onSelect={() => void act(() => runtime.sessions.fork(thread.id))}
         >
           <GitBranch size={15} />
-          分叉会话
+          {t("分叉会话")}
         </Entry>
         <Entry
           disabled={disabled || localDraft}
@@ -182,7 +186,7 @@ export function ThreadMenu({
           }}
         >
           <FolderInput size={15} />
-          移动到分区
+          {t("移动到分区")}
         </Entry>
         <Separator className="m-[5px] h-px bg-border" />
         <Entry
@@ -190,32 +194,32 @@ export function ThreadMenu({
           onSelect={() => void act(() => copyConversation())}
         >
           <Copy size={15} />
-          复制全部对话为 Markdown
+          {t("复制全部对话为 Markdown")}
         </Entry>
         <Entry
           disabled={disabled || localDraft}
           onSelect={() => void act(() => copyConversation(true))}
         >
           <FileText size={15} />
-          仅复制最终总结
+          {t("仅复制最终总结")}
         </Entry>
         <Entry
           disabled={busy || localDraft}
           onSelect={() =>
             void act(() =>
-              copyText(thread.sessionId || thread.id, "已复制 Session ID"),
+              copyText(thread.sessionId || thread.id, t("已复制 Session ID")),
             )
           }
         >
           <Copy size={15} />
-          复制 Session ID
+          {t("复制 Session ID")}
         </Entry>
         <Entry
           disabled={disabled || localDraft}
           onSelect={() => void act(downloadConversation)}
         >
           <Download size={15} />
-          导出会话
+          {t("导出会话")}
         </Entry>
         <Separator className="m-[5px] h-px bg-border" />
         <Entry
@@ -224,7 +228,7 @@ export function ThreadMenu({
             if (sessions.archived) {
               void act(async () => {
                 await runtime.sessions.unarchive(thread.id);
-                setFeedback("已恢复会话");
+                setFeedback(t("已恢复会话"));
               });
             } else if (localDraft) {
               if (draftHasContent(runtime.drafts.get(thread.id)))
@@ -240,7 +244,11 @@ export function ThreadMenu({
           }}
         >
           {sessions.archived ? <RotateCcw size={15} /> : <Archive size={15} />}
-          {sessions.archived ? "恢复会话" : localDraft ? "删除草稿" : "归档"}
+          {sessions.archived
+            ? t("恢复会话")
+            : localDraft
+              ? t("删除草稿")
+              : t("归档")}
         </Entry>
         {!localDraft && (
           <Entry
@@ -251,7 +259,7 @@ export function ThreadMenu({
             }}
           >
             <Trash2 size={15} />
-            永久删除
+            {t("永久删除")}
           </Entry>
         )}
       </ThreadMenuSurface>
@@ -262,7 +270,7 @@ export function ThreadMenu({
         >
           <span>{error || feedback}</span>
           <IconButton
-            label="关闭操作提示"
+            label={t("关闭操作提示")}
             onClick={() => {
               setFeedback("");
               setError("");
@@ -279,25 +287,29 @@ export function ThreadMenu({
         }}
         title={
           dialog === "delete"
-            ? "永久删除会话"
+            ? t("永久删除会话")
             : dialog === "section"
-              ? "移动到分区"
+              ? t("移动到分区")
               : dialog === "rename"
-                ? "重命名会话"
+                ? t("重命名会话")
                 : localDraft
-                  ? "删除草稿"
-                  : "归档会话"
+                  ? t("删除草稿")
+                  : t("归档会话")
         }
         description={
           dialog === "delete"
-            ? "此操作不可恢复，将永久删除本会话及其所有子代理后代会话和历史。"
+            ? t(
+                "此操作不可恢复，将永久删除本会话及其所有子代理后代会话和历史。",
+              )
             : dialog === "section"
-              ? "选择保存在当前环境服务端的分区。"
+              ? t("选择保存在当前环境服务端的分区。")
               : dialog === "archive"
                 ? localDraft
-                  ? "草稿中有尚未发送的文字、附件或技能。删除后无法恢复。"
-                  : "归档后会话将从当前列表移除，可从该环境的历史会话入口恢复。"
-                : "使用一个容易找到的标题。"
+                  ? t("草稿中有尚未发送的文字、附件或技能。删除后无法恢复。")
+                  : t(
+                      "归档后会话将从当前列表移除，可从该环境的历史会话入口恢复。",
+                    )
+                : t("使用一个容易找到的标题。")
         }
       >
         <form
@@ -332,22 +344,24 @@ export function ThreadMenu({
                 disabled={disabled}
                 required
               />
-              <span>我确认永久删除本会话及所有后代会话，且无法恢复。</span>
+              <span>
+                {t("我确认永久删除本会话及所有后代会话，且无法恢复。")}
+              </span>
             </label>
           )}
           {dialog === "section" && (
             <>
               <label className="block text-control font-medium">
-                目标分区
+                {t("目标分区")}
                 <SelectField
-                  label="目标分区"
+                  label={t("目标分区")}
                   className="my-2 w-full"
                   value={section || "unsectioned"}
                   onValueChange={(value) =>
                     setSection(value === "unsectioned" ? "" : value)
                   }
                   options={[
-                    { value: "unsectioned", label: "未分区" },
+                    { value: "unsectioned", label: t("未分区") },
                     ...sessions.sections.map((entry) => ({
                       value: entry.id,
                       label: entry.name,
@@ -362,7 +376,7 @@ export function ThreadMenu({
           )}
           {dialog === "rename" && (
             <label className="block text-control font-medium">
-              会话标题
+              {t("会话标题")}
               <input
                 className={`${settingsInputClass} mt-2 block w-full`}
                 autoFocus
@@ -382,7 +396,7 @@ export function ThreadMenu({
               size="sm"
               onClick={() => setDialog(null)}
             >
-              取消
+              {t("取消")}
             </Button>
             <Button
               variant={dialog === "delete" ? "danger" : "primary"}
@@ -393,7 +407,7 @@ export function ThreadMenu({
                 (dialog === "delete" && !deleteConfirmed)
               }
             >
-              {sessions.loading || busy ? "处理中…" : "确认"}
+              {sessions.loading || busy ? t("处理中…") : t("确认")}
             </Button>
           </div>
         </form>
@@ -413,13 +427,16 @@ function ThreadMenuSurface({
   thread: Thread;
   children: ReactNode;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   if (childrenTrigger)
     return (
       <ContextMenu.Root>
         <ContextMenu.Trigger asChild>{childrenTrigger}</ContextMenu.Trigger>
         <ContextMenu.Portal>
           <ContextMenu.Content
-            aria-label="会话操作"
+            aria-label={t("会话操作")}
             data-slot="menu"
             className="menu-content z-[60] min-w-[205px] rounded-[11px] border border-border bg-elevated p-[5px] text-foreground shadow-xl"
           >
@@ -430,10 +447,12 @@ function ThreadMenuSurface({
     );
   return (
     <Menu
-      label="会话操作"
+      label={t("会话操作")}
       trigger={
         trigger ?? (
-          <IconButton label={`会话操作：${titleOf(thread)}`}>
+          <IconButton
+            label={t("会话操作：{{value0}}", { value0: titleOf(thread) })}
+          >
             <MoreHorizontal size={18} />
           </IconButton>
         )

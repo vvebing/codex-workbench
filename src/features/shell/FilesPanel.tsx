@@ -1,3 +1,4 @@
+import { getLocale, t, useLocale } from "../../lib/i18n";
 import { settingsInputClass } from "../settings/settings-ui";
 import {
   Button,
@@ -51,12 +52,21 @@ import {
 } from "../files/file-transfer";
 
 export function FilesPanel({ thread }: { thread: Thread }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { connection } = useRuntime();
   const { epoch, scope, status } = useStore(connection);
   if (status !== "connected")
-    return <p className="p-4 text-xs text-muted">连接环境后可浏览项目文件。</p>;
+    return (
+      <p className="p-4 text-xs text-muted">
+        {t("连接环境后可浏览项目文件。")}
+      </p>
+    );
   if (!thread.cwd)
-    return <p className="p-4 text-xs text-muted">当前会话没有项目目录。</p>;
+    return (
+      <p className="p-4 text-xs text-muted">{t("当前会话没有项目目录。")}</p>
+    );
   return (
     <ConnectedFiles
       key={JSON.stringify([epoch, scope, thread.cwd, thread.id])}
@@ -66,6 +76,9 @@ export function FilesPanel({ thread }: { thread: Thread }) {
 }
 
 function ConnectedFiles({ thread }: { thread: Thread }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { connection, drafts, files } = useRuntime();
   const fileState = useStore(files);
   const fileRevision = useSyncExternalStore(
@@ -79,12 +92,12 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       ? `${git.value.repoRoot.replace(/\/$/, "")}/${git.workspacePrefix}`
       : thread.cwd;
   const decorations = useMemo(
-    () => treeGitDecorations(git.value, gitDirectory),
-    [git.value, gitDirectory],
+    () => (void i18nLocale, treeGitDecorations(git.value, gitDirectory)),
+    [git.value, gitDirectory, i18nLocale],
   );
   const cache = useMemo(
-    () => workspaceDirectories(connection, thread.cwd),
-    [connection, thread.cwd],
+    () => (void i18nLocale, workspaceDirectories(connection, thread.cwd)),
+    [connection, thread.cwd, i18nLocale],
   );
   const directories = useSyncExternalStore(cache.subscribe, cache.getSnapshot);
   const [expanded, setExpanded] = useState<Set<string>>(cache.expanded);
@@ -327,8 +340,9 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
         listing?.entries &&
         !listing.entries.some((entry) => entry.path === path)
       )
-        setNotice("文件已不存在，无法在文件列表中显示。");
-      else if (listing?.error) setNotice(`无法定位文件：${listing.error}`);
+        setNotice(t("文件已不存在，无法在文件列表中显示。"));
+      else if (listing?.error)
+        setNotice(t("无法定位文件：{{value0}}", { value0: listing.error }));
     });
     return () => {
       stopped = true;
@@ -366,7 +380,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       : selected.replace(/\\/g, "/").split("/").slice(0, -1).join("/")
     : "";
   const transferCheck = () => {
-    if (!current()) throw new Error("连接环境已改变，请重新操作。");
+    if (!current()) throw new Error(t("连接环境已改变，请重新操作。"));
   };
   const receiveFiles = async (incoming: File[], directory: string) => {
     if (transferPending.current || !incoming.length) return;
@@ -379,7 +393,12 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       for (let index = 0; index < incoming.length; index++) {
         transferCheck();
         setNotice(
-          `正在上传 ${index + 1}/${incoming.length}：${incoming[index].name} → ${directory || "项目根目录"}`,
+          t("正在上传 {{value0}}/{{value1}}：{{value2}} → {{value3}}", {
+            value0: index + 1,
+            value1: incoming.length,
+            value2: incoming[index].name,
+            value3: directory || t("项目根目录"),
+          }),
         );
         try {
           const relative = await uploadProjectFile(
@@ -420,7 +439,12 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
         setTransferring(false);
         setUploaded(completed);
         setNotice(
-          `已上传 ${completed.length} 个文件${errors.length ? `；${errors.join("；")}` : ""}`,
+          t("已上传 {{value0}} 个文件{{value1}}", {
+            value0: completed.length,
+            value1: errors.length
+              ? `${getLocale() === "zh-CN" ? "；" : "; "}${errors.join(getLocale() === "zh-CN" ? "；" : "; ")}`
+              : "",
+          }),
         );
         cache.invalidate();
         setRevision((value) => value + 1);
@@ -468,7 +492,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
           .getSnapshot()
           .documents.find((item) => item.id === doc.id);
         if (updated?.dirty || updated?.error)
-          throw new Error(updated.error || "保存未完成，请检查编辑器。");
+          throw new Error(updated.error || t("保存未完成，请检查编辑器。"));
       }
       const response = await connection.client.request<{ dataBase64: string }>(
         "fs/readFile",
@@ -477,9 +501,10 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       transferCheck();
       saveDownload(response.dataBase64, relative.split("/").at(-1)!);
       setDownloadPath(undefined);
-      setNotice(`已下载：${relative}`);
+      setNotice(t("已下载：{{value0}}", { value0: relative }));
     } catch (error) {
-      if (current()) setNotice(`下载失败：${String(error)}`);
+      if (current())
+        setNotice(t("下载失败：{{value0}}", { value0: String(error) }));
     } finally {
       transferPending.current = false;
       if (current()) setTransferring(false);
@@ -535,13 +560,15 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
     if (listing?.error && !listing.entries)
       return (
         <ErrorNotice className="mx-3 my-2">
-          读取失败：{listing.error}。请刷新重试。
+          {t("读取失败：")}
+          {listing.error}
+          {t("。请刷新重试。")}
         </ErrorNotice>
       );
     if (!listing?.entries)
-      return <p className="px-3 py-2 text-xs text-muted">正在读取…</p>;
+      return <p className="px-3 py-2 text-xs text-muted">{t("正在读取…")}</p>;
     if (!listing.entries.length)
-      return <p className="px-3 py-2 text-xs text-muted">没有文件</p>;
+      return <p className="px-3 py-2 text-xs text-muted">{t("没有文件")}</p>;
     return listing.entries.map((entry) => {
       const decoration = decorations.get(entry.path.replace(/\\/g, "/"));
       const isIgnored = ignored.has(entry.path) && !decoration;
@@ -572,8 +599,22 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
               type="button"
               className={`flex min-w-0 flex-1 items-center gap-1.5 rounded py-1.5 pr-2 text-left text-xs hover:bg-hover disabled:opacity-50 ${decoration?.className ?? (isIgnored ? "text-muted" : "")}`}
               style={{ paddingLeft: 12 + depth * 12 }}
-              title={`${entry.path}${decoration ? `：${decoration.label}` : isIgnored ? "：已被 Git 忽略" : ""}`}
-              aria-label={`${entry.path}${decoration ? `，${decoration.label}` : isIgnored ? "，已被 Git 忽略" : ""}`}
+              title={t("{{value0}}{{value1}}", {
+                value0: entry.path,
+                value1: decoration
+                  ? `：${decoration.label}`
+                  : isIgnored
+                    ? t("：已被 Git 忽略")
+                    : "",
+              })}
+              aria-label={t("{{value0}}{{value1}}", {
+                value0: entry.path,
+                value1: decoration
+                  ? `，${decoration.label}`
+                  : isIgnored
+                    ? t("，已被 Git 忽略")
+                    : "",
+              })}
               disabled={!entry.directory && !entry.file}
               aria-pressed={selected === entry.path}
               aria-expanded={
@@ -620,8 +661,8 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
             </button>
             <IconButton
               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-[900px]:opacity-100"
-              label={`更多操作：${entry.path}`}
-              title="更多操作"
+              label={t("更多操作：{{value0}}", { value0: entry.path })}
+              title={t("更多操作")}
               aria-haspopup="menu"
               disabled={!entry.directory && !entry.file}
               onClick={(event) => {
@@ -649,7 +690,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
   return (
     <section
       className="flex min-h-0 flex-1 flex-col"
-      aria-label="项目文件"
+      aria-label={t("项目文件")}
       onDragOver={(event) => {
         if (!event.dataTransfer.types.includes("Files")) return;
         event.preventDefault();
@@ -679,7 +720,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
         type="file"
         multiple
         hidden
-        aria-label="选择上传文件"
+        aria-label={t("选择上传文件")}
         onChange={(event) => {
           const incoming = Array.from(event.target.files ?? []);
           event.target.value = "";
@@ -689,7 +730,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       <div className="flex items-center gap-2 p-3">
         <button
           type="button"
-          aria-label="选择项目根目录"
+          aria-label={t("选择项目根目录")}
           aria-pressed={selected === undefined}
           onClick={() => {
             setSelected(undefined);
@@ -710,30 +751,36 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
           </span>
         )}
         <IconButton
-          label="上传文件"
-          title={`上传到：${creationDirectory || "项目根目录"}（每个文件最多 8 MB）`}
+          label={t("上传文件")}
+          title={t("上传到：{{value0}}（每个文件最多 8 MB）", {
+            value0: creationDirectory || t("项目根目录"),
+          })}
           disabled={transferring}
           onClick={() => chooseUpload(creationDirectory)}
         >
           <Upload size={14} />
         </IconButton>
         <IconButton
-          label="新建文件"
-          title={`新建文件于：${creationDirectory || "项目根目录"}`}
+          label={t("新建文件")}
+          title={t("新建文件于：{{value0}}", {
+            value0: creationDirectory || t("项目根目录"),
+          })}
           onClick={() => beginOperation("file")}
         >
           <FilePlus size={14} />
         </IconButton>
         <IconButton
-          label="新建目录"
-          title={`新建目录于：${creationDirectory || "项目根目录"}`}
+          label={t("新建目录")}
+          title={t("新建目录于：{{value0}}", {
+            value0: creationDirectory || t("项目根目录"),
+          })}
           onClick={() => beginOperation("directory")}
         >
           <FolderPlus size={14} />
         </IconButton>
         <IconButton
-          label="跟随当前编辑器"
-          title="跟随当前编辑器"
+          label={t("跟随当前编辑器")}
+          title={t("跟随当前编辑器")}
           aria-pressed={followEditor}
           onClick={() => {
             setFollowEditor((value) => {
@@ -752,15 +799,15 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
           <LocateFixed size={14} />
         </IconButton>
         <IconButton
-          label="折叠所有文件夹"
-          title="折叠所有文件夹"
+          label={t("折叠所有文件夹")}
+          title={t("折叠所有文件夹")}
           disabled={expanded.size <= 1}
           onClick={() => setExpanded(new Set([""]))}
         >
           <ListCollapse size={14} />
         </IconButton>
         <IconButton
-          label="刷新项目文件"
+          label={t("刷新项目文件")}
           onClick={() => {
             void refreshGit();
             ++directoryGeneration.current;
@@ -772,14 +819,15 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       </div>
       {dropDirectory !== undefined && (
         <p role="status" className="px-3 pb-2 text-xs text-accent">
-          释放以上传到：{dropDirectory || "项目根目录"}
+          {t("释放以上传到：")}
+          {dropDirectory || t("项目根目录")}
         </p>
       )}
       <div className="px-3 pb-2">
         <input
           className={settingsInputClass}
-          aria-label="搜索项目文件"
-          placeholder="搜索文件…"
+          aria-label={t("搜索项目文件")}
+          placeholder={t("搜索文件…")}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -790,7 +838,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
             (path) => directories[path]?.error && directories[path]?.entries,
           )) && (
         <p role="status" className="px-3 pb-2 text-xs text-muted">
-          文件列表刷新失败，正在显示上次读取的内容。请刷新重试。
+          {t("文件列表刷新失败，正在显示上次读取的内容。请刷新重试。")}
         </p>
       )}
       <ContextMenu.Root>
@@ -838,14 +886,14 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
             {renderEntries(query.trim() ? search : directories[""], 0)}
             {query.trim() && search.entries?.length === 50 && (
               <p className="px-3 py-2 text-xs text-muted">
-                显示前 50 个结果，请细化搜索。
+                {t("显示前 50 个结果，请细化搜索。")}
               </p>
             )}
           </ScrollArea>
         </ContextMenu.Trigger>
         <ContextMenu.Portal>
           <ContextMenu.Content
-            aria-label="文件操作"
+            aria-label={t("文件操作")}
             className="menu-content z-[60] min-w-[180px] rounded-[11px] border border-border bg-elevated p-[5px] text-foreground shadow-xl"
             onCloseAutoFocus={(event) => {
               event.preventDefault();
@@ -859,7 +907,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                 </ContextMenu.Label>
                 {menuEntry.file && (
                   <ContextMenu.Item onSelect={() => void open(menuEntry.path)}>
-                    打开文件
+                    {t("打开文件")}
                   </ContextMenu.Item>
                 )}
                 {menuEntry.directory && (
@@ -867,7 +915,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                     disabled={transferring}
                     onSelect={() => chooseUpload(menuEntry.path)}
                   >
-                    上传到此目录
+                    {t("上传到此目录")}
                   </ContextMenu.Item>
                 )}
                 {menuEntry.file && (
@@ -875,26 +923,26 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                     disabled={transferring}
                     onSelect={() => beginDownload(menuEntry.path)}
                   >
-                    下载文件
+                    {t("下载文件")}
                   </ContextMenu.Item>
                 )}
                 <ContextMenu.Item
                   onSelect={() => {
                     if (!navigator.clipboard) {
-                      setNotice("当前环境不支持复制路径。");
+                      setNotice(t("当前环境不支持复制路径。"));
                       return;
                     }
                     void navigator.clipboard
                       .writeText(menuEntry.path)
                       .then(() => {
-                        if (current()) setNotice("已复制相对路径");
+                        if (current()) setNotice(t("已复制相对路径"));
                       })
                       .catch(() => {
-                        if (current()) setNotice("复制失败，请重试");
+                        if (current()) setNotice(t("复制失败，请重试"));
                       });
                   }}
                 >
-                  复制相对路径
+                  {t("复制相对路径")}
                 </ContextMenu.Item>
                 <ContextMenu.Item
                   onSelect={() => {
@@ -904,20 +952,22 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                       menuEntry.path,
                       workspacePath(thread.cwd, menuEntry.path),
                     );
-                    setNotice("已引用到输入框");
+                    setNotice(t("已引用到输入框"));
                   }}
                 >
-                  引用到输入框
+                  {t("引用到输入框")}
                 </ContextMenu.Item>
                 <ContextMenu.Separator className="my-1 h-px bg-border" />
                 <ContextMenu.Item onSelect={() => beginOperation("copy")}>
-                  复制{menuEntry.directory ? "目录" : "文件"}
+                  {t("复制")}
+                  {menuEntry.directory ? t("目录") : t("文件")}
                 </ContextMenu.Item>
                 <ContextMenu.Item
                   className="text-danger"
                   onSelect={() => beginOperation("delete")}
                 >
-                  删除{menuEntry.directory ? "目录" : "文件"}
+                  {t("删除")}
+                  {menuEntry.directory ? t("目录") : t("文件")}
                 </ContextMenu.Item>
               </>
             )}
@@ -940,17 +990,21 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                   path,
                   workspacePath(thread.cwd, path),
                 );
-              setNotice(`已将 ${uploaded.length} 个文件添加到会话`);
+              setNotice(
+                t("已将 {{value0}} 个文件添加到会话", {
+                  value0: uploaded.length,
+                }),
+              );
               setUploaded([]);
             }}
           >
-            添加上传文件到会话
+            {t("添加上传文件到会话")}
           </Button>
         </div>
       )}
       {conflict && (
         <FileDialog
-          title="文件已存在"
+          title={t("文件已存在")}
           busy={false}
           onClose={() => {
             conflict.resolve("cancel");
@@ -959,10 +1013,16 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
           }}
         >
           <div className="file-dialog">
-            <p>目标路径「{conflict.path}」已存在。请选择如何处理当前文件。</p>
+            <p>
+              {t("目标路径「")}
+              {conflict.path}
+              {t("」已存在。请选择如何处理当前文件。")}
+            </p>
             {conflict.directory && (
               <p>
-                目标是目录、特殊文件，或编辑器中有未保存修改，不能直接替换。
+                {t(
+                  "目标是目录、特殊文件，或编辑器中有未保存修改，不能直接替换。",
+                )}
               </p>
             )}
             <div className="file-dialog-actions">
@@ -977,10 +1037,10 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                   }}
                 >
                   {choice === "cancel"
-                    ? "跳过此文件"
+                    ? t("跳过此文件")
                     : choice === "keep"
-                      ? "保留两者"
-                      : "替换"}
+                      ? t("保留两者")
+                      : t("替换")}
                 </Button>
               ))}
             </div>
@@ -989,30 +1049,33 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
       )}
       {downloadPath && (
         <FileDialog
-          title="文件有未保存修改"
+          title={t("文件有未保存修改")}
           busy={transferring}
           onClose={() => setDownloadPath(undefined)}
         >
           <div className="file-dialog">
-            <p>「{downloadPath}」有未保存修改。请选择要下载的版本。</p>
+            <p>
+              「{downloadPath}
+              {t("」有未保存修改。请选择要下载的版本。")}
+            </p>
             <div className="file-dialog-actions">
               <Button
                 disabled={transferring}
                 onClick={() => setDownloadPath(undefined)}
               >
-                取消
+                {t("取消")}
               </Button>
               <Button
                 disabled={transferring}
                 onClick={() => void download(downloadPath)}
               >
-                下载已保存版本
+                {t("下载已保存版本")}
               </Button>
               <Button
                 disabled={transferring}
                 onClick={() => void download(downloadPath, true)}
               >
-                保存并下载
+                {t("保存并下载")}
               </Button>
             </div>
           </div>
@@ -1022,12 +1085,12 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
         <FileDialog
           title={
             operation === "file"
-              ? "新建文件"
+              ? t("新建文件")
               : operation === "directory"
-                ? "新建目录"
+                ? t("新建目录")
                 : operation === "copy"
-                  ? "复制到新路径"
-                  : "永久删除"
+                  ? t("复制到新路径")
+                  : t("永久删除")
           }
           busy={busy}
           onClose={() => setOperation(undefined)}
@@ -1081,7 +1144,10 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                     });
                     setQuery("");
                     setNotice(
-                      `已创建${operation === "file" ? "文件" : "目录"}：${relative}`,
+                      t("已创建{{value0}}：{{value1}}", {
+                        value0: operation === "file" ? t("文件") : t("目录"),
+                        value1: relative,
+                      }),
                     );
                   }
                   setOperation(undefined);
@@ -1095,29 +1161,34 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
           >
             {(operation === "file" || operation === "directory") && (
               <p>
-                创建位置：{creationDirectory || "项目根目录"}
-                。可修改下方完整路径。
+                {t("创建位置：")}
+                {creationDirectory || t("项目根目录")}
+                {t("。可修改下方完整路径。")}
               </p>
             )}
             {operation === "copy" && (
-              <p>复制磁盘上的内容；编辑器内尚未保存的修改不会包含在副本中。</p>
+              <p>
+                {t(
+                  "复制磁盘上的内容；编辑器内尚未保存的修改不会包含在副本中。",
+                )}
+              </p>
             )}
             {operation === "delete" ? (
               <p>
-                将永久删除「{selected}」
-                {selectedDirectory ? "及其全部内容" : ""}
-                ，无法撤销。如存在未保存修改，请先保存或关闭对应文件。
+                {t("将永久删除「")}
+                {selected}」{selectedDirectory ? t("及其全部内容") : ""}
+                {t("，无法撤销。如存在未保存修改，请先保存或关闭对应文件。")}
               </p>
             ) : (
               <label>
-                相对于项目根目录的路径
+                {t("相对于项目根目录的路径")}
                 <input
                   className={`${settingsInputClass} mt-1.5`}
                   autoFocus
                   required
                   value={destination}
                   onChange={(event) => setDestination(event.target.value)}
-                  placeholder="例如 src/example.ts"
+                  placeholder={t("例如 src/example.ts")}
                 />
               </label>
             )}
@@ -1129,7 +1200,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                 disabled={busy}
                 onClick={() => setOperation(undefined)}
               >
-                取消
+                {t("取消")}
               </Button>
               <Button
                 type="submit"
@@ -1137,10 +1208,10 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                 disabled={busy}
               >
                 {busy
-                  ? "处理中…"
+                  ? t("处理中…")
                   : operation === "delete"
-                    ? "确认永久删除"
-                    : "确认"}
+                    ? t("确认永久删除")
+                    : t("确认")}
               </Button>
             </div>
           </form>

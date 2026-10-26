@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useRef, useState } from "react";
 import { Button } from "../../components/ui";
 import type { Environment } from "./environments";
@@ -12,6 +13,9 @@ export function ConnectionBanner({
   connection: ConnectionState;
   onSettings: () => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { runtime } = environment;
   const [pending, setPending] = useState(false);
   const lock = useRef(false);
@@ -41,18 +45,21 @@ export function ConnectionBanner({
       <div className="min-w-0 flex-1">
         <p>
           {connecting
-            ? `正在连接「${environment.name}」…`
-            : `「${environment.name}」未连接。已加载的会话仍可浏览，草稿可以继续编辑；重连后同步最新内容。`}
+            ? t("正在连接「{{value0}}」…", { value0: environment.name })
+            : t(
+                "「{{value0}}」未连接。已加载的会话仍可浏览，草稿可以继续编辑；重连后同步最新内容。",
+                { value0: environment.name },
+              )}
         </p>
         {connection.error && (
           <p className="mt-1 break-words text-danger">{connection.error}</p>
         )}
       </div>
       <Button size="sm" disabled={connecting} onClick={() => void reconnect()}>
-        {connecting ? "连接中…" : "重新连接"}
+        {connecting ? t("连接中…") : t("重新连接")}
       </Button>
       <Button size="sm" variant="secondary" onClick={onSettings}>
-        连接设置
+        {t("连接设置")}
       </Button>
     </div>
   );

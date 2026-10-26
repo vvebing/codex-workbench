@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useEffect, useState } from "react";
 import { Command } from "cmdk";
 import { File, Search } from "lucide-react";
@@ -15,6 +16,9 @@ export function QuickOpen({
   thread: Thread;
   onClose: () => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { connection, files } = useRuntime();
   const state = useStore(connection);
   const workspace = useStore(files);
@@ -84,26 +88,26 @@ export function QuickOpen({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title="快速打开文件"
+      title={t("快速打开文件")}
       variant="search"
     >
-      <Command label="快速打开文件" shouldFilter={false} loop>
+      <Command label={t("快速打开文件")} shouldFilter={false} loop>
         <div className="mx-5 flex items-center gap-2 border-b border-border pb-2">
           <Search size={18} className="text-muted" />
           <Command.Input
             autoFocus
             value={query}
             onValueChange={setQuery}
-            aria-label="按名称搜索文件"
-            placeholder="按名称搜索文件，可追加 :行号:列号"
+            aria-label={t("按名称搜索文件")}
+            placeholder={t("按名称搜索文件，可追加 :行号:列号")}
             className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none"
           />
         </div>
         <p className="px-5 py-2 text-xs text-muted" title={thread.cwd}>
-          {thread.cwd} · {term ? "项目文件" : "已打开的文件"}
+          {thread.cwd} · {term ? t("项目文件") : t("已打开的文件")}
         </p>
         <ScrollArea className="max-h-[50dvh]">
-          <Command.List aria-label="文件搜索结果" className="p-2">
+          <Command.List aria-label={t("文件搜索结果")} className="p-2">
             {paths.map((path) => (
               <Command.Item
                 key={path}
@@ -136,17 +140,17 @@ export function QuickOpen({
             {!paths.length && !loading && !error && (
               <p className="p-3 text-sm text-muted">
                 {state.status !== "connected"
-                  ? "连接环境后可搜索项目文件。"
+                  ? t("连接环境后可搜索项目文件。")
                   : term
-                    ? "没有匹配的文件"
-                    : "输入文件名或路径开始查找。"}
+                    ? t("没有匹配的文件")
+                    : t("输入文件名或路径开始查找。")}
               </p>
             )}
           </Command.List>
         </ScrollArea>
         {loading && (
           <p role="status" className="px-5 py-2 text-xs text-muted">
-            正在查找文件…
+            {t("正在查找文件…")}
           </p>
         )}
         {error && (
@@ -156,11 +160,11 @@ export function QuickOpen({
         )}
         {results.length === 50 && (
           <p className="px-5 text-xs text-muted">
-            显示前 50 个结果，请细化搜索。
+            {t("显示前 50 个结果，请细化搜索。")}
           </p>
         )}
         <footer className="mt-2 border-t border-border px-5 py-3 text-xs text-muted">
-          ↑ ↓ 选择 Enter 打开 Esc 关闭
+          {t("↑ ↓ 选择 Enter 打开 Esc 关闭")}
         </footer>
       </Command>
     </Modal>

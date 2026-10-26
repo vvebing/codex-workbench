@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../lib/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
@@ -18,6 +20,7 @@ export function MermaidDiagram({
   source: string;
   pending?: boolean;
 }) {
+  useTranslation();
   const [appearance, setAppearance] = useState(readAppearance);
   useEffect(() => {
     setAppearance(readAppearance());
@@ -74,7 +77,7 @@ export function MermaidDiagram({
               message:
                 cause instanceof Error
                   ? cause.message
-                  : "请检查 Mermaid 语法。",
+                  : t("请检查 Mermaid 语法。"),
             });
         },
       );
@@ -116,7 +119,7 @@ export function MermaidDiagram({
       <div
         data-slot="mermaid-svg"
         role="img"
-        aria-label="Mermaid 图表"
+        aria-label={t("Mermaid 图表")}
         className="p-4 [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
         style={large ? { width: `${zoom}%`, minWidth: `${zoom}%` } : undefined}
         dangerouslySetInnerHTML={{
@@ -139,7 +142,7 @@ export function MermaidDiagram({
           aria-pressed={view === "diagram"}
           onClick={() => setView("diagram")}
         >
-          图表
+          {t("图表")}
         </Button>
         <Button
           size="sm"
@@ -147,13 +150,13 @@ export function MermaidDiagram({
           aria-pressed={view === "source"}
           onClick={() => setView("source")}
         >
-          源码
+          {t("源码")}
         </Button>
         <span className="flex-1" />
         <Button
           size="sm"
           variant="quiet"
-          aria-label="复制 Mermaid 源码"
+          aria-label={t("复制 Mermaid 源码")}
           onClick={() => {
             void navigator.clipboard.writeText(source).then(
               () => setCopied("已复制"),
@@ -162,10 +165,10 @@ export function MermaidDiagram({
           }}
         >
           {copied === "已复制" ? <Check size={14} /> : <Copy size={14} />}
-          <span role="status">{copied || "复制"}</span>
+          <span role="status">{copied ? t(copied) : t("复制")}</span>
         </Button>
         <IconButton
-          label="放大图表"
+          label={t("放大图表")}
           disabled={!currentSvg}
           onClick={() => {
             setZoom(100);
@@ -184,10 +187,10 @@ export function MermaidDiagram({
       ) : currentError ? (
         <div className="p-4">
           <p role="status" className="text-xs text-muted">
-            图表暂时无法显示，可查看源码检查语法。
+            {t("图表暂时无法显示，可查看源码检查语法。")}
           </p>
           <details className="mt-2 text-xs text-muted">
-            <summary className="cursor-pointer">查看错误详情</summary>
+            <summary className="cursor-pointer">{t("查看错误详情")}</summary>
             <pre className="whitespace-pre-wrap break-words pt-2">
               {currentError}
             </pre>
@@ -197,7 +200,7 @@ export function MermaidDiagram({
             variant="quiet"
             onClick={() => setRetry((value) => value + 1)}
           >
-            重试
+            {t("重试")}
           </Button>
           <ScrollArea orientation="both" className="max-h-[420px]">
             <pre className="m-0 pt-3 text-xs leading-relaxed">
@@ -214,22 +217,22 @@ export function MermaidDiagram({
         >
           <LoaderCircle size={15} className="animate-spin" />
           {pending
-            ? "图表生成中…"
+            ? t("图表生成中…")
             : expanded
-              ? "正在放大查看图表"
-              : "正在渲染图表…"}
+              ? t("正在放大查看图表")
+              : t("正在渲染图表…")}
         </div>
       )}
       <Modal
         open={expanded}
         onOpenChange={setExpanded}
-        title="Mermaid 图表"
+        title={t("Mermaid 图表")}
         className="max-w-[1100px]!"
-        description="放大查看图表，超出区域时可滚动浏览。"
+        description={t("放大查看图表，超出区域时可滚动浏览。")}
       >
         <div className="mb-3 flex items-center gap-2">
           <IconButton
-            label="缩小图表"
+            label={t("缩小图表")}
             disabled={zoom <= 50}
             onClick={() => setZoom((value) => Math.max(50, value - 25))}
           >
@@ -237,14 +240,14 @@ export function MermaidDiagram({
           </IconButton>
           <span className="text-xs text-muted">{zoom}%</span>
           <IconButton
-            label="放大一级"
+            label={t("放大一级")}
             disabled={zoom >= 300}
             onClick={() => setZoom((value) => Math.min(300, value + 25))}
           >
             <Plus size={15} />
           </IconButton>
           <Button size="sm" variant="quiet" onClick={() => setZoom(100)}>
-            适应宽度
+            {t("适应宽度")}
           </Button>
         </div>
         {diagram(true)}

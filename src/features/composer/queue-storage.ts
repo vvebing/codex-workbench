@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { TaskQueue } from "./queue";
 
 type Queues = Record<string, TaskQueue>;
@@ -14,7 +15,7 @@ export class QueueStorage {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
       request.onblocked = () =>
-        reject(new Error("无法打开待发送任务存储，请关闭旧页面后重试。"));
+        reject(new Error(t("无法打开待发送任务存储，请关闭旧页面后重试。")));
     }));
   }
   async read(scope: string): Promise<Queues> {
@@ -39,7 +40,7 @@ export class QueueStorage {
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
       transaction.onabort = () =>
-        reject(transaction.error ?? new Error("待发送任务保存失败。"));
+        reject(transaction.error ?? new Error(t("待发送任务保存失败。")));
     });
   }
 }

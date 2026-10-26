@@ -1,10 +1,11 @@
+import { t } from "../../lib/i18n";
 import type { CodexClient } from "../../lib/rpc";
 import type { CommandExecResponse } from "../../generated/v2/CommandExecResponse";
 
 /** Git C-quotes control characters even with core.quotePath=false. */
 export function decodeGitPath(line: string): string {
   if (!line.startsWith('"')) return line;
-  if (!line.endsWith('"')) throw new Error("Incomplete Git path");
+  if (!line.endsWith('"')) throw new Error(t("Incomplete Git path"));
   const bytes: number[] = [];
   const escapes: Record<string, number> = {
     a: 7,
@@ -29,7 +30,7 @@ export function decodeGitPath(line: string): string {
         const octal = line.slice(i).match(/^[0-7]{1,3}/)![0];
         bytes.push(parseInt(octal, 8));
         i += octal.length - 1;
-      } else throw new Error("Invalid Git quoted path");
+      } else throw new Error(t("Invalid Git quoted path"));
     }
   }
   return new TextDecoder("utf-8", { fatal: true }).decode(
@@ -78,9 +79,9 @@ export async function readIgnoredPaths(
     });
     if (!current()) return ignored;
     if (result.exitCode !== 0 && result.exitCode !== 1)
-      throw new Error("Git ignore status unavailable");
+      throw new Error(t("Git ignore status unavailable"));
     if (result.stdout && !result.stdout.endsWith("\n"))
-      throw new Error("Incomplete Git ignore output");
+      throw new Error(t("Incomplete Git ignore output"));
     for (const line of result.stdout.split("\n").filter(Boolean)) {
       const path = decodeGitPath(line);
       if (batch.includes(path)) ignored.add(path);

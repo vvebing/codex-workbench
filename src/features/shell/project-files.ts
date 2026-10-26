@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { JSONContent } from "@tiptap/core";
 import type { DraftsStore } from "../composer/drafts";
 import { textDocument } from "../composer/editor-document";
@@ -12,21 +13,21 @@ export function workspacePath(root: string, relative: string): string {
     /^[a-z]:[\\/]/i.test(relative) ||
     (/^[a-z]:[\\/]/i.test(root) && parts.some((part) => part.includes(":")))
   )
-    throw new Error("无效的项目路径。");
+    throw new Error(t("无效的项目路径。"));
   return `${root.replace(/[\\/]$/, "")}/${parts.join("/")}`;
 }
 
 export function previewText(base64: string): string {
   if (base64.length > Math.ceil(MAX_PREVIEW_BYTES / 3) * 4)
-    throw new Error("文件超过 256 KB，无法在面板中预览。可以引用到输入框。");
+    throw new Error(t("文件超过 256 KB，无法在面板中预览。可以引用到输入框。"));
   const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
   if (bytes.length > MAX_PREVIEW_BYTES)
-    throw new Error("文件超过 256 KB，无法在面板中预览。");
-  if (bytes.includes(0)) throw new Error("二进制文件不支持文本预览。");
+    throw new Error(t("文件超过 256 KB，无法在面板中预览。"));
+  if (bytes.includes(0)) throw new Error(t("二进制文件不支持文本预览。"));
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
-    throw new Error("该文件不是 UTF-8 文本，无法预览。");
+    throw new Error(t("该文件不是 UTF-8 文本，无法预览。"));
   }
 }
 

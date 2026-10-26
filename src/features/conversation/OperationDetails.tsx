@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { getLocale, t } from "../../lib/i18n";
 import { ConversationImage } from "../../components/ImagePreview";
 import { OpenCurrentFile } from "../files/FileLinkContext";
 import { useState } from "react";
@@ -11,6 +13,7 @@ import { AnimatedDisclosure } from "./AnimatedDisclosure";
 import { hasOperationContent } from "./operation";
 
 function StructuredResult({ value }: { value: unknown }) {
+  useTranslation();
   return (
     <ScrollArea scrollChaining className="mt-2 max-h-48">
       <ToolText
@@ -34,6 +37,7 @@ function linkUrl(value: unknown): string | undefined {
   if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
 }
 function MediaContent({ value }: { value: unknown }) {
+  useTranslation();
   if (!value || typeof value !== "object" || Array.isArray(value))
     return <ToolText text={JSON.stringify(value, null, 2) ?? ""} />;
   const part = value as Record<string, unknown>;
@@ -62,11 +66,11 @@ function MediaContent({ value }: { value: unknown }) {
       "image",
     );
     return url ? (
-      <ConversationImage src={url} name="工具返回图片" />
+      <ConversationImage src={url} name={t("工具返回图片")} />
     ) : (
       <p className="text-xs text-muted">
-        图片地址暂不支持预览：
-        {String(part.imageUrl ?? part.image_url ?? part.file_id ?? "未提供")}
+        {t("图片地址暂不支持预览：")}
+        {String(part.imageUrl ?? part.image_url ?? part.file_id ?? t("未提供"))}
       </p>
     );
   }
@@ -87,14 +91,16 @@ function MediaContent({ value }: { value: unknown }) {
       <audio src={url} controls className="my-2 max-w-full" />
     ) : (
       <p className="text-xs text-muted">
-        音频地址暂不支持播放：
-        {String(part.audioUrl ?? part.audio_url ?? "未提供")}
+        {t("音频地址暂不支持播放：")}
+        {String(part.audioUrl ?? part.audio_url ?? t("未提供"))}
       </p>
     );
   }
   if (part.type === "encrypted_content")
     return (
-      <p className="text-xs text-muted">工具返回了加密内容，无法直接预览。</p>
+      <p className="text-xs text-muted">
+        {t("工具返回了加密内容，无法直接预览。")}
+      </p>
     );
   if (part.type === "resource_link" || part.type === "resourceLink") {
     const url = linkUrl(part.uri);
@@ -109,7 +115,7 @@ function MediaContent({ value }: { value: unknown }) {
       </a>
     ) : (
       <p className="text-xs">
-        {String(part.name ?? "资源")}：{String(part.uri ?? "")}
+        {String(part.name ?? t("资源"))}: {String(part.uri ?? "")}
       </p>
     );
   }
@@ -145,7 +151,7 @@ function MediaContent({ value }: { value: unknown }) {
             {String(resource.uri)}
           </a>
         ) : (
-          <p>{String(resource.uri ?? "资源")}</p>
+          <p>{String(resource.uri ?? t("资源"))}</p>
         )}
         {resourceMedia ? (
           <MediaContent value={resourceMedia} />
@@ -153,7 +159,8 @@ function MediaContent({ value }: { value: unknown }) {
           <ToolText text={resource.text} mimeType={mime} />
         ) : (
           <p className="text-muted">
-            二进制资源 · {String(resource.mimeType ?? "未知类型")}
+            {t("二进制资源 ·")}
+            {String(resource.mimeType ?? t("未知类型"))}
           </p>
         )}
       </div>
@@ -193,6 +200,7 @@ export function OperationDetails({
   progress?: string[];
   output?: string;
 }) {
+  useTranslation();
   const [copyState, setCopyState] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [structuredOpen, setStructuredOpen] = useState(false);
@@ -213,7 +221,7 @@ export function OperationDetails({
     item.type === "mcpToolCall"
       ? item.error?.message
       : item.type === "dynamicToolCall" && status === "failed"
-        ? "工具执行失败"
+        ? t("工具执行失败")
         : null;
   const structured =
     item.type === "mcpToolCall" ? item.result?.structuredContent : null;
@@ -224,20 +232,44 @@ export function OperationDetails({
     item.type === "hookPrompt";
   const copy = () => {
     const allContent = [
-      tool ? `参数\n${JSON.stringify(item.arguments, null, 2)}` : content,
+      tool
+        ? t("参数\n{{value0}}", {
+            value0: JSON.stringify(item.arguments, null, 2),
+          })
+        : content,
       media?.map(contentText).join("\n\n"),
       error,
       output,
       item.type === "imageGeneration"
-        ? `返回数据\n${JSON.stringify({ result: item.result, savedPath: item.savedPath, failure: item.failure }, null, 2)}`
+        ? t("返回数据\n{{value0}}", {
+            value0: JSON.stringify(
+              {
+                result: item.result,
+                savedPath: item.savedPath,
+                failure: item.failure,
+              },
+              null,
+              2,
+            ),
+          })
         : null,
       structured != null
-        ? `结构化结果\n${JSON.stringify(structured, null, 2)}`
+        ? t("结构化结果\n{{value0}}", {
+            value0: JSON.stringify(structured, null, 2),
+          })
         : null,
       item.type === "webSearch"
-        ? `搜索数据\n${JSON.stringify({ action: item.action, results: item.results }, null, 2)}`
+        ? t("搜索数据\n{{value0}}", {
+            value0: JSON.stringify(
+              { action: item.action, results: item.results },
+              null,
+              2,
+            ),
+          })
         : null,
-      progress?.length ? `进度\n${progress.join("\n")}` : null,
+      progress?.length
+        ? t("进度\n{{value0}}", { value0: progress.join("\n") })
+        : null,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -253,9 +285,9 @@ export function OperationDetails({
     <div className="relative min-w-0 space-y-3 py-3 text-foreground [overflow-wrap:anywhere]">
       <div hidden className="absolute top-6 right-2 items-center gap-2 z-1">
         <span role="status" className="text-xs text-muted empty:hidden">
-          {copyState}
+          {copyState ? t(copyState) : ""}
         </span>
-        <IconButton size="sm" label="复制输出" onClick={copy}>
+        <IconButton size="sm" label={t("复制输出")} onClick={copy}>
           {copyState === "已复制" ? <Check size={14} /> : <Copy size={14} />}
         </IconButton>
       </div>
@@ -281,7 +313,8 @@ export function OperationDetails({
                   aria-hidden="true"
                   className={`shrink-0 transition-transform duration-200 motion-reduce:transition-none ${progressOpen ? "rotate-90" : ""}`}
                 />
-                查看进度记录 ({progress.length})
+                {t("查看进度记录 (")}
+                {progress.length})
               </summary>
             }
           >
@@ -296,7 +329,7 @@ export function OperationDetails({
       {tool ? (
         <section className="space-y-2">
           <p className="flex min-h-6 items-center pr-10 text-xs text-muted max-[900px]:min-h-10">
-            参数
+            {t("参数")}
           </p>
           <ScrollArea scrollChaining className="max-h-40">
             <ToolText
@@ -310,10 +343,10 @@ export function OperationDetails({
               {status === "inProgress" ||
               status === "in_progress" ||
               status === "waiting"
-                ? "等待工具返回结果"
+                ? t("等待工具返回结果")
                 : status === "failed"
-                  ? "工具执行失败，未返回详细信息"
-                  : "工具未返回内容"}
+                  ? t("工具执行失败，未返回详细信息")
+                  : t("工具未返回内容")}
             </p>
           )}
         </section>
@@ -324,7 +357,7 @@ export function OperationDetails({
         >
           <div
             className="flex flex-wrap gap-1 border-b border-border p-2 pr-12"
-            aria-label="修改文件"
+            aria-label={t("修改文件")}
           >
             {changes.map((change) => (
               <button
@@ -359,7 +392,7 @@ export function OperationDetails({
                       {line || " "}
                     </span>
                   ))
-                : "该文件未提供 diff"}
+                : t("该文件未提供 diff")}
             </pre>
           </ScrollArea>
         </div>
@@ -368,7 +401,7 @@ export function OperationDetails({
           {item.prompt && (
             <section className="space-y-2">
               <p className="flex min-h-6 items-center pr-10 text-xs text-muted max-[900px]:min-h-10">
-                任务
+                {t("任务")}
               </p>
               <ScrollArea scrollChaining className="max-h-48">
                 <ToolText text={item.prompt} />
@@ -393,7 +426,7 @@ export function OperationDetails({
           {item.type === "imageView" ? (
             <>
               <p className="text-xs text-muted">{item.path}</p>
-              <LocalMessageImage path={item.path} name="工具查看图片" />
+              <LocalMessageImage path={item.path} name={t("工具查看图片")} />
             </>
           ) : (
             <>
@@ -404,33 +437,42 @@ export function OperationDetails({
               )}
               {item.failure ? (
                 <ErrorNotice>
-                  图片生成额度已用尽（{item.failure.limitId}）
+                  {t("图片生成额度已用尽（{{value0}}）", {
+                    value0: item.failure.limitId,
+                  })}
                   {item.failure.resetsAt != null
-                    ? `，重置时间：${new Date(item.failure.resetsAt * 1000).toLocaleString()}`
+                    ? t("，重置时间：{{value0}}", {
+                        value0: new Date(
+                          item.failure.resetsAt * 1000,
+                        ).toLocaleString(getLocale()),
+                      })
                     : ""}
                 </ErrorNotice>
               ) : item.result || item.savedPath ? (
                 mediaUrl(item.result, "image") ? (
-                  <ConversationImage src={item.result} name="工具生成图片" />
+                  <ConversationImage
+                    src={item.result}
+                    name={t("工具生成图片")}
+                  />
                 ) : /^[A-Za-z0-9+/=\r\n]+$/.test(item.result) &&
                   item.result.length > 64 ? (
                   <ConversationImage
                     src={`data:image/png;base64,${item.result}`}
-                    name="工具生成图片"
+                    name={t("工具生成图片")}
                   />
                 ) : (
                   <LocalMessageImage
                     path={item.savedPath || item.result}
-                    name="工具生成图片"
+                    name={t("工具生成图片")}
                   />
                 )
               ) : (
                 <p className="text-xs text-muted">
                   {status === "failed"
-                    ? "图片生成失败"
+                    ? t("图片生成失败")
                     : status === "inProgress" || status === "in_progress"
-                      ? "正在生成图片"
-                      : "未返回图片"}
+                      ? t("正在生成图片")
+                      : t("未返回图片")}
                 </p>
               )}
               {item.savedPath && (
@@ -444,7 +486,7 @@ export function OperationDetails({
           <div className="space-y-2">
             {richText && (
               <p className="flex min-h-6 items-center pr-10 text-xs text-muted max-[900px]:min-h-10">
-                返回结果
+                {t("返回结果")}
               </p>
             )}
             <ScrollArea
@@ -458,10 +500,10 @@ export function OperationDetails({
               }
             >
               {richText ? (
-                <ToolText text={content || "工具未返回内容"} />
+                <ToolText text={content || t("工具未返回内容")} />
               ) : (
                 <pre className="rounded-md bg-surface p-3 pr-10 font-mono text-xs leading-code whitespace-pre-wrap [overflow-wrap:anywhere]">
-                  {content || "暂无内容"}
+                  {content || t("暂无内容")}
                 </pre>
               )}
             </ScrollArea>
@@ -487,7 +529,7 @@ export function OperationDetails({
       {!!media?.length && (
         <section className="space-y-2">
           <p className="flex min-h-6 items-center pr-10 text-xs text-muted max-[900px]:min-h-10">
-            返回结果
+            {t("返回结果")}
           </p>
           {media.map((part, index) => (
             <ScrollArea scrollChaining key={index} className="max-h-48">
@@ -498,7 +540,7 @@ export function OperationDetails({
       )}
       {item.type === "webSearch" && !!item.results?.length && (
         <section className="space-y-2">
-          <p className="text-xs text-muted">搜索结果</p>
+          <p className="text-xs text-muted">{t("搜索结果")}</p>
           <ScrollArea scrollChaining className="max-h-48">
             <ToolText
               text={JSON.stringify(item.results, null, 2)}
@@ -526,7 +568,7 @@ export function OperationDetails({
                   aria-hidden="true"
                   className={`shrink-0 transition-transform duration-200 motion-reduce:transition-none ${structuredOpen ? "rotate-90" : ""}`}
                 />
-                结构化结果
+                {t("结构化结果")}
               </summary>
             }
           >
@@ -534,7 +576,7 @@ export function OperationDetails({
           </AnimatedDisclosure>
         ) : (
           <section className="space-y-2">
-            <p className="text-xs text-muted">返回结果</p>
+            <p className="text-xs text-muted">{t("返回结果")}</p>
             <ScrollArea scrollChaining className="max-h-48">
               <ToolText
                 text={JSON.stringify(item.result.structuredContent, null, 2)}

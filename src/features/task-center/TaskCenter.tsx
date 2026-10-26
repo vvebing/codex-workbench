@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useState } from "react";
 import { useStore, titleOf } from "../../components/hooks";
 import { Modal, ScrollArea, ErrorNotice, Button } from "../../components/ui";
@@ -19,6 +20,9 @@ function EnvironmentTasks({
   onLocated: () => void;
   onInspectAgent: (environmentId: string, threadId: string) => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const { runtime } = environment;
   useStore(runtime.sessions);
   useStore(runtime.requests);
@@ -38,7 +42,10 @@ function EnvironmentTasks({
     "待查看结果",
   ];
   return (
-    <section className="mb-5" aria-label={`${environment.name}待办`}>
+    <section
+      className="mb-5"
+      aria-label={t("{{value0}}待办", { value0: environment.name })}
+    >
       <div className="mb-2 flex items-center gap-3">
         <h3 className="min-w-0 flex-1 text-sm font-medium">
           {environment.name} · {summary.label}
@@ -62,8 +69,8 @@ function EnvironmentTasks({
             }}
           >
             {connecting || connection.status === "connecting"
-              ? "连接中…"
-              : "连接环境"}
+              ? t("连接中…")
+              : t("连接环境")}
           </Button>
         )}
       </div>
@@ -76,7 +83,7 @@ function EnvironmentTasks({
         return tasks.length ? (
           <div key={category} className="mb-3">
             <h4 className="mb-1 text-xs text-muted">
-              {category} · {tasks.length}
+              {t(category)} · {tasks.length}
             </h4>
             <p className="mb-2 text-fine text-muted">
               {taskCategoryDescriptions[category]}
@@ -118,7 +125,7 @@ function EnvironmentTasks({
                     ? titleOf(
                         runtime.sessions.getSnapshot().threads[entry.threadId],
                       )
-                    : "请求未提供会话，无法定位"}
+                    : t("请求未提供会话，无法定位")}
                 </span>
                 {entry.detail && (
                   <span className="mt-1 block whitespace-pre-wrap text-xs text-muted">
@@ -126,7 +133,9 @@ function EnvironmentTasks({
                   </span>
                 )}
                 <span className="mt-1 block text-meta text-muted">
-                  {entry.threadId ? "前往会话处理" : "请在来源服务检查此请求"}
+                  {entry.threadId
+                    ? t("前往会话处理")
+                    : t("请在来源服务检查此请求")}
                 </span>
               </button>
             ))}
@@ -145,17 +154,24 @@ export function TaskCenter({
   onOpenChange: (open: boolean) => void;
   onInspectAgent: (environmentId: string, threadId: string) => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const state = useStore(environments);
   return (
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="待办中心"
-      description="查看各环境中需要你处理的事项，并前往来源会话继续。未连接环境会明确标记为待同步。"
+      title={t("待办中心")}
+      description={t(
+        "查看各环境中需要你处理的事项，并前往来源会话继续。未连接环境会明确标记为待同步。",
+      )}
     >
       <ScrollArea className="max-h-[65vh]">
         <p className="mb-4 text-xs text-muted">
-          排队由当前浏览器调度；关闭页面后不会发送。发送结果不确定时，请先核对记录。
+          {t(
+            "排队由当前浏览器调度；关闭页面后不会发送。发送结果不确定时，请先核对记录。",
+          )}
         </p>
         {state.entries.map((environment) => (
           <EnvironmentTasks

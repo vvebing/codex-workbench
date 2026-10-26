@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { Store, errorMessage } from "../../lib/store";
 import type { ConnectionStore } from "./store";
 import type { LoginAccountParams } from "../../generated/v2/LoginAccountParams";
@@ -38,8 +39,8 @@ export class AccountAccessStore extends Store<ReturnType<typeof empty>> {
   private finish(result: AccountLoginCompletedNotification): void {
     this.update({
       ...empty(),
-      error: result.success ? "" : result.error || "登录未完成",
-      message: result.success ? "登录成功" : "",
+      error: result.success ? "" : result.error || t("登录未完成"),
+      message: result.success ? t("登录成功") : "",
     });
     if (result.success) {
       void this.connection.loadAccount();
@@ -84,7 +85,7 @@ export class AccountAccessStore extends Store<ReturnType<typeof empty>> {
           this.update({
             ...this.state,
             login: result,
-            message: "请完成授权，工作台会自动更新登录状态。",
+            message: t("请完成授权，工作台会自动更新登录状态。"),
           });
       } else {
         this.finish({
@@ -101,14 +102,14 @@ export class AccountAccessStore extends Store<ReturnType<typeof empty>> {
     if (!loginId) return Promise.resolve();
     return this.action(async (current) => {
       await this.connection.client.request("account/login/cancel", { loginId });
-      if (current()) this.update({ ...empty(), message: "已取消登录" });
+      if (current()) this.update({ ...empty(), message: t("已取消登录") });
     });
   }
   logout(): Promise<void> {
     return this.action(async (current) => {
       await this.connection.client.request("account/logout");
       if (!current()) return;
-      this.update({ ...empty(), message: "已退出当前环境账户" });
+      this.update({ ...empty(), message: t("已退出当前环境账户") });
       await this.connection.loadAccount();
       void this.connection.loadRateLimits();
     });

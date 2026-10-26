@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useState } from "react";
 import { Button, SelectField, MultiSelectField } from "../../components/ui";
 import type { PermissionsRequestApprovalParams } from "../../generated/v2/PermissionsRequestApprovalParams";
@@ -20,6 +21,9 @@ export function PermissionsApproval({
   disabled,
   respond,
 }: Controls & { params: PermissionsRequestApprovalParams }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const [network, setNetwork] = useState(true);
   const [files, setFiles] = useState(true);
   const grant = (scope: "turn" | "session", deny = false) => {
@@ -39,7 +43,10 @@ export function PermissionsApproval({
   return (
     <div>
       {params.reason && <p>{params.reason}</p>}
-      <p className="my-2 text-muted">工作目录：{params.cwd}</p>
+      <p className="my-2 text-muted">
+        {t("工作目录：")}
+        {params.cwd}
+      </p>
       {params.permissions.network && (
         <label className="mb-3 block">
           <input
@@ -48,12 +55,12 @@ export function PermissionsApproval({
             disabled={disabled}
             onChange={(event) => setNetwork(event.target.checked)}
           />{" "}
-          网络权限：
+          {t("网络权限：")}
           {params.permissions.network.enabled === true
-            ? "允许访问网络"
+            ? t("允许访问网络")
             : params.permissions.network.enabled === false
-              ? "禁用网络访问"
-              : "保持当前网络设置"}
+              ? t("禁用网络访问")
+              : t("保持当前网络设置")}
         </label>
       )}
       {params.permissions.fileSystem && (
@@ -64,36 +71,40 @@ export function PermissionsApproval({
             disabled={disabled}
             onChange={(event) => setFiles(event.target.checked)}
           />{" "}
-          文件权限
+          {t("文件权限")}
           <span className="mt-2 block space-y-1 [overflow-wrap:anywhere]">
             {params.permissions.fileSystem.read?.map((path) => (
               <span className="block" key={`read-${path}`}>
-                读取：{path}
+                {t("读取：")}
+                {path}
               </span>
             ))}
             {params.permissions.fileSystem.write?.map((path) => (
               <span className="block" key={`write-${path}`}>
-                写入：{path}
+                {t("写入：")}
+                {path}
               </span>
             ))}
             {params.permissions.fileSystem.entries?.map((entry, index) => (
               <span className="block" key={index}>
                 {entry.access === "read"
-                  ? "读取"
+                  ? t("读取")
                   : entry.access === "write"
-                    ? "写入"
-                    : "禁止访问"}
+                    ? t("写入")
+                    : t("禁止访问")}
                 ：
                 {entry.path.type === "path"
                   ? entry.path.path
                   : entry.path.type === "glob_pattern"
-                    ? `匹配路径 ${entry.path.pattern}`
-                    : `特殊路径 ${JSON.stringify(entry.path.value)}`}
+                    ? t("匹配路径 {{value0}}", { value0: entry.path.pattern })
+                    : t("特殊路径 {{value0}}", {
+                        value0: JSON.stringify(entry.path.value),
+                      })}
               </span>
             ))}
             {params.permissions.fileSystem.globScanMaxDepth !== undefined && (
               <span className="block">
-                路径匹配最大深度：
+                {t("路径匹配最大深度：")}
                 {params.permissions.fileSystem.globScanMaxDepth}
               </span>
             )}
@@ -102,13 +113,13 @@ export function PermissionsApproval({
       )}
       <div className="flex flex-wrap gap-2">
         <Button disabled={disabled} onClick={() => grant("turn")}>
-          本轮允许所选权限
+          {t("本轮允许所选权限")}
         </Button>
         <Button disabled={disabled} onClick={() => grant("session")}>
-          本会话允许所选权限
+          {t("本会话允许所选权限")}
         </Button>
         <Button disabled={disabled} onClick={() => grant("turn", true)}>
-          拒绝
+          {t("拒绝")}
         </Button>
       </div>
     </div>
@@ -119,6 +130,9 @@ export function ElicitationApproval({
   disabled,
   respond,
 }: Controls & { params: McpServerElicitationRequestParams }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const schema =
     params.mode === "form" && supportedForm(params.requestedSchema)
       ? params.requestedSchema
@@ -174,10 +188,10 @@ export function ElicitationApproval({
             </a>
           </p>
         ) : (
-          <p role="alert">此请求的链接不安全，无法确认。</p>
+          <p role="alert">{t("此请求的链接不安全，无法确认。")}</p>
         )
       ) : !schema ? (
-        <p role="alert">暂不支持此表单结构。请拒绝或取消此请求。</p>
+        <p role="alert">{t("暂不支持此表单结构。请拒绝或取消此请求。")}</p>
       ) : (
         <form
           onSubmit={(event) => {
@@ -239,7 +253,7 @@ export function ElicitationApproval({
                         )
                       }
                       options={[
-                        { value: "unset", label: "请选择" },
+                        { value: "unset", label: t("请选择") },
                         ...options.map((option, index) => ({
                           value: String(index + 1),
                           label: option.label,
@@ -261,9 +275,9 @@ export function ElicitationApproval({
                       set(key, value === "unset" ? undefined : value === "true")
                     }
                     options={[
-                      { value: "unset", label: "请选择" },
-                      { value: "true", label: "是" },
-                      { value: "false", label: "否" },
+                      { value: "unset", label: t("请选择") },
+                      { value: "true", label: t("是") },
+                      { value: "false", label: t("否") },
                     ]}
                   />
                 ) : (
@@ -313,7 +327,7 @@ export function ElicitationApproval({
                     disabled={disabled}
                     onClick={() => set(key, undefined)}
                   >
-                    不填写此项
+                    {t("不填写此项")}
                   </Button>
                 )}
                 {error && (
@@ -325,21 +339,21 @@ export function ElicitationApproval({
             );
           })}
           <Button disabled={disabled || !valid} type="submit">
-            提交回答
+            {t("提交回答")}
           </Button>
         </form>
       )}
       <div className="mt-3 flex gap-2">
         {url && (
           <Button disabled={disabled} onClick={() => send("accept")}>
-            已完成，确认继续
+            {t("已完成，确认继续")}
           </Button>
         )}
         <Button disabled={disabled} onClick={() => send("decline")}>
-          拒绝
+          {t("拒绝")}
         </Button>
         <Button disabled={disabled} onClick={() => send("cancel")}>
-          取消
+          {t("取消")}
         </Button>
       </div>
     </div>

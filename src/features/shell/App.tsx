@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import {
   projectPanelKey,
   projectPanelState,
@@ -103,6 +104,9 @@ import { SessionUrlStore } from "../navigation/session-url";
 import { browserTitle } from "../navigation/browser-title";
 const sessionUrl = new SessionUrlStore(environments, window);
 export default function App() {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   useVisualViewport();
   const state = useStore(environments);
   const active = state.entries.find((entry) => entry.id === state.activeId)!;
@@ -151,6 +155,9 @@ export default function App() {
   );
 }
 function AppView() {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const route = useStore(sessionUrl);
   const runtime = useRuntime();
   const environmentState = useStore(environments);
@@ -175,8 +182,11 @@ function AppView() {
   const newSessions = useStore(newEnvironment.runtime.sessions);
   const newConnection = useStore(newEnvironment.runtime.connection);
   const newProjects = useMemo(
-    () => projectsFor(newEnvironment.runtime.connection, newEnvironment.id),
-    [newEnvironment.runtime.connection, newEnvironment.id],
+    () => (
+      void i18nLocale,
+      projectsFor(newEnvironment.runtime.connection, newEnvironment.id)
+    ),
+    [newEnvironment.runtime.connection, newEnvironment.id, i18nLocale],
   );
   const projectSettings = useStore(newProjects);
   const recentWorkspaces = [
@@ -441,7 +451,9 @@ function AppView() {
       if (projectDefaults?.description)
         newEnvironment.runtime.drafts.setText(
           created.id,
-          `项目说明：\n${projectDefaults.description}\n\n任务：\n`,
+          t("项目说明：\n{{value0}}\n\n任务：\n", {
+            value0: projectDefaults.description,
+          }),
         );
       environments.select(newEnvironment.id);
       setNewCreated(true);
@@ -492,8 +504,8 @@ function AppView() {
   const detailView = (
     <div data-slot="details-shell" className="flex h-full flex-col bg-surface">
       <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-border px-[17px] text-caption font-medium">
-        <span>项目面板</span>
-        <IconButton label="关闭项目面板" onClick={() => setDetails(false)}>
+        <span>{t("项目面板")}</span>
+        <IconButton label={t("关闭项目面板")} onClick={() => setDetails(false)}>
           <X size={17} />
         </IconButton>
       </header>
@@ -523,7 +535,8 @@ function AppView() {
       >
         {(narrow || !sidebar) && (
           <IconButton
-            label="打开导航"
+            label={t("打开导航")}
+            data-navigation-trigger
             onClick={() => (narrow ? setMobileNav(true) : setSidebar(true))}
           >
             <PanelLeft size={18} />
@@ -535,7 +548,7 @@ function AppView() {
         >
           <EnvironmentIcon environment={environment} cwd={thread?.cwd} />
           <span title={thread?.cwd}>
-            {thread ? folderOf(thread.cwd) : "工作环境"}
+            {thread ? folderOf(thread.cwd) : t("工作环境")}
           </span>
           <span className="text-subtle">/</span>
           <strong
@@ -552,15 +565,15 @@ function AppView() {
         {thread?.cwd && (
           <>
             <IconButton
-              label="快速打开文件"
-              title="快速打开文件 (⌘/Ctrl+P)"
+              label={t("快速打开文件")}
+              title={t("快速打开文件 (⌘/Ctrl+P)")}
               onClick={() => setQuickOpen(true)}
             >
               <FileSearch size={18} />
             </IconButton>
             <IconButton
-              label="搜索文件内容"
-              title="搜索文件内容 (⌘/Ctrl+Shift+F)"
+              label={t("搜索文件内容")}
+              title={t("搜索文件内容 (⌘/Ctrl+Shift+F)")}
               onClick={openContentSearch}
             >
               <Search size={18} />
@@ -577,7 +590,7 @@ function AppView() {
         />
 
         <IconButton
-          label={details ? "关闭项目面板" : "打开项目面板"}
+          label={details ? t("关闭项目面板") : t("打开项目面板")}
           aria-expanded={details}
           onClick={() => {
             setAgentId(undefined);
@@ -613,7 +626,7 @@ function AppView() {
               className="mt-1"
               onClick={() => setSettings(true)}
             >
-              连接设置
+              {t("连接设置")}
             </Button>
           )}
         </ErrorNotice>
@@ -623,8 +636,11 @@ function AppView() {
           className="border-b border-border px-5 py-2 text-left text-xs text-muted hover:bg-surface"
           onClick={() => runtime.files.setVisible(true)}
         >
-          返回文件编辑器 · {files.documents.length} 个文件
-          {files.documents.some((file) => file.dirty) ? " · 有未保存修改" : ""}
+          {t("返回文件编辑器 ·")}
+          {files.documents.length} {t("个文件")}
+          {files.documents.some((file) => file.dirty)
+            ? t(" · 有未保存修改")
+            : ""}
         </button>
       )}
       <ConversationWorkspace key={environment.id}>
@@ -634,7 +650,7 @@ function AppView() {
             data-slot="session-link-state"
           >
             <h1 className="mb-3 text-xl font-medium">
-              {route.status === "error" ? "会话暂不可用" : "正在打开会话"}
+              {route.status === "error" ? t("会话暂不可用") : t("正在打开会话")}
             </h1>
             <p
               role={route.status === "error" ? "alert" : "status"}
@@ -644,13 +660,15 @@ function AppView() {
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {route.status === "error" && (
-                <Button onClick={sessionUrl.retry}>重试</Button>
+                <Button onClick={sessionUrl.retry}>{t("重试")}</Button>
               )}
               {(route.status === "error" || route.status === "waiting") && (
-                <Button onClick={() => setSettings(true)}>连接设置</Button>
+                <Button onClick={() => setSettings(true)}>
+                  {t("连接设置")}
+                </Button>
               )}
               <Button variant="secondary" onClick={sessionUrl.home}>
-                返回会话首页
+                {t("返回会话首页")}
               </Button>
             </div>
           </div>
@@ -689,7 +707,7 @@ function AppView() {
                 className="flex shrink-0 items-center gap-3 border-t border-border bg-surface px-5 py-4 text-xs text-muted"
               >
                 <span className="flex-1">
-                  此会话已归档，阅读位置和草稿已保留。恢复后可继续对话。
+                  {t("此会话已归档，阅读位置和草稿已保留。恢复后可继续对话。")}
                 </span>
                 <Button
                   size="sm"
@@ -700,7 +718,7 @@ function AppView() {
                       .catch(() => {})
                   }
                 >
-                  恢复会话
+                  {t("恢复会话")}
                 </Button>
               </div>
             ) : (
@@ -734,24 +752,25 @@ function AppView() {
               CODEX WORKBENCH
             </span>
             <h1 className="mt-[13px] mb-[17px] text-display font-[550] tracking-[-1px] max-[550px]:text-title">
-              把想法，变成下一步。
+              {t("把想法，变成下一步。")}
             </h1>
             <p className="mb-[27px] text-body leading-intro text-muted">
-              在你的工作区里思考、编写与验证。
+              {t("在你的工作区里思考、编写与验证。")}
               <br />
-              从一个清晰的任务开始。
+              {t("从一个清晰的任务开始。")}
             </p>
             <Button
               variant="primary"
               onClick={() => (connected ? newChat() : setSettings(true))}
             >
               <Plus size={17} />
-              {connected ? "开始新会话" : "连接工作环境"}
+              {connected ? t("开始新会话") : t("连接工作环境")}
               <ArrowUpRight size={16} />
             </Button>
             {connected && (
               <div className="mt-[22px] text-meta text-muted">
-                从左侧选择历史会话，或按 <kbd>⌘ K</kbd> 搜索
+                {t("从左侧选择历史会话，或按")}
+                <kbd>⌘ K</kbd> {t("搜索")}
               </div>
             )}
           </ScrollArea>
@@ -785,7 +804,7 @@ function AppView() {
         href="#main"
         className="fixed top-[5px] left-[5px] z-[100] -translate-y-[150%] bg-elevated p-3 focus:translate-y-0"
       >
-        跳转到对话
+        {t("跳转到对话")}
       </a>
       <div data-slot="app-shell" className="h-dvh overflow-hidden">
         {narrow ? (
@@ -808,7 +827,7 @@ function AppView() {
               onOpenChange={(open) => {
                 if (!open) closeAgent();
               }}
-              title="子代理详情"
+              title={t("子代理详情")}
               variant="details"
               returnFocusSelector="[data-slot=agent-entry]"
             >
@@ -832,8 +851,8 @@ function AppView() {
       <Modal
         open={narrow && mobileNav}
         onOpenChange={setMobileNav}
-        title="工作区导航"
-        returnFocusSelector='button[aria-label="打开导航"]'
+        title={t("工作区导航")}
+        returnFocusSelector={"[data-navigation-trigger]"}
         variant="drawer"
       >
         {navigation}
@@ -841,7 +860,7 @@ function AppView() {
       <Modal
         open={detailsDrawer && details}
         onOpenChange={setDetails}
-        title="项目面板"
+        title={t("项目面板")}
         variant="details"
       >
         {detailView}
@@ -887,15 +906,17 @@ function AppView() {
       <Modal
         open={newOpen}
         onOpenChange={setNewOpen}
-        title="新建会话"
+        title={t("新建会话")}
         returnFocusSelector={newCreated ? "#message-input" : undefined}
-        description="选择工作环境和项目目录，创建后发送第一条消息即可开始。"
+        description={t(
+          "选择工作环境和项目目录，创建后发送第一条消息即可开始。",
+        )}
       >
         <form onSubmit={(e) => void create(e)}>
           <div className="mb-5 flex flex-col gap-2">
-            <span className="text-caption text-muted">工作环境</span>
+            <span className="text-caption text-muted">{t("工作环境")}</span>
             <SelectField
-              label="新会话工作环境"
+              label={t("新会话工作环境")}
               value={newEnvironment.id}
               disabled={newBusy}
               className="w-full"
@@ -906,21 +927,28 @@ function AppView() {
               }}
               options={environmentState.entries.map((entry) => ({
                 value: entry.id,
-                label: `${entry.name}${entry.runtime.connection.getSnapshot().status === "connected" ? "" : " · 未连接"}`,
+                label: t("{{value0}}{{value1}}", {
+                  value0: entry.name,
+                  value1:
+                    entry.runtime.connection.getSnapshot().status ===
+                    "connected"
+                      ? ""
+                      : t(" · 未连接"),
+                }),
               }))}
             />
           </div>
           {newConnection.status !== "connected" && (
             <p role="status" className="mb-4 text-xs text-warning">
               「{newEnvironment.name}
-              」未连接。请先连接该环境，或明确选择其他环境。
+              {t("」未连接。请先连接该环境，或明确选择其他环境。")}
             </p>
           )}
           <label
             htmlFor="new-workspace-path"
             className="block text-control font-medium"
           >
-            工作目录
+            {t("工作目录")}
           </label>
           {newOpen && (
             <WorkspacePicker
@@ -939,7 +967,7 @@ function AppView() {
           )}
           <div className="mt-3 flex items-center justify-between gap-2">
             <span className="text-caption text-muted">
-              {cwd.trim() ? "已指定项目目录" : "将使用环境默认目录"}
+              {cwd.trim() ? t("已指定项目目录") : t("将使用环境默认目录")}
             </span>
             <Button
               type="button"
@@ -950,17 +978,19 @@ function AppView() {
                 setNewError("");
               }}
             >
-              使用默认目录
+              {t("使用默认目录")}
             </Button>
           </div>
           {projectDefaults && (
             <div className="mt-3 rounded-lg border border-border p-3 text-xs text-muted">
               <p>
-                项目默认模型：{projectDefaults.model || "使用新会话默认设置"}
+                {t("项目默认模型：")}
+                {projectDefaults.model || t("使用新会话默认设置")}
               </p>
               {projectDefaults.description && (
                 <p className="mt-2 whitespace-pre-wrap">
-                  以下项目说明将填入输入草稿，不会自动发送：{"\n"}
+                  {t("以下项目说明将填入输入草稿，不会自动发送：")}
+                  {"\n"}
                   {projectDefaults.description}
                 </p>
               )}
@@ -968,7 +998,9 @@ function AppView() {
           )}
           {recentWorkspaces.length > 0 && (
             <div className="mt-4">
-              <p className="mb-2 text-caption text-muted">最近使用的目录</p>
+              <p className="mb-2 text-caption text-muted">
+                {t("最近使用的目录")}
+              </p>
               <div className="flex flex-col gap-1">
                 {recentWorkspaces.map((path) => (
                   <button
@@ -1010,14 +1042,14 @@ function AppView() {
               variant="secondary"
               onClick={() => setNewOpen(false)}
             >
-              取消
+              {t("取消")}
             </Button>
             <Button
               type="submit"
               variant="primary"
               disabled={newConnection.status !== "connected" || newBusy}
             >
-              {newBusy ? "正在创建…" : "创建会话"}
+              {newBusy ? t("正在创建…") : t("创建会话")}
             </Button>
           </div>
         </form>

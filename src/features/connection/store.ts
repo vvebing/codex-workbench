@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import {
   CodexClient,
   RpcError,
@@ -79,7 +80,7 @@ export class ConnectionStore extends Store<ConnectionState> {
       models: [],
       modelsLoading: false,
       modelsError: null,
-      account: "未连接",
+      account: t("未连接"),
       accountDetails: null,
       rateLimitResetStatus: "idle",
       rateLimitResetCreditId: null,
@@ -102,7 +103,7 @@ export class ConnectionStore extends Store<ConnectionState> {
         ...(status === "disconnected"
           ? {
               epoch: this.state.epoch + 1,
-              account: "未连接",
+              account: t("未连接"),
               accountDetails: null,
               ...this.resetDefaults(),
               rateLimits: null,
@@ -130,7 +131,7 @@ export class ConnectionStore extends Store<ConnectionState> {
           this.limitsRead++;
           this.update({
             ...this.state,
-            account: "正在加载…",
+            account: t("正在加载…"),
             accountDetails: null,
             ...this.resetDefaults(),
             rateLimits: null,
@@ -160,7 +161,11 @@ export class ConnectionStore extends Store<ConnectionState> {
           break;
         case "model/rerouted":
           this.addNotice(
-            `模型已切换：${event.params.fromModel} → ${event.params.toModel} (${event.params.reason})`,
+            t("模型已切换：{{value0}} → {{value1}} ({{value2}})", {
+              value0: event.params.fromModel,
+              value1: event.params.toModel,
+              value2: event.params.reason,
+            }),
             event.params.threadId,
           );
           break;
@@ -216,7 +221,7 @@ export class ConnectionStore extends Store<ConnectionState> {
           ...this.state,
           accountDetails: details,
           account: !account
-            ? "未登录"
+            ? t("未登录")
             : account.type === "chatgpt"
               ? (account.email ?? "ChatGPT")
               : account.type === "apiKey"
@@ -228,7 +233,7 @@ export class ConnectionStore extends Store<ConnectionState> {
       if (current())
         this.update({
           ...this.state,
-          account: "账号暂时不可用",
+          account: t("账号暂时不可用"),
           accountDetails: null,
         });
     }
@@ -396,7 +401,7 @@ export class ConnectionStore extends Store<ConnectionState> {
         models.push(...page.data);
         cursor = page.nextCursor;
         if (cursor && seen.has(cursor))
-          throw new Error("Model catalog repeated pagination cursor.");
+          throw new Error(t("Model catalog repeated pagination cursor."));
         if (cursor) seen.add(cursor);
       } while (cursor);
       if (current())
@@ -430,7 +435,7 @@ export class ConnectionStore extends Store<ConnectionState> {
       models: [],
       modelsLoading: false,
       modelsError: null,
-      account: "未连接",
+      account: t("未连接"),
       accountDetails: null,
       ...this.resetDefaults(),
       rateLimits: null,
@@ -461,7 +466,7 @@ export class ConnectionStore extends Store<ConnectionState> {
       this.update({
         ...this.state,
         epoch: epoch + 1,
-        account: "未连接",
+        account: t("未连接"),
         accountDetails: null,
         ...this.resetDefaults(),
         error: null,

@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { Node } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
@@ -37,7 +38,9 @@ export const ReferenceNode = Node.create({
         class: "composer-reference",
         title:
           node.attrs.kind === "file"
-            ? `${node.attrs.path} · ⌘ / Ctrl 点击打开文件`
+            ? t("{{value0}} · ⌘ / Ctrl 点击打开文件", {
+                value0: node.attrs.path,
+              })
             : node.attrs.path,
         contenteditable: "false",
       },

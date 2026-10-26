@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { referenceAttachmentType } from "./thread-tools-model";
 import { Store, errorMessage } from "../../lib/store";
 import type { ConnectionStore } from "../connection/store";
@@ -26,6 +27,7 @@ interface ToolsState {
   ownerIdentity: { attachmentType: string; identityKey: string } | null;
   busy: boolean;
   error: string | null;
+  /** Product-owned translation key, localized by the view. */
   message: string | null;
 }
 export class ThreadToolsStore extends Store<ToolsState> {
@@ -245,7 +247,7 @@ export class ThreadToolsStore extends Store<ToolsState> {
   removeAttachment(attachment: ThreadAttachment): Promise<void> {
     return this.action(async (current) => {
       if (attachment.attachmentType !== referenceAttachmentType)
-        throw new Error("外部资料仅供查看，无法在此移除。");
+        throw new Error(t("外部资料仅供查看，无法在此移除。"));
       await this.sessions.threadRequest(
         this.threadId,
         "thread/attachment/remove",

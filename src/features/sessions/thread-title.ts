@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { Thread } from "../../generated/v2/Thread";
 
 export interface ThreadTitleSource {
@@ -80,11 +81,14 @@ export function threadTitle(thread?: TitleInput): string {
     (thread?.turns && firstTaskTitle({ turns: thread.turns }));
   const title = source?.text || taskTitle(thread?.preview ?? "");
   if (title) return title;
-  if (!thread?.preview?.trim() && !thread?.turns?.length) return "新会话";
+  if (!thread?.preview?.trim() && !thread?.turns?.length) return t("新会话");
   const date = thread?.createdAt
     ? new Date(thread.createdAt * 1000)
     : undefined;
   return date && Number.isFinite(date.getTime())
-    ? `未命名会话 · ${date.getMonth() + 1}月${date.getDate()}日`
-    : "未命名会话";
+    ? t("未命名会话 · {{value0}}月{{value1}}日", {
+        value0: date.getMonth() + 1,
+        value1: date.getDate(),
+      })
+    : t("未命名会话");
 }

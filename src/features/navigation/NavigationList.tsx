@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import {
   useLayoutEffect,
   useMemo,
@@ -48,10 +49,16 @@ export function NavigationList<T extends NavigationListRow>({
   onKeyDown?: (event: KeyboardEvent, key: string) => void;
   render: (row: T, tabStop: boolean) => ReactNode;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const viewport = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, height: 600 });
   const [focusedKey, setFocusedKey] = useState<string>();
-  const layout = useMemo(() => navigationLayout(rows), [rows]);
+  const layout = useMemo(
+    () => (void i18nLocale, navigationLayout(rows)),
+    [rows, i18nLocale],
+  );
   const visible = navigationWindow(rows, position.top, position.height, layout);
   const previous = useRef<
     { scope: string; rows: T[]; layout: typeof layout } | undefined
@@ -77,8 +84,11 @@ export function NavigationList<T extends NavigationListRow>({
   const followingSelection = useRef(!!pendingSelection.current);
   const virtual = rows.length > 120;
   const projects = useMemo(
-    () => rows.flatMap((row, index) => (row.sticky ? [index] : [])),
-    [rows],
+    () => (
+      void i18nLocale,
+      rows.flatMap((row, index) => (row.sticky ? [index] : []))
+    ),
+    [rows, i18nLocale],
   );
   const sticky = navigationStickyProject(rows, layout, projects, position.top);
   const selectedIndex = selectedKey
@@ -94,15 +104,17 @@ export function NavigationList<T extends NavigationListRow>({
     onSelectionVisibilityChange?.(selectionVisible);
   }, [selectionVisible, onSelectionVisibilityChange]);
   const projectHeights = useMemo(
-    () =>
+    () => (
+      void i18nLocale,
       new Map(
         projects.map((index, project) => [
           index,
           (layout.offsets[projects[project + 1]] ?? layout.total) -
             layout.offsets[index],
         ]),
-      ),
-    [projects, layout],
+      )
+    ),
+    [projects, layout, i18nLocale],
   );
   const rendered = navigationRenderedIndices(
     rows.length,
@@ -290,7 +302,10 @@ export function NavigationList<T extends NavigationListRow>({
     sticky,
   ]);
 
-  const navigable = useMemo(() => rows.filter((row) => row.navigable), [rows]);
+  const navigable = useMemo(
+    () => (void i18nLocale, rows.filter((row) => row.navigable)),
+    [rows, i18nLocale],
+  );
   function handleKey(event: KeyboardEvent) {
     const target = event.target as HTMLElement;
     const key = target.closest<HTMLElement>("[data-navigation-key]")?.dataset
@@ -319,7 +334,7 @@ export function NavigationList<T extends NavigationListRow>({
       viewportRef={viewport}
       onPointerDownCapture={cancelRestore}
       viewportProps={{
-        "aria-label": "会话列表",
+        "aria-label": t("会话列表"),
         style: { overflowAnchor: "none" },
         onKeyDown: handleKey,
         onWheelCapture: cancelRestore,
@@ -338,7 +353,7 @@ export function NavigationList<T extends NavigationListRow>({
     >
       <div
         role="tree"
-        aria-label="项目与会话"
+        aria-label={t("项目与会话")}
         data-slot="navigation-list"
         className="relative mx-2"
         style={{ height: layout.total }}

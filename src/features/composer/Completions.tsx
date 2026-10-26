@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { ScrollArea } from "../../components/ui";
 import { useEffect, useState } from "react";
 import type { CompletionToken } from "./completion-token";
@@ -7,14 +8,54 @@ import { searchWorkspaceFiles } from "./file-search";
 import { useRuntime } from "../../lib/runtime-context";
 
 export const commands = [
-  { name: "help", description: "查看输入快捷键" },
-  { name: "new", description: "在当前目录新建会话" },
-  { name: "model", description: "选择模型与推理强度" },
-  { name: "permissions", description: "选择审批策略" },
-  { name: "skills", description: "浏览并选择技能" },
-  { name: "mention", description: "搜索工作目录文件" },
-  { name: "compact", description: "压缩当前会话上下文" },
-  { name: "status", description: "查看当前会话状态" },
+  {
+    name: "help",
+    get description() {
+      return t("查看输入快捷键");
+    },
+  },
+  {
+    name: "new",
+    get description() {
+      return t("在当前目录新建会话");
+    },
+  },
+  {
+    name: "model",
+    get description() {
+      return t("选择模型与推理强度");
+    },
+  },
+  {
+    name: "permissions",
+    get description() {
+      return t("选择审批策略");
+    },
+  },
+  {
+    name: "skills",
+    get description() {
+      return t("浏览并选择技能");
+    },
+  },
+  {
+    name: "mention",
+    get description() {
+      return t("搜索工作目录文件");
+    },
+  },
+  {
+    name: "compact",
+    get description() {
+      return t("压缩当前会话上下文");
+    },
+  },
+  {
+    name: "status",
+    get description() {
+      return t("查看当前会话状态");
+    },
+  },
 ] as const;
 export interface Completion {
   label: string;
@@ -38,6 +79,9 @@ export function Completions({
   onSelect: (item: Completion) => void;
   onItems: (items: Completion[]) => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const runtime = useRuntime();
   const [result, setResult] = useState<{
     key: string;
@@ -97,7 +141,7 @@ export function Completions({
                   };
                 }),
               )
-            : Promise.reject(new Error("当前会话没有工作目录。"));
+            : Promise.reject(new Error(t("当前会话没有工作目录。")));
       void pending
         .then((items) => {
           if (active) setResult({ key, items });
@@ -126,17 +170,17 @@ export function Completions({
       <div
         id="composer-completions"
         role="listbox"
-        aria-label="输入补全"
+        aria-label={t("输入补全")}
         className="border-b border-border p-2"
       >
         <div className="px-2 py-1 text-fine text-subtle">
           {token.prefix === "/"
-            ? "快捷命令"
+            ? t("快捷命令")
             : token.prefix === "$"
-              ? "技能"
-              : "工作目录文件"}{" "}
+              ? t("技能")
+              : t("工作目录文件")}{" "}
           <span className="max-[550px]:hidden">
-            · ↑↓ 选择 · Enter / Tab 确认 · Esc 关闭
+            {t("· ↑↓ 选择 · Enter / Tab 确认 · Esc 关闭")}
           </span>
         </div>
         {items.map((item, index) => (
@@ -164,14 +208,14 @@ export function Completions({
             className="p-2 text-xs text-muted [overflow-wrap:anywhere]"
           >
             {token.prefix === "/"
-              ? "没有匹配的命令"
+              ? t("没有匹配的命令")
               : !connected
-                ? "连接后可读取列表"
+                ? t("连接后可读取列表")
                 : result.key !== key
-                  ? "正在搜索…"
+                  ? t("正在搜索…")
                   : result.error
-                    ? `读取失败：${result.error}`
-                    : "没有匹配结果"}
+                    ? t("读取失败：{{value0}}", { value0: result.error })
+                    : t("没有匹配结果")}
           </p>
         )}
       </div>

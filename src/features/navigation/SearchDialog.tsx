@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command } from "cmdk";
 import { Search, ArrowUpRight } from "lucide-react";
@@ -38,6 +39,9 @@ function EnvironmentResults({
   close: () => void;
   onLocated?: () => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const connection = useStore(environment.runtime.connection);
   return (
     <EnvironmentSearch
@@ -70,6 +74,9 @@ function EnvironmentSearch({
   onLocated?: () => void;
   connected: boolean;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const state = useStore(environment.runtime.sessions);
   const navigation = useStore(navigationState);
   const nextPage = useRef<HTMLDivElement>(null);
@@ -111,6 +118,8 @@ function EnvironmentSearch({
 
   const environmentKey = navigationEnvironmentKey(environment);
   const threads = useMemo(() => {
+    void i18nLocale;
+
     const promoted = new Set(
       Object.values(state.localDrafts).map((draft) => draft.serverId),
     );
@@ -138,12 +147,16 @@ function EnvironmentSearch({
     results.threads,
     navigation.visits,
     environmentKey,
+    i18nLocale,
   ]);
 
   return (
     <Command.Group
       className="session-search-group"
-      heading={`${environment.name}${connected ? "" : " · 未连接"}`}
+      heading={t("{{value0}}{{value1}}", {
+        value0: environment.name,
+        value1: connected ? "" : t(" · 未连接"),
+      })}
       forceMount
     >
       {threads.map(({ thread, sources, excerpt }) => {
@@ -175,21 +188,27 @@ function EnvironmentSearch({
               <p className="session-search-result-context" title={thread.cwd}>
                 {folderOf(thread.cwd)}
                 <span aria-hidden="true"> · </span>
-                {draft ? "未发送草稿" : excerpt || thread.preview || "暂无摘要"}
+                {draft
+                  ? t("未发送草稿")
+                  : excerpt || thread.preview || t("暂无摘要")}
               </p>
               <div className="session-search-sources">
                 {query ? (
-                  sources.map((source) => <span key={source}>{source}</span>)
+                  sources.map((source) => <span key={source}>{t(source)}</span>)
                 ) : (
                   <span>
-                    {draft ? "本地草稿" : visited ? "最近访问" : "已加载会话"}
+                    {draft
+                      ? t("本地草稿")
+                      : visited
+                        ? t("最近访问")
+                        : t("已加载会话")}
                   </span>
                 )}
                 {!connected && (
                   <span>
                     {cached
-                      ? "本地缓存 · 可离线查看"
-                      : "本地缓存 · 连接后可打开"}
+                      ? t("本地缓存 · 可离线查看")
+                      : t("本地缓存 · 连接后可打开")}
                   </span>
                 )}
               </div>
@@ -203,24 +222,26 @@ function EnvironmentSearch({
       })}
       {!query && !threads.length && (
         <p className="session-search-message">
-          暂无已加载会话。输入标题或 Session ID 查找历史。
+          {t("暂无已加载会话。输入标题或 Session ID 查找历史。")}
         </p>
       )}
       {!connected && (
         <p className="session-search-message">
-          环境未连接，仅搜索本地已加载内容；未缓存的历史需连接后查找和打开。
+          {t(
+            "环境未连接，仅搜索本地已加载内容；未缓存的历史需连接后查找和打开。",
+          )}
         </p>
       )}
       {query && connected && results.loading && (
         <p role="status" className="session-search-message">
-          {exactId ? "正在定位 Session ID…" : "正在搜索历史标题…"}
+          {exactId ? t("正在定位 Session ID…") : t("正在搜索历史标题…")}
         </p>
       )}
       {query && connected && results.error && (
         <ErrorNotice className="mx-[15px] my-3">
-          {exactId ? "定位失败" : "搜索失败"}：{results.error}{" "}
+          {exactId ? t("定位失败") : t("搜索失败")}：{results.error}{" "}
           <Button variant="quiet" size="sm" onClick={() => search.retry()}>
-            重试
+            {t("重试")}
           </Button>
         </ErrorNotice>
       )}
@@ -231,8 +252,8 @@ function EnvironmentSearch({
         !threads.length && (
           <p className="session-search-message">
             {exactId
-              ? "此环境未找到对应 Session ID。"
-              : "当前范围内没有匹配结果；未加载的对话正文尚未检索。"}
+              ? t("此环境未找到对应 Session ID。")
+              : t("当前范围内没有匹配结果；未加载的对话正文尚未检索。")}
           </p>
         )}
       {query && connected && results.nextCursor && !results.error && (
@@ -243,7 +264,7 @@ function EnvironmentSearch({
             disabled={results.loading}
             onClick={() => search.more()}
           >
-            {results.loading ? "正在加载更多…" : "加载更多搜索结果"}
+            {results.loading ? t("正在加载更多…") : t("加载更多搜索结果")}
           </Button>
         </div>
       )}
@@ -260,6 +281,8 @@ function SearchContent({
   close: () => void;
   onLocated?: () => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
   const state = useStore(environments);
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState(() =>
@@ -279,7 +302,7 @@ function SearchContent({
   return (
     <Command
       className="flex min-h-0 flex-col"
-      label="搜索会话"
+      label={t("搜索会话")}
       loop
       shouldFilter={false}
     >
@@ -287,8 +310,8 @@ function SearchContent({
         <Search size={19} aria-hidden="true" />
         <Command.Input
           className="min-w-0 w-full border-0 bg-transparent py-[7px] text-prose outline-none"
-          placeholder="搜索标题、摘要或工作区…"
-          aria-label="搜索标题、摘要、工作区、已加载对话或 Session ID"
+          placeholder={t("搜索标题、摘要或工作区…")}
+          aria-label={t("搜索标题、摘要、工作区、已加载对话或 Session ID")}
           value={query}
           onValueChange={setQuery}
           autoFocus
@@ -298,36 +321,41 @@ function SearchContent({
         className="session-search-scope"
         onKeyDown={(event) => event.stopPropagation()}
       >
-        <label htmlFor="session-search-scope">搜索范围</label>
+        <label htmlFor="session-search-scope">{t("搜索范围")}</label>
         <SelectField
           id="session-search-scope"
-          label="搜索范围"
+          label={t("搜索范围")}
           className="max-w-[220px] min-h-8 bg-surface px-2 py-1 text-meta"
           value={selectedScope}
           onValueChange={setScope}
           options={[
             ...state.entries.map((entry) => ({
               value: entry.id,
-              label: `${entry.name}${entry.id === state.activeId ? "（当前环境）" : ""}`,
+              label: t("{{value0}}{{value1}}", {
+                value0: entry.name,
+                value1: entry.id === state.activeId ? t("（当前环境）") : "",
+              }),
             })),
-            { value: "all", label: "全部环境" },
+            { value: "all", label: t("全部环境") },
           ]}
         />
         {selectedScope !== "all" && state.entries.length > 1 && (
           <Button variant="quiet" size="sm" onClick={() => setScope("all")}>
-            扩大到全部环境
+            {t("扩大到全部环境")}
           </Button>
         )}
       </div>
       <p className="session-search-coverage">
         {sessionIdQuery(trimmedQuery)
-          ? "按完整 Session / Thread ID 精确定位，仅读取会话信息。"
+          ? t("按完整 Session / Thread ID 精确定位，仅读取会话信息。")
           : trimmedQuery
-            ? "历史标题按原文区分大小写匹配；标题、摘要、工作区和已加载对话在本地匹配。未加载正文不在搜索范围。"
-            : "最近访问与已加载会话。可输入完整 Session ID 精确定位历史。"}
+            ? t(
+                "历史标题按原文区分大小写匹配；标题、摘要、工作区和已加载对话在本地匹配。未加载正文不在搜索范围。",
+              )
+            : t("最近访问与已加载会话。可输入完整 Session ID 精确定位历史。")}
       </p>
       <ScrollArea className="max-h-[47dvh]">
-        <Command.List className="p-2" label="会话搜索结果">
+        <Command.List className="p-2" label={t("会话搜索结果")}>
           {entries.map((environment) => (
             <EnvironmentResults
               key={environment.id}
@@ -342,13 +370,13 @@ function SearchContent({
       <footer className="session-search-footer">
         <span>
           <kbd>↑</kbd>
-          <kbd>↓</kbd> 选择
+          <kbd>↓</kbd> {t("选择")}
         </span>
         <span>
-          <kbd>Enter</kbd> 打开
+          <kbd>Enter</kbd> {t("打开")}
         </span>
         <span>
-          <kbd>Esc</kbd> 关闭
+          <kbd>Esc</kbd> {t("关闭")}
         </span>
       </footer>
     </Command>
@@ -366,12 +394,14 @@ export function SearchDialog({
   initialScope?: string;
   onLocated?: () => void;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
   return (
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="搜索会话"
-      description="在当前范围查找会话，或切换到全部环境。"
+      title={t("搜索会话")}
+      description={t("在当前范围查找会话，或切换到全部环境。")}
       variant="search"
     >
       {open && (

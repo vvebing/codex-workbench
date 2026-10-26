@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { Thread } from "../../generated/v2/Thread";
 import type { Turn } from "../../generated/v2/Turn";
 
@@ -39,16 +40,16 @@ export function turnStatusLabel(
     turn.completedAt == null &&
     !turn.error;
   if (latest && thread.status.type === "active" && unfinishedInterruption)
-    return "正在执行…";
+    return t("正在执行…");
   if (latest && executionUnconfirmed(thread, confirmed))
-    return "执行状态待确认";
+    return t("执行状态待确认");
   return turn.status === "inProgress"
-    ? "正在执行…"
+    ? t("正在执行…")
     : turn.status === "failed"
-      ? "执行失败"
+      ? t("执行失败")
       : turn.status === "interrupted"
-        ? "已中断"
-        : "已完成";
+        ? t("已中断")
+        : t("已完成");
 }
 
 export function formatWorkDuration(milliseconds: number): string {
@@ -56,10 +57,17 @@ export function formatWorkDuration(milliseconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   return hours
-    ? `${hours} 小时 ${minutes} 分 ${seconds % 60} 秒`
+    ? t("{{value0}} 小时 {{value1}} 分 {{value2}} 秒", {
+        value0: hours,
+        value1: minutes,
+        value2: seconds % 60,
+      })
     : minutes
-      ? `${minutes} 分 ${seconds % 60} 秒`
-      : `${seconds} 秒`;
+      ? t("{{value0}} 分 {{value1}} 秒", {
+          value0: minutes,
+          value1: seconds % 60,
+        })
+      : t("{{value0}} 秒", { value0: seconds });
 }
 
 export function turnTiming(
@@ -77,7 +85,7 @@ export function turnTiming(
         : null));
   return duration == null
     ? null
-    : `${executing ? "已用时" : "耗时"} ${formatWorkDuration(duration)}`;
+    : `${executing ? t("已用时") : t("耗时")} ${formatWorkDuration(duration)}`;
 }
 
 /** Use the viewer's local date and a stable 24-hour display. */

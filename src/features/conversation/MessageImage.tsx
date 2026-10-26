@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../lib/i18n";
 import { useEffect, useState } from "react";
 import { ImageOff, LoaderCircle, RefreshCw } from "lucide-react";
 import { ConversationImage } from "../../components/ImagePreview";
@@ -16,6 +18,7 @@ export function LocalMessageImage({
   path: string;
   name: string;
 }) {
+  useTranslation();
   const { connection } = useRuntime();
   const { status, epoch, scope } = useStore(connection);
   const origin = useFileLinkOrigin();
@@ -40,7 +43,7 @@ export function LocalMessageImage({
     })().catch((error: unknown) => {
       if (!cancelled)
         setResult({
-          error: error instanceof Error ? error.message : "图片无法加载",
+          error: error instanceof Error ? error.message : t("图片无法加载"),
         });
     });
     return () => {
@@ -61,20 +64,20 @@ export function LocalMessageImage({
         {status !== "connected" ? (
           <>
             <ImageOff size={20} aria-hidden="true" />
-            连接后查看图片
+            {t("连接后查看图片")}
           </>
         ) : result.error ? (
           <>
             <ImageOff size={20} aria-hidden="true" />
-            图片无法加载
+            {t("图片无法加载")}
             <button
               type="button"
               className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-hover"
-              aria-label={`重新加载图片 ${name}`}
+              aria-label={t("重新加载图片 {{value0}}", { value0: name })}
               onClick={() => retry((value) => value + 1)}
             >
               <RefreshCw size={12} aria-hidden="true" />
-              重试
+              {t("重试")}
             </button>
           </>
         ) : (
@@ -84,7 +87,7 @@ export function LocalMessageImage({
               className="animate-spin"
               aria-hidden="true"
             />
-            正在加载图片
+            {t("正在加载图片")}
           </>
         )}
       </span>

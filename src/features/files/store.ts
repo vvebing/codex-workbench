@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { RpcCall } from "../../lib/rpc";
 import {
   fileTextInfo,
@@ -77,7 +78,7 @@ export function absoluteFilePath(path: string, cwd?: string): string {
     !/^(\/|[a-z]:\/)/i.test(joined) ||
     (!cwd && !/^(\/|[a-z]:\/)/i.test(input))
   )
-    throw new Error("文件路径必须是绝对路径，或提供工作目录。");
+    throw new Error(t("文件路径必须是绝对路径，或提供工作目录。"));
   const prefix = joined.startsWith("/") ? "/" : joined.slice(0, 3);
   const parts: string[] = [];
   for (const part of joined.slice(prefix.length).split("/")) {
@@ -97,11 +98,11 @@ function encode(text: string): string {
 function decode(data: string): string {
   if (data.length > Math.ceil(MAX_FILE_BYTES / 3) * 4)
     throw new Error(
-      "文件超过 8 MB，无法在此工作区打开。请使用本地编辑器查看。",
+      t("文件超过 8 MB，无法在此工作区打开。请使用本地编辑器查看。"),
     );
   const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
   if (bytes.length > MAX_FILE_BYTES || bytes.includes(0))
-    throw new Error("二进制或超过 8 MB 的文件无法打开。");
+    throw new Error(t("二进制或超过 8 MB 的文件无法打开。"));
   return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
     bytes,
   );
@@ -396,7 +397,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
   private guard(id?: string) {
     const { url, epoch, status } = this.connection.getSnapshot();
     if (status !== "connected" || (id && this.urls.get(id) !== url))
-      throw new Error("文件所属连接当前不可用。");
+      throw new Error(t("文件所属连接当前不可用。"));
     return () => {
       const current = this.connection.getSnapshot();
       if (
@@ -404,7 +405,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
         current.epoch !== epoch ||
         current.status !== "connected"
       )
-        throw new Error("连接已变化，请重新检查文件状态。");
+        throw new Error(t("连接已变化，请重新检查文件状态。"));
     };
   }
   private watch(doc: FileDocument) {
@@ -506,7 +507,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     const valid = () => {
       current();
       if (!this.documents.has(id) || this.reads.get(id) !== generation)
-        throw new Error("差异读取已取消。");
+        throw new Error(t("差异读取已取消。"));
     };
     try {
       const result = await readGitComparison(
@@ -534,7 +535,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     if (restore) await restore;
     const currentUrl =
       this.connection.getSnapshot().url || this.initialEndpoint || "";
-    if (url !== currentUrl) throw new Error("连接已变化，请重新打开文件。");
+    if (url !== currentUrl) throw new Error(t("连接已变化，请重新打开文件。"));
     const id = JSON.stringify([url, path]);
     const existing = this.documents.get(id);
     const navigationRevision = this.state.openRevision + 1;
@@ -641,7 +642,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
       preview: false,
       error:
         info.byteLength > MAX_EDITABLE_FILE_BYTES
-          ? "当前内容超过 5 MB 编辑上限，请撤销或缩减内容后保存。"
+          ? t("当前内容超过 5 MB 编辑上限，请撤销或缩减内容后保存。")
           : undefined,
     });
   }
@@ -764,7 +765,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
       MAX_EDITABLE_FILE_BYTES
     ) {
       this.patch(id, {
-        error: "当前内容超过 5 MB 编辑上限，请撤销或缩减内容后保存。",
+        error: t("当前内容超过 5 MB 编辑上限，请撤销或缩减内容后保存。"),
       });
       return;
     }
@@ -776,12 +777,14 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
             (removal.directory && doc.path.startsWith(`${removal.path}/`))),
       )
     ) {
-      this.patch(id, { error: "文件正在删除，请等待操作完成后检查磁盘状态。" });
+      this.patch(id, {
+        error: t("文件正在删除，请等待操作完成后检查磁盘状态。"),
+      });
       return;
     }
     if (this.uncertainWrites.has(id)) {
       this.patch(id, {
-        error: "上次保存结果未知，请重新加载并核对磁盘内容后再保存。",
+        error: t("上次保存结果未知，请重新加载并核对磁盘内容后再保存。"),
       });
       return;
     }
@@ -799,7 +802,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
       const diskText = decode(result.dataBase64);
       if (diskText !== doc.baseText) {
         this.patch(id, { conflict: true, diskText });
-        throw new Error("文件已被外部修改。请重新加载并合并后保存。");
+        throw new Error(t("文件已被外部修改。请重新加载并合并后保存。"));
       }
       const dataBase64 = encode(doc.text);
       this.uncertainWrites.add(id);
@@ -861,7 +864,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
         return;
       throw error;
     }
-    throw new Error("目标路径已存在。");
+    throw new Error(t("目标路径已存在。"));
   }
   private async mutate(
     call: RpcCall<
@@ -870,7 +873,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     destination?: string,
   ) {
     if (this.mutationPending)
-      throw new Error("另一项文件管理操作正在执行，请稍后重试。");
+      throw new Error(t("另一项文件管理操作正在执行，请稍后重试。"));
     this.mutationPending = true;
     try {
       const check = this.guard();
@@ -893,7 +896,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
   }
   createFile(path: string, text = "") {
     if (fileTextInfo(text).byteLength > MAX_EDITABLE_FILE_BYTES)
-      return Promise.reject(new Error("创建文件的内容不能超过 5 MB。"));
+      return Promise.reject(new Error(t("创建文件的内容不能超过 5 MB。")));
     path = absoluteFilePath(path);
     return this.mutate(
       ["fs/writeFile", { path, dataBase64: encode(text) }],
@@ -914,7 +917,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
       destination === source ||
       (isDirectory && destination.startsWith(`${source}/`))
     )
-      return Promise.reject(new Error("不能复制到自身或其子目录。"));
+      return Promise.reject(new Error(t("不能复制到自身或其子目录。")));
     return this.mutate(
       [
         "fs/copy",
@@ -934,7 +937,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
         doc.path === path || (isDirectory && doc.path.startsWith(`${path}/`)),
     );
     if (affected.some((doc) => doc.dirty || doc.saving))
-      throw new Error("请先保存或关闭目标内尚未保存的文件。");
+      throw new Error(t("请先保存或关闭目标内尚未保存的文件。"));
     const removal = {
       url: this.connection.getSnapshot().url,
       path,
@@ -965,7 +968,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
           this.patch(doc.id, {
             loading: false,
             conflict: true,
-            error: "文件已删除；未保存的编辑已保留，请复制内容后恢复文件。",
+            error: t("文件已删除；未保存的编辑已保留，请复制内容后恢复文件。"),
           });
         else this.close(doc.id);
       }

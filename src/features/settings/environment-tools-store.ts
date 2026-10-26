@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { McpServerOauthLoginCompletedNotification } from "../../generated/v2/McpServerOauthLoginCompletedNotification";
 import type { RpcCall } from "../../lib/rpc";
 import type { ListMcpServerStatusResponse } from "../../generated/v2/ListMcpServerStatusResponse";
@@ -29,6 +30,7 @@ type State = { [K in ToolSection]: Resource<Data[K]> } & {
   action: string | null;
   actionError: string | null;
   message: string | null;
+  messageText?: () => string;
   oauth: ({ name: string } & McpServerOauthLoginResponse) | null;
   startup: string[];
 };
@@ -69,6 +71,7 @@ export class EnvironmentToolsStore extends Store<State> {
       action: null,
       actionError: null,
       message: null,
+      messageText: undefined,
       oauth: null,
       startup: [],
     });
@@ -118,9 +121,13 @@ export class EnvironmentToolsStore extends Store<State> {
     this.update({
       ...this.state,
       oauth: null,
+      messageText: () =>
+        event.success
+          ? t("MCP 登录成功")
+          : t("MCP 登录失败：{{v0}}", { v0: event.error ?? t("未知错误") }),
       message: event.success
-        ? "MCP 登录成功"
-        : `MCP 登录失败：${event.error ?? "未知错误"}`,
+        ? t("MCP 登录成功")
+        : t("MCP 登录失败：{{v0}}", { v0: event.error ?? t("未知错误") }),
     });
     void this.load("mcp");
   }
@@ -232,7 +239,7 @@ export class EnvironmentToolsStore extends Store<State> {
           Data["mcp"] | Data["apps"] | null;
         const page = result as Data["mcp"] | Data["apps"];
         if (page.nextCursor && page.nextCursor === previous?.nextCursor)
-          throw Error("服务端重复分页游标");
+          throw Error(t("服务端重复分页游标"));
         result = {
           ...page,
           data: [...(previous?.data ?? []), ...page.data],
@@ -266,6 +273,7 @@ export class EnvironmentToolsStore extends Store<State> {
       action: label,
       actionError: null,
       message: null,
+      messageText: undefined,
     });
     try {
       await task(() => this.current(epoch, generation));
@@ -290,7 +298,7 @@ export class EnvironmentToolsStore extends Store<State> {
         { name },
       );
       if (!safeAuthorizationUrl(result.authorizationUrl))
-        throw Error("服务端返回无效登录地址");
+        throw Error(t("服务端返回无效登录地址"));
       if (current()) {
         this.update({ ...this.state, oauth: { ...result, name } });
         for (const event of this.earlyLogin) this.completeLogin(event);
@@ -305,7 +313,11 @@ export class EnvironmentToolsStore extends Store<State> {
     return this.action("reload", async (current) => {
       await this.request("config/mcpServer/reload", undefined);
       if (current()) {
-        this.update({ ...this.state, message: "已请求重新加载 MCP 配置" });
+        this.update({
+          ...this.state,
+          message: t("已请求重新加载 MCP 配置"),
+          messageText: () => t("已请求重新加载 MCP 配置"),
+        });
         await this.load("mcp");
       }
     });
@@ -323,12 +335,14 @@ export class EnvironmentToolsStore extends Store<State> {
           (root) => !root.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(root),
         )
       )
-        throw Error("技能目录必须为绝对路径");
+        throw Error(t("技能目录必须为绝对路径"));
       await this.request("skills/extraRoots/set", { extraRoots: roots });
       if (current()) {
         this.update({
           ...this.state,
-          message: "已替换当前服务进程的额外技能目录（不写入磁盘）",
+          message: t("已替换当前服务进程的额外技能目录（不写入磁盘）"),
+          messageText: () =>
+            t("已替换当前服务进程的额外技能目录（不写入磁盘）"),
         });
         await this.load("skills");
       }
@@ -341,7 +355,7 @@ export class EnvironmentToolsStore extends Store<State> {
         (keyPath === "approval_policy" &&
           !["untrusted", "on-request", "never"].includes(value))
       )
-        throw Error("配置值无效");
+        throw Error(t("配置值无效"));
       const result = await this.request<ConfigWriteResponse>(
         "config/value/write",
         {
@@ -363,7 +377,15 @@ export class EnvironmentToolsStore extends Store<State> {
       if (current()) {
         this.update({
           ...this.state,
-          message: `配置已写入：${result.status}${result.overriddenMetadata ? "（被其他配置覆盖）" : ""}`,
+          messageText: () =>
+            t("配置已写入：{{v0}}{{v1}}", {
+              v0: result.status,
+              v1: result.overriddenMetadata ? t("（被其他配置覆盖）") : "",
+            }),
+          message: t("配置已写入：{{v0}}{{v1}}", {
+            v0: result.status,
+            v1: result.overriddenMetadata ? t("（被其他配置覆盖）") : "",
+          }),
           // A concurrent read may have started before the write. Supersede it
           // and refresh origins/version before accepting the next edit.
           config: empty(),

@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { QuestionPresence } from "../conversation/QuestionPresence";
 import { useStableQuestionCard } from "../conversation/use-stable-question-card";
 import { settingsInputClass } from "../settings/settings-ui";
@@ -40,6 +41,9 @@ function ApprovalCard({
   requestId?: string;
   receipt?: boolean;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const stable = useStableQuestionCard(receipt);
   return (
     <section
@@ -58,6 +62,9 @@ function ApprovalCard({
   );
 }
 function AnswerOption({ children }: { children: ReactNode }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   return (
     <label className="flex cursor-pointer items-start gap-[9px] py-2">
       {children}
@@ -73,6 +80,8 @@ function UserInputForm({
   disabled: boolean;
   respond: (result: unknown) => boolean;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
   const runtime = useRuntime();
   const key = questionDraftKey(
     runtime.connection.getSnapshot().url,
@@ -165,7 +174,7 @@ function UserInputForm({
                     setValues({ ...values, [question.id]: "__custom__" })
                   }
                 />
-                自定义回答
+                {t("自定义回答")}
               </AnswerOption>
             )}
           {question.isSecret ||
@@ -230,7 +239,7 @@ function UserInputForm({
           !params.questions.every((question) => answer(question.id).trim())
         }
       >
-        提交回答
+        {t("提交回答")}
       </Button>
     </form>
   );
@@ -242,6 +251,8 @@ function Approval({
   request?: RpcRequest;
   disabled: boolean;
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
   const runtime = useRuntime();
   const respond = (result: unknown) => {
     if (!request) return false;
@@ -251,7 +262,7 @@ function Approval({
   if (!request) return null;
   if (request.method === "item/permissions/requestApproval")
     return (
-      <ApprovalCard title="权限审批">
+      <ApprovalCard title={t("权限审批")}>
         <PermissionsApproval
           params={request.params}
           disabled={disabled}
@@ -261,7 +272,7 @@ function Approval({
     );
   if (request.method === "mcpServer/elicitation/request")
     return (
-      <ApprovalCard title="MCP 服务请求">
+      <ApprovalCard title={t("MCP 服务请求")}>
         <ElicitationApproval
           params={request.params}
           disabled={disabled}
@@ -271,7 +282,7 @@ function Approval({
     );
   if (request.method === "item/tool/requestUserInput")
     return (
-      <ApprovalCard title="需要你的回答" requestId={String(request.id)}>
+      <ApprovalCard title={t("需要你的回答")} requestId={String(request.id)}>
         <UserInputForm
           params={request.params}
           disabled={disabled}
@@ -286,15 +297,15 @@ function Approval({
     return null;
   const params = request.params;
   const choices: Choice[] = [
-    { label: "允许一次", decision: "accept" },
-    { label: "本会话允许", decision: "acceptForSession" },
-    { label: "拒绝", decision: "decline" },
-    { label: "取消执行", decision: "cancel" },
+    { label: t("允许一次"), decision: "accept" },
+    { label: t("本会话允许"), decision: "acceptForSession" },
+    { label: t("拒绝"), decision: "decline" },
+    { label: t("取消执行"), decision: "cancel" },
   ];
   if (request.method === "item/commandExecution/requestApproval") {
     if (request.params.proposedExecpolicyAmendment)
       choices.push({
-        label: "允许此命令规则",
+        label: t("允许此命令规则"),
         decision: {
           acceptWithExecpolicyAmendment: {
             execpolicy_amendment: request.params.proposedExecpolicyAmendment,
@@ -304,7 +315,10 @@ function Approval({
     for (const amendment of request.params.proposedNetworkPolicyAmendments ??
       [])
       choices.push({
-        label: `${amendment.action === "allow" ? "允许" : "拒绝"}访问 ${amendment.host}`,
+        label: t("{{value0}}访问 {{value1}}", {
+          value0: amendment.action === "allow" ? t("允许") : t("拒绝"),
+          value1: amendment.host,
+        }),
         decision: {
           applyNetworkPolicyAmendment: { network_policy_amendment: amendment },
         },
@@ -327,8 +341,8 @@ function Approval({
         <>
           <ShieldCheck size={17} />
           {request.method === "item/commandExecution/requestApproval"
-            ? "命令执行审批"
-            : "文件修改审批"}
+            ? t("命令执行审批")
+            : t("文件修改审批")}
         </>
       }
     >
@@ -337,7 +351,7 @@ function Approval({
         <>
           <ScrollArea orientation="both">
             <pre className="my-3 whitespace-pre-wrap rounded-md bg-surface p-3 font-mono text-xs leading-code [overflow-wrap:anywhere]">
-              {request.params.command ?? "请求执行操作"}
+              {request.params.command ?? t("请求执行操作")}
             </pre>
           </ScrollArea>
           {request.params.cwd && (
@@ -348,7 +362,10 @@ function Approval({
         </>
       ) : (
         request.params.grantRoot && (
-          <p className="mb-3">写入目录：{request.params.grantRoot}</p>
+          <p className="mb-3">
+            {t("写入目录：")}
+            {request.params.grantRoot}
+          </p>
         )
       )}
       <div className="flex flex-wrap gap-2">
@@ -364,13 +381,15 @@ function Approval({
       </div>
       {!allowed.length && (
         <p role="status" className="mb-3">
-          服务端未提供可用审批选项。
+          {t("服务端未提供可用审批选项。")}
         </p>
       )}
     </ApprovalCard>
   );
 }
 export function ApprovalQueue({ threadId }: { threadId: string }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
   const runtime = useRuntime();
   const requests = useSyncExternalStore(
     runtime.requests.subscribe,
@@ -384,7 +403,10 @@ export function ApprovalQueue({ threadId }: { threadId: string }) {
     (request) => requestThreadId(request) === threadId,
   );
   return (
-    <div className="mx-auto max-w-[840px] px-4 sm:px-6" aria-label="待处理请求">
+    <div
+      className="mx-auto max-w-[840px] px-4 sm:px-6"
+      aria-label={t("待处理请求")}
+    >
       {requests.error && <ErrorNotice>{requests.error}</ErrorNotice>}
       <QuestionPresence
         entries={pending.map((request) => ({

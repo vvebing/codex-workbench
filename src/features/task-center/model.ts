@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import type { RpcRequest } from "../../lib/rpc";
 import type { Environment } from "../connection/environments";
 import { pendingAsyncQuestions } from "../conversation/async-questions";
@@ -6,19 +7,19 @@ import { requestThreadId } from "../requests/store";
 export function requestNoticeTitle(request: RpcRequest): string {
   switch (request.method) {
     case "item/tool/requestUserInput":
-      return "需要你回答问题";
+      return t("需要你回答问题");
     case "item/fileChange/requestApproval":
-      return "文件修改待审批";
+      return t("文件修改待审批");
     case "item/commandExecution/requestApproval":
-      return "命令执行待审批";
+      return t("命令执行待审批");
     case "item/permissions/requestApproval":
-      return "权限申请待审批";
+      return t("权限申请待审批");
     case "mcpServer/elicitation/request":
       return request.params.mode === "url"
-        ? "MCP 授权待处理"
-        : "MCP 表单待填写";
+        ? t("MCP 授权待处理")
+        : t("MCP 表单待填写");
     default:
-      return "请求待处理";
+      return t("请求待处理");
   }
 }
 export type TaskCategory =
@@ -27,6 +28,7 @@ export interface TaskEntry {
   id: string;
   threadId?: string;
   category: TaskCategory;
+  uncertain?: boolean;
   title: string;
   detail?: string;
 }
@@ -71,7 +73,7 @@ export function environmentTasks(runtime: Environment["runtime"]): TaskEntry[] {
         id: `question:${JSON.stringify([thread.id, question.id])}`,
         threadId: thread.id,
         category: "待回答",
-        title: "需要你回答问题",
+        title: t("需要你回答问题"),
         detail: question.questions
           ?.map((question) => question.title)
           .join(" · "),
@@ -83,7 +85,7 @@ export function environmentTasks(runtime: Environment["runtime"]): TaskEntry[] {
         id: `failed:${thread.id}`,
         threadId: thread.id,
         category: "失败或待核实",
-        title: "会话执行失败",
+        title: t("会话执行失败"),
         detail: turn?.error?.message,
       });
   }
@@ -96,19 +98,20 @@ export function environmentTasks(runtime: Environment["runtime"]): TaskEntry[] {
       id: `completed:${threadId}`,
       threadId,
       category: "待查看结果",
-      title: "会话结果待查看",
+      title: t("会话结果待查看"),
     });
   }
   for (const message of runtime.submissions.messages.getSnapshot()) {
     if (message.status === "failed" || message.status === "uncertain")
       add({
         id: `message:${message.id}`,
+        uncertain: message.status === "uncertain",
         threadId: message.threadId,
         category: "失败或待核实",
         title:
           message.status === "uncertain"
-            ? "消息发送结果待核实"
-            : "消息发送失败",
+            ? t("消息发送结果待核实")
+            : t("消息发送失败"),
         detail: message.error,
       });
   }
@@ -116,9 +119,10 @@ export function environmentTasks(runtime: Environment["runtime"]): TaskEntry[] {
     if (answer.status === "uncertain")
       add({
         id: `answer:${answer.epoch}:${JSON.stringify(answer.id)}`,
+        uncertain: true,
         threadId: answer.threadId,
         category: "失败或待核实",
-        title: "问题回答发送结果待核实",
+        title: t("问题回答发送结果待核实"),
       });
   for (const [threadId, queue] of Object.entries(queues)) {
     const uncertain = queue.items.filter((item) => item.status === "uncertain");
@@ -126,16 +130,19 @@ export function environmentTasks(runtime: Environment["runtime"]): TaskEntry[] {
       add({
         id: `queue:${threadId}`,
         threadId,
+        uncertain: true,
         category: "失败或待核实",
-        title: `${uncertain.length} 条排队消息发送结果待核实`,
-        detail: queue.paused || "核对会话记录后再处理队列。",
+        title: t("{{value0}} 条排队消息发送结果待核实", {
+          value0: uncertain.length,
+        }),
+        detail: queue.paused || t("核对会话记录后再处理队列。"),
       });
     else if (queue.items.length && queue.paused)
       add({
         id: `queue:${threadId}`,
         threadId,
         category: "暂停队列",
-        title: `队列已暂停 · ${queue.items.length} 条`,
+        title: t("队列已暂停 · {{value0}} 条", { value0: queue.items.length }),
         detail: queue.paused,
       });
   }
@@ -161,38 +168,56 @@ export function environmentTaskSummary(
     return {
       state: "offline",
       count,
-      label: count ? `${count} 项已知待办 · 待同步` : "待办状态待同步",
-      description: "环境未连接。连接后同步最新状态；已缓存的待办可先查看。",
+      label: count
+        ? t("{{value0}} 项已知待办 · 待同步", { value0: count })
+        : t("待办状态待同步"),
+      description: t("环境未连接。连接后同步最新状态；已缓存的待办可先查看。"),
     };
   if (sessions.historyLoading || sessions.loading)
     return {
       state: "syncing",
       count,
-      label: count ? `同步中 · ${count} 项已知待办` : "正在同步待办",
-      description: "正在同步会话。下方先显示当前已知待办，数量可能继续变化。",
+      label: count
+        ? t("同步中 · {{value0}} 项已知待办", { value0: count })
+        : t("正在同步待办"),
+      description: t(
+        "正在同步会话。下方先显示当前已知待办，数量可能继续变化。",
+      ),
     };
   if (!sessions.historyComplete || sessions.historyError)
     return {
       state: "partial",
       count,
-      label: count ? `${count} 项已知待办` : "待办状态未完整同步",
+      label: count
+        ? t("{{value0}} 项已知待办", { value0: count })
+        : t("待办状态未完整同步"),
       description: sessions.historyError
-        ? `同步未完成：${sessions.historyError}`
-        : "会话尚未完整同步，当前数量仅包括已加载状态。",
+        ? t("同步未完成：{{value0}}", { value0: sessions.historyError })
+        : t("会话尚未完整同步，当前数量仅包括已加载状态。"),
     };
   return {
     state: "ready",
     count,
-    label: `${count} 项`,
+    label: t("{{value0}} 项", { value0: count }),
     description: count
-      ? "按需要你处理的事项分类，点击前往来源会话。"
-      : "当前没有需要处理的待办。",
+      ? t("按需要你处理的事项分类，点击前往来源会话。")
+      : t("当前没有需要处理的待办。"),
   };
 }
 export const taskCategoryDescriptions: Record<TaskCategory, string> = {
-  待审批: "检查请求后允许或拒绝执行。",
-  待回答: "回答问题或完成授权，让会话继续。",
-  失败或待核实: "先核对来源会话记录，再决定重试或恢复。",
-  暂停队列: "检查暂停原因，确认后恢复发送。",
-  待查看结果: "查看已完成的会话结果。",
+  get 待审批() {
+    return t("检查请求后允许或拒绝执行。");
+  },
+  get 待回答() {
+    return t("回答问题或完成授权，让会话继续。");
+  },
+  get 失败或待核实() {
+    return t("先核对来源会话记录，再决定重试或恢复。");
+  },
+  get 暂停队列() {
+    return t("检查暂停原因，确认后恢复发送。");
+  },
+  get 待查看结果() {
+    return t("查看已完成的会话结果。");
+  },
 };

@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import { workspacePath } from "../shell/project-files";
 import type { FileSearchClient } from "../composer/file-search";
 import { filterIgnoredFiles } from "../composer/file-search";
@@ -75,7 +76,7 @@ export async function searchWorkspaceContent(
 ): Promise<ContentSearchResult> {
   check(options.signal);
   if (!query) return { matches: [], truncated: false };
-  if (/[\r\n\0]/.test(query)) throw new Error("请输入单行文本进行搜索。");
+  if (/[\r\n\0]/.test(query)) throw new Error(t("请输入单行文本进行搜索。"));
   const limit = Math.max(1, Math.min(options.maxResults ?? 500, 2000));
   const needle = options.caseSensitive ? query : query.toLowerCase();
   const makeMatch = (
@@ -97,7 +98,7 @@ export async function searchWorkspaceContent(
     matches: matches.slice(0, limit),
     truncated: truncated || matches.length > limit,
     ...(skipped
-      ? { warning: "已跳过部分无法读取、过大或层级过深的文件。" }
+      ? { warning: t("已跳过部分无法读取、过大或层级过深的文件。") }
       : {}),
   });
   const publish = () => {

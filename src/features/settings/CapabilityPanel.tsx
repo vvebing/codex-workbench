@@ -1,3 +1,4 @@
+import { t, useLocale, getLocale } from "../../lib/i18n";
 import { useStore } from "../../components/hooks";
 import { Button } from "../../components/ui";
 import { CapabilityStore, capabilityLabels } from "../../lib/capabilities";
@@ -12,15 +13,21 @@ export function useCapabilities(connection: ConnectionStore) {
 }
 export const capabilityGroups: { title: string; methods: RpcMethod[] }[] = [
   {
-    title: "项目命令与 Git 执行",
+    get title() {
+      return t("项目命令与 Git 执行");
+    },
     methods: ["command/exec", "command/exec/write", "command/exec/terminate"],
   },
   {
-    title: "环境配置",
+    get title() {
+      return t("环境配置");
+    },
     methods: ["config/read", "config/value/write", "configRequirements/read"],
   },
   {
-    title: "MCP 服务",
+    get title() {
+      return t("MCP 服务");
+    },
     methods: [
       "mcpServerStatus/list",
       "mcpServer/oauth/login",
@@ -28,7 +35,9 @@ export const capabilityGroups: { title: string; methods: RpcMethod[] }[] = [
     ],
   },
   {
-    title: "技能与 Hooks",
+    get title() {
+      return t("技能与 Hooks");
+    },
     methods: [
       "skills/list",
       "skills/config/write",
@@ -36,13 +45,22 @@ export const capabilityGroups: { title: string; methods: RpcMethod[] }[] = [
       "hooks/list",
     ],
   },
-  { title: "应用", methods: ["app/list", "app/installed", "app/read"] },
   {
-    title: "会话目标",
+    get title() {
+      return t("应用");
+    },
+    methods: ["app/list", "app/installed", "app/read"],
+  },
+  {
+    get title() {
+      return t("会话目标");
+    },
     methods: ["thread/goal/get", "thread/goal/set", "thread/goal/clear"],
   },
   {
-    title: "参考资料与审查",
+    get title() {
+      return t("参考资料与审查");
+    },
     methods: [
       "thread/attachment/list",
       "thread/attachment/add",
@@ -57,6 +75,7 @@ export function CapabilityPanel({
 }: {
   connection: ConnectionStore;
 }) {
+  useLocale();
   const session = useStore(connection);
   const evidence = useCapabilities(connection);
   const known = new Set(capabilityGroups.flatMap((group) => group.methods));
@@ -64,15 +83,18 @@ export function CapabilityPanel({
     (method) => !known.has(method),
   );
   const groups = observed.length
-    ? [...capabilityGroups, { title: "其他已调用接口", methods: observed }]
+    ? [...capabilityGroups, { title: t("其他已调用接口"), methods: observed }]
     : capabilityGroups;
   return (
     <SettingsSection
-      title="服务端功能支持"
-      description="依据当前连接的真实接口调用记录；尚未调用表示未知，不按版本猜测支持情况。清除记录后可回到对应功能重新操作，不会自动执行写入。"
+      title={t("服务端功能支持")}
+      description={t(
+        "依据当前连接的真实接口调用记录；尚未调用表示未知，不按版本猜测支持情况。清除记录后可回到对应功能重新操作，不会自动执行写入。",
+      )}
     >
       <p className="text-xs text-muted">
-        服务器版本：{session.serverVersion ?? "未知"}
+        {t("服务器版本：")}
+        {session.serverVersion ?? t("未知")}
       </p>
       <div className="space-y-3">
         {groups.map((group) => (
@@ -95,30 +117,34 @@ export function CapabilityPanel({
                       <code>{method}</code> ·{" "}
                       {entry
                         ? capabilityLabels[entry.state]
-                        : "未知（尚无调用记录）"}
+                        : t("未知（尚无调用记录）")}
                     </p>
                     {entry && (
                       <>
                         <p className="text-muted">
-                          更新于{" "}
+                          {t("更新于")}{" "}
                           <time
                             dateTime={new Date(entry.checkedAt).toISOString()}
                           >
-                            {new Date(entry.checkedAt).toLocaleString()}
+                            {new Date(entry.checkedAt).toLocaleString(
+                              getLocale(),
+                            )}
                           </time>
                           {entry.code !== undefined
-                            ? ` · 错误码 ${entry.code}`
+                            ? t(" · 错误码 {{v0}}", { v0: entry.code })
                             : ""}
                         </p>
                         <Button
-                          aria-label={`清除记录以重新验证 ${method}`}
+                          aria-label={t("清除记录以重新验证 {{v0}}", {
+                            v0: method,
+                          })}
                           size="sm"
                           variant="secondary"
                           onClick={() =>
                             connection.client.capabilities?.forget(method)
                           }
                         >
-                          清除记录以重新验证
+                          {t("清除记录以重新验证")}
                         </Button>
                       </>
                     )}

@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { InitializeParams } from "../generated/InitializeParams";
 import { appServerVersion } from "../../server/codex-version";
 import type { ServerNotification } from "../generated/ServerNotification";
@@ -121,7 +122,9 @@ export class CodexClient {
         target.password
       ) {
         throw new Error(
-          "Use a ws:// or wss:// app-server URL without embedded credentials.",
+          t(
+            "Use a ws:// or wss:// app-server URL without embedded credentials.",
+          ),
         );
       }
     } catch (error) {
@@ -142,7 +145,7 @@ export class CodexClient {
       this.socket = socket;
       let initializing = false;
       const timer = setTimeout(
-        () => this.terminate(new Error("Connection timed out.")),
+        () => this.terminate(new Error(t("Connection timed out."))),
         this.options.connectTimeoutMs ?? 20_000,
       );
       this.cancelConnect = (error) => {
@@ -163,11 +166,11 @@ export class CodexClient {
       };
       socket.onerror = () => {
         if (this.socket === socket)
-          this.terminate(new Error("WebSocket connection failed."));
+          this.terminate(new Error(t("WebSocket connection failed.")));
       };
       socket.onclose = (event) => {
         if (this.socket === socket)
-          this.terminate(new Error(event.reason || "Connection closed."));
+          this.terminate(new Error(event.reason || t("Connection closed.")));
       };
       socket.onmessage = (event) => {
         if (this.socket !== socket) return;
@@ -175,11 +178,13 @@ export class CodexClient {
         try {
           message = JSON.parse(String(event.data));
         } catch {
-          this.terminate(new Error("Invalid JSON received from app-server."));
+          this.terminate(
+            new Error(t("Invalid JSON received from app-server.")),
+          );
           return;
         }
         if (!isRecord(message)) {
-          this.terminate(new Error("Invalid app-server message."));
+          this.terminate(new Error(t("Invalid app-server message.")));
           return;
         }
         if (
@@ -191,7 +196,9 @@ export class CodexClient {
             : message.message;
           this.terminate(
             new Error(
-              typeof detail === "string" ? detail : "Bridge connection failed.",
+              typeof detail === "string"
+                ? detail
+                : t("Bridge connection failed."),
             ),
           );
           return;
@@ -234,16 +241,16 @@ export class CodexClient {
   }
 
   disconnect(): void {
-    this.terminate(new Error("Disconnected."));
+    this.terminate(new Error(t("Disconnected.")));
   }
 
   request<T>(...[method, params]: RpcCall): Promise<T> {
     if (this.status !== "connected")
-      return Promise.reject(new Error("Not connected to app-server."));
+      return Promise.reject(new Error(t("Not connected to app-server.")));
     if (this.capabilities.getSnapshot()[method]?.state === "unsupported")
       return Promise.reject(
         new RpcError(
-          "当前连接的服务端未提供此接口；可在接口能力面板清除记录后重试。",
+          t("当前连接的服务端未提供此接口；可在接口能力面板清除记录后重试。"),
           -32601,
         ),
       );
@@ -262,13 +269,13 @@ export class CodexClient {
 
   respond(id: RpcId, result: unknown): void {
     if (this.status !== "connected")
-      throw new Error("Not connected to app-server.");
+      throw new Error(t("Not connected to app-server."));
     this.send({ id, result });
   }
 
   respondError(id: RpcId, code: number, message: string): void {
     if (this.status !== "connected")
-      throw new Error("Not connected to app-server.");
+      throw new Error(t("Not connected to app-server."));
     this.send({ id, error: { code, message } });
   }
 
@@ -311,7 +318,10 @@ export class CodexClient {
               this.pending.delete(id);
               reject(
                 new Error(
-                  `${method} timed out. Its outcome is unknown; refresh before retrying.`,
+                  t(
+                    "{{method}} timed out. Its outcome is unknown; refresh before retrying.",
+                    { method },
+                  ),
                 ),
               );
             }, timeout);
@@ -332,7 +342,7 @@ export class CodexClient {
 
   private send(message: unknown): void {
     if (this.socket?.readyState !== 1)
-      throw new Error("WebSocket is not open.");
+      throw new Error(t("WebSocket is not open."));
     this.socket.send(JSON.stringify(message));
   }
 
@@ -363,7 +373,7 @@ export class CodexClient {
     } else if ("result" in message) pending.resolve(message.result);
     else
       pending.reject(
-        new Error("Invalid app-server response: missing result or error."),
+        new Error(t("Invalid app-server response: missing result or error.")),
       );
   }
 

@@ -52,7 +52,8 @@ export function createWorkbenchServer(options: WorkbenchServerOptions = {}) {
         JSON.stringify(
           options.appServerOutput?.() ?? {
             status: "unavailable",
-            output: "此网页服务未管理本机 app-server，无法读取终端输出。",
+            output: "",
+            messageCode: "unmanaged",
           },
         ),
       );

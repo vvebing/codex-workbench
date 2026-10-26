@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { t } from "../../lib/i18n";
 import { useState } from "react";
 import { ChevronRight, FileDiff, MoreHorizontal } from "lucide-react";
 import {
@@ -23,6 +25,7 @@ export function TurnResults({
   cwd?: string;
   diff?: string;
 }) {
+  useTranslation();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const results = turnFileResults(turn, diff, cwd);
@@ -62,11 +65,17 @@ export function TurnResults({
             className={`transition-transform duration-200 motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
           />
           <FileDiff size={14} />
-          本轮变更
-          {results.files.length ? ` · ${results.files.length} 个文件` : ""}
+          {t("本轮变更")}
+          {results.files.length
+            ? t(" · {{value0}} 个文件", { value0: results.files.length })
+            : ""}
           <span
             className="ml-auto whitespace-nowrap text-xs"
-            aria-label={`新增 ${totals.added} 行，删除 ${totals.removed} 行${results.aggregate ? "" : "，按操作记录累计"}`}
+            aria-label={t("新增 {{value0}} 行，删除 {{value1}} 行{{value2}}", {
+              value0: totals.added,
+              value1: totals.removed,
+              value2: results.aggregate ? "" : t("，按操作记录累计"),
+            })}
           >
             <span className="text-diff-added">+{totals.added}</span>{" "}
             <span className="text-diff-deleted">−{totals.removed}</span>
@@ -74,9 +83,9 @@ export function TurnResults({
         </Button>
         {results.aggregate && !!results.rawDiff.trim() && (
           <Menu
-            label="本轮变更操作"
+            label={t("本轮变更操作")}
             trigger={
-              <IconButton size="sm" label="本轮变更操作">
+              <IconButton size="sm" label={t("本轮变更操作")}>
                 <MoreHorizontal size={16} />
               </IconButton>
             }
@@ -90,7 +99,7 @@ export function TurnResults({
                 )
               }
             >
-              导出本轮补丁
+              {t("导出本轮补丁")}
             </MenuItem>
           </Menu>
         )}
@@ -100,18 +109,22 @@ export function TurnResults({
           <div className="space-y-2 border-t border-border p-3">
             {!results.aggregate && (
               <p>
-                已完成的文件操作记录，按执行顺序保留
-                patch；行数按记录累计，不代表最终净变更。
+                {t(
+                  "已完成的文件操作记录，按执行顺序保留 patch；行数按记录累计，不代表最终净变更。",
+                )}
               </p>
             )}
             {turn.itemsView !== "full" && !results.aggregate && (
-              <p>历史明细尚未完整加载。</p>
+              <p>{t("历史明细尚未完整加载。")}</p>
             )}
             <div className="grid min-w-0 gap-3 @min-[700px]/conversation:grid-cols-[minmax(150px,30%)_minmax(0,1fr)]">
               <ScrollArea className="max-h-48 @min-[700px]/conversation:max-h-[420px]">
-                <nav aria-label="本轮变更文件" className="flex flex-col gap-1">
+                <nav
+                  aria-label={t("本轮变更文件")}
+                  className="flex flex-col gap-1"
+                >
                   {[
-                    { path: null, label: "全部变更" },
+                    { path: null, label: t("全部变更") },
                     ...results.files.map((file) => ({
                       path: file.path,
                       label: file.path,
@@ -138,7 +151,7 @@ export function TurnResults({
                 >
                   <pre
                     className="min-w-fit py-3 text-code leading-code text-foreground"
-                    aria-label="变更差异"
+                    aria-label={t("变更差异")}
                   >
                     {content
                       ? lines.map((line, index) => {
@@ -152,7 +165,7 @@ export function TurnResults({
                             </span>
                           );
                         })
-                      : "此文件没有记录差异内容。"}
+                      : t("此文件没有记录差异内容。")}
                   </pre>
                 </ScrollArea>
               </div>

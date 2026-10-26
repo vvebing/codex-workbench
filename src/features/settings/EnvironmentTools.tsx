@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { CapabilityPanel, useCapabilities } from "./CapabilityPanel";
 import type { RpcMethod } from "../../lib/rpc";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -27,6 +28,7 @@ export function EnvironmentTools({
   cwd?: string;
   onInsertApp?: (app: { id: string; name: string }) => void;
 }) {
+  useLocale();
   const session = useStore(connection);
   const capabilities = useCapabilities(connection);
   const unsupported = (method: RpcMethod) =>
@@ -68,19 +70,20 @@ export function EnvironmentTools({
             }
             onClick={() => void store.load(key)}
           >
-            {state[key].busy ? "加载中…" : "刷新"}
+            {state[key].busy ? t("加载中…") : t("刷新")}
           </Button>
         }
       >
         {unsupported(methods[key]) && (
           <p role="status" className="text-xs text-muted">
-            服务端未提供 {methods[key]}
-            ；可在「服务端功能支持」清除该接口记录后重新验证。
+            {t("服务端未提供")}
+            {methods[key]}
+            {t("；可在「服务端功能支持」清除该接口记录后重新验证。")}
           </p>
         )}
         {state[key].error && <ErrorNotice>{state[key].error}</ErrorNotice>}
         {!state[key].data && !state[key].busy && !state[key].error && (
-          <p className="text-xs text-muted">尚未加载</p>
+          <p className="text-xs text-muted">{t("尚未加载")}</p>
         )}
         {children}
       </SettingsSection>
@@ -89,20 +92,25 @@ export function EnvironmentTools({
   return (
     <div className="space-y-6 text-xs">
       {group === "integrations" && <CapabilityPanel connection={connection} />}
-      {session.status !== "connected" && <p>连接环境后可管理服务。</p>}
+      {session.status !== "connected" && <p>{t("连接环境后可管理服务。")}</p>}
       {Object.entries(capabilities)
         .filter(([, value]) => value?.state === "unsupported")
         .map(([method]) => (
           <p key={method} role="status" className="text-muted">
-            服务端未提供 {method}；对应操作已禁用。可在「工具与集成 →
-            服务端功能支持」清除具体接口记录后重新验证。
+            {t("服务端未提供")}
+            {method}
+            {t(
+              "；对应操作已禁用。可在「工具与集成 → 服务端功能支持」清除具体接口记录后重新验证。",
+            )}
           </p>
         ))}
       {state.actionError && <ErrorNotice>{state.actionError}</ErrorNotice>}
-      {state.message && <p role="status">{state.message}</p>}
+      {state.message && (
+        <p role="status">{state.messageText?.() ?? state.message}</p>
+      )}
       {panel(
         "mcp",
-        "MCP 服务",
+        t("MCP 服务"),
         <div className="space-y-2">
           {state.mcp.data?.data.map((server) => (
             <div
@@ -110,12 +118,12 @@ export function EnvironmentTools({
               className="space-y-1 rounded-lg border border-border p-3"
             >
               <p>
-                {server.name} · {server.runtimeStatus ?? "状态未知"} ·{" "}
+                {server.name} · {server.runtimeStatus ?? t("状态未知")} ·{" "}
                 {server.authStatus}
               </p>
               <p className="text-muted">
-                {Object.keys(server.tools).length} 个工具 ·{" "}
-                {server.httpOrigin ?? "本地传输"}
+                {Object.keys(server.tools).length} {t("个工具 ·")}{" "}
+                {server.httpOrigin ?? t("本地传输")}
               </p>
               {server.toolsError && (
                 <p className="text-danger">{server.toolsError}</p>
@@ -126,7 +134,7 @@ export function EnvironmentTools({
                 disabled={disabled || unsupported("mcpServer/oauth/login")}
                 onClick={() => void store.login(server.name)}
               >
-                OAuth 登录
+                {t("OAuth 登录")}
               </Button>
             </div>
           ))}
@@ -136,7 +144,7 @@ export function EnvironmentTools({
               disabled={state.mcp.busy || unsupported("mcpServerStatus/list")}
               onClick={() => void store.load("mcp", true)}
             >
-              更多服务
+              {t("更多服务")}
             </Button>
           )}
           <Button
@@ -145,11 +153,12 @@ export function EnvironmentTools({
             disabled={disabled || unsupported("config/mcpServer/reload")}
             onClick={() => void store.reloadMcp()}
           >
-            重新加载 MCP 配置
+            {t("重新加载 MCP 配置")}
           </Button>
           {state.oauth && (
             <p>
-              在浏览器完成 {state.oauth.name} 登录：
+              {t("在浏览器完成")}
+              {state.oauth.name} {t("登录：")}
               <a
                 className="text-accent"
                 href={
@@ -159,7 +168,7 @@ export function EnvironmentTools({
                 target="_blank"
                 rel="noreferrer"
               >
-                打开授权页
+                {t("打开授权页")}
               </a>
             </p>
           )}
@@ -172,17 +181,19 @@ export function EnvironmentTools({
       )}
       {group === "configuration" && (
         <SettingsSection
-          title="设备默认设置"
-          description="保存到所选设备的用户配置，项目配置可覆盖这些默认值。此处用于设置新的默认值，不展示项目配置或当前会话参数。"
+          title={t("设备默认设置")}
+          description={t(
+            "保存到所选设备的用户配置，项目配置可覆盖这些默认值。此处用于设置新的默认值，不展示项目配置或当前会话参数。",
+          )}
         >
           <div className="space-y-4">
-            <SettingsField id="device-default-model" label="设备默认模型">
+            <SettingsField id="device-default-model" label={t("设备默认模型")}>
               <input
                 id="device-default-model"
                 className={settingsInputClass}
                 value={model}
                 onChange={(event) => setModel(event.target.value)}
-                placeholder="输入要保存的模型 ID"
+                placeholder={t("输入要保存的模型 ID")}
               />
             </SettingsField>
             <Button
@@ -193,18 +204,21 @@ export function EnvironmentTools({
               }
               onClick={() => void store.writeConfig("model", model)}
             >
-              保存设备默认模型
+              {t("保存设备默认模型")}
             </Button>
-            <SettingsField id="device-approval-policy" label="设备默认审批策略">
+            <SettingsField
+              id="device-approval-policy"
+              label={t("设备默认审批策略")}
+            >
               <SelectField
                 id="device-approval-policy"
-                label="设备默认审批策略"
+                label={t("设备默认审批策略")}
                 className={settingsSelectClass}
                 value={policy}
                 disabled={disabled}
                 onValueChange={setPolicy}
                 options={[
-                  { value: "unset", label: "选择要保存的策略" },
+                  { value: "unset", label: t("选择要保存的策略") },
                   ...["untrusted", "on-request", "never"].map((value) => ({
                     value,
                     label: value,
@@ -222,41 +236,41 @@ export function EnvironmentTools({
               }
               onClick={() => void store.writeConfig("approval_policy", policy)}
             >
-              保存设备默认审批策略
+              {t("保存设备默认审批策略")}
             </Button>
           </div>
         </SettingsSection>
       )}
       {panel(
         "requirements",
-        "受管策略",
+        t("受管策略"),
         state.requirements.data && (
           <div className="space-y-1">
             <p>
               {state.requirements.data.requirements
-                ? "已配置受管约束"
-                : "没有受管约束"}
+                ? t("已配置受管约束")
+                : t("没有受管约束")}
             </p>
             {state.requirements.data.requirements && (
               <>
                 <p>
-                  审批策略：
+                  {t("审批策略：")}
                   {state.requirements.data.requirements.allowedApprovalPolicies
                     ?.map((value) =>
-                      typeof value === "string" ? value : "自定义",
+                      typeof value === "string" ? value : t("自定义"),
                     )
-                    .join(", ") ?? "未限定"}
+                    .join(", ") ?? t("未限定")}
                 </p>
                 <p>
-                  沙箱模式：
+                  {t("沙箱模式：")}
                   {state.requirements.data.requirements.allowedSandboxModes?.join(
                     ", ",
-                  ) ?? "未限定"}
+                  ) ?? t("未限定")}
                 </p>
                 <p>
-                  提供方：
+                  {t("提供方：")}
                   {state.requirements.data.requirements.modelProvider ??
-                    "未限定"}
+                    t("未限定")}
                 </p>
               </>
             )}
@@ -265,7 +279,7 @@ export function EnvironmentTools({
       )}
       {panel(
         "skills",
-        "技能",
+        t("技能"),
         <div className="space-y-3">
           {state.skills.data?.data.map((entry) => (
             <div key={entry.cwd} className="space-y-2">
@@ -282,7 +296,7 @@ export function EnvironmentTools({
                 >
                   <div className="min-w-0 flex-1">
                     <p>
-                      {skill.name} · {skill.enabled ? "已启用" : "已停用"}
+                      {skill.name} · {skill.enabled ? t("已启用") : t("已停用")}
                     </p>
                     <p className="text-muted">
                       {skill.shortDescription ?? skill.description}
@@ -296,7 +310,7 @@ export function EnvironmentTools({
                       void store.setSkill(skill.path, !skill.enabled)
                     }
                   >
-                    {skill.enabled ? "停用" : "启用"}
+                    {skill.enabled ? t("停用") : t("启用")}
                   </Button>
                 </div>
               ))}
@@ -304,8 +318,10 @@ export function EnvironmentTools({
           ))}
           <SettingsField
             id="extra-skill-roots"
-            label="额外技能目录（每行一个绝对路径）"
-            description="替换当前服务进程的全部额外技能目录，留空会清除；不写入磁盘。"
+            label={t("额外技能目录（每行一个绝对路径）")}
+            description={t(
+              "替换当前服务进程的全部额外技能目录，留空会清除；不写入磁盘。",
+            )}
           >
             <textarea
               id="extra-skill-roots"
@@ -328,13 +344,13 @@ export function EnvironmentTools({
               )
             }
           >
-            应用额外目录
+            {t("应用额外目录")}
           </Button>
         </div>,
       )}
       {panel(
         "hooks",
-        "Hooks（只读）",
+        t("Hooks（只读）"),
         <div className="space-y-2">
           {state.hooks.data?.data.map((entry) => (
             <div key={entry.cwd}>
@@ -352,8 +368,8 @@ export function EnvironmentTools({
               {entry.hooks.map((hook) => (
                 <p key={hook.key}>
                   {hook.eventName} · {hook.handlerType} ·{" "}
-                  {hook.enabled ? "已启用" : "已停用"} · {hook.trustStatus} ·{" "}
-                  {hook.sourcePath}
+                  {hook.enabled ? t("已启用") : t("已停用")} ·{" "}
+                  {hook.trustStatus} · {hook.sourcePath}
                 </p>
               ))}
             </div>
@@ -362,24 +378,25 @@ export function EnvironmentTools({
       )}
       {panel(
         "installed",
-        "已安装应用",
+        t("已安装应用"),
         <div className="space-y-1">
           {state.installed.data?.apps.map((app) => (
             <p key={app.id}>
-              {app.runtimeName ?? app.id} · {app.enabled ? "已启用" : "已停用"}{" "}
-              · {app.callable ? "可调用" : "当前不可调用"}
+              {app.runtimeName ?? app.id} ·{" "}
+              {app.enabled ? t("已启用") : t("已停用")} ·{" "}
+              {app.callable ? t("可调用") : t("当前不可调用")}
             </p>
           ))}
         </div>,
       )}
       {panel(
         "apps",
-        "可用应用",
+        t("可用应用"),
         <div className="space-y-2">
           {state.apps.data?.data.map((app) => (
             <div key={app.id} className="space-y-1">
               <p>
-                {app.name} · {app.isEnabled ? "已启用" : "已停用"}
+                {app.name} · {app.isEnabled ? t("已启用") : t("已停用")}
               </p>
               <p className="text-muted">{app.description}</p>
               <div className="flex gap-2">
@@ -389,7 +406,7 @@ export function EnvironmentTools({
                   disabled={state.app.busy || unsupported("app/read")}
                   onClick={() => void store.load("app", false, app.id)}
                 >
-                  查看工具
+                  {t("查看工具")}
                 </Button>
                 {onInsertApp && (
                   <Button
@@ -397,7 +414,7 @@ export function EnvironmentTools({
                     disabled={!app.isAccessible || !app.isEnabled}
                     onClick={() => onInsertApp({ id: app.id, name: app.name })}
                   >
-                    插入应用提及
+                    {t("插入应用提及")}
                   </Button>
                 )}
               </div>
@@ -409,12 +426,15 @@ export function EnvironmentTools({
               disabled={state.apps.busy || unsupported("app/list")}
               onClick={() => void store.load("apps", true)}
             >
-              更多应用
+              {t("更多应用")}
             </Button>
           )}
           {state.app.error && <ErrorNotice>{state.app.error}</ErrorNotice>}
           {state.app.data?.missingAppIds.map((id) => (
-            <p key={id}>应用不可用：{id}</p>
+            <p key={id}>
+              {t("应用不可用：")}
+              {id}
+            </p>
           ))}
           {state.app.data?.apps.map((app) => (
             <div key={app.id}>

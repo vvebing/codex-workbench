@@ -1,3 +1,4 @@
+import { t } from "../../lib/i18n";
 import * as monaco from "monaco-editor/editor/editor.api.js";
 import { attachDiffModel } from "./diff-model";
 
@@ -58,7 +59,9 @@ export function attachGitGutter(
             );
         const hover: monaco.IMarkdownString = {
           value:
-            `Git ${added ? "新增" : deleted ? "删除" : "修改"} · 相对暂存区（含未保存草稿）。点击查看差异。` +
+            t("Git {{value0}} · 相对暂存区（含未保存草稿）。点击查看差异。", {
+              value0: added ? t("新增") : deleted ? t("删除") : t("修改"),
+            }) +
             (before
               ? "\n\n" +
                 before

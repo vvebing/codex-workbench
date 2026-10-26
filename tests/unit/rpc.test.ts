@@ -1,5 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import i18n from "../../src/lib/i18n";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { CodexClient, RpcError, type SocketLike } from "../../src/lib/rpc";
+
+// RPC transport fixtures explicitly assert English diagnostics.
+beforeEach(async () => {
+  await i18n.changeLanguage("en");
+});
 
 class FakeSocket implements SocketLike {
   readyState = 0;

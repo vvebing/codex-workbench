@@ -1,3 +1,4 @@
+import { t, useLocale } from "../../lib/i18n";
 import { useState } from "react";
 import { LoaderCircle, Monitor, Server } from "lucide-react";
 import { Tooltip } from "radix-ui";
@@ -18,6 +19,9 @@ export function EnvironmentIcon({
   focusable?: boolean;
   tooltipSide?: "top" | "right" | "bottom" | "left";
 }) {
+  const i18nLocale = useLocale();
+  void i18nLocale;
+
   const [open, setOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
   const Icon = environment.kind === "local" ? Monitor : Server;
@@ -25,12 +29,12 @@ export function EnvironmentIcon({
   const tooltip = connection?.error ? `${label} · ${connection.error}` : label;
   const statusLabel =
     connection?.status === "connected"
-      ? "已连接"
+      ? t("已连接")
       : connection?.status === "connecting"
-        ? "连接中"
+        ? t("连接中")
         : connection?.error
-          ? "连接失败"
-          : "未连接";
+          ? t("连接失败")
+          : t("未连接");
   return (
     <Tooltip.Provider delayDuration={250}>
       <Tooltip.Root open={open || focusOpen} onOpenChange={setOpen}>

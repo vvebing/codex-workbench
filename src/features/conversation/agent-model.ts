@@ -1,3 +1,4 @@
+import { getLocale, t } from "../../lib/i18n";
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
 import type { Thread } from "../../generated/v2/Thread";
 import type { CollabAgentStatus } from "../../generated/v2/CollabAgentStatus";
@@ -143,13 +144,24 @@ export function latestAgentActivity(thread: Thread): string {
       case "commandExecution":
         return commandTitle(item);
       case "fileChange":
-        return `修改 ${item.changes.map((change) => change.path).join("、") || "文件"}`;
+        return t("修改 {{value0}}", {
+          value0:
+            item.changes
+              .map((change) => change.path)
+              .join(getLocale() === "zh-CN" ? "、" : ", ") || t("文件"),
+        });
       case "mcpToolCall":
-        return `调用 ${item.server}.${item.tool}`;
+        return t("调用 {{value0}}.{{value1}}", {
+          value0: item.server,
+          value1: item.tool,
+        });
       case "dynamicToolCall":
-        return `调用 ${item.namespace ? `${item.namespace}.` : ""}${item.tool}`;
+        return t("调用 {{value0}}{{value1}}", {
+          value0: item.namespace ? `${item.namespace}.` : "",
+          value1: item.tool,
+        });
       case "webSearch":
-        return `搜索 ${item.query}`;
+        return t("搜索 {{value0}}", { value0: item.query });
       case "agentMessage":
         if (item.text.trim()) return item.text;
         break;
@@ -158,5 +170,5 @@ export function latestAgentActivity(thread: Thread): string {
         break;
     }
   }
-  return "暂无活动记录";
+  return t("暂无活动记录");
 }
