@@ -51,6 +51,8 @@ jobs:
       - run: npm run patch:release-tools
       - run: npm run build
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/3
+      # Split individual tests, including the large workbench.spec.ts suite.
+      # Keep one worker per runner to preserve isolation and stable resource use.
+      - run: npm run test:e2e -- --fully-parallel --workers=1 --shard=${{ matrix.shard }}/3
         env:
           E2E_PRODUCTION: "1"

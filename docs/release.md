@@ -10,6 +10,8 @@ semantic-release 所依赖的 npm 11.21.1 捆绑了旧版 undici 与 ip-address�
 
 日常发布入口是 `.github/workflows/release.yml`。推送 main 后先调用完整 CI（质量检查、依赖审计、构建、真实 npm 包安装烟测、生产浏览器测试），通过后运行 semantic-release。也可在 main 上手动运行 Release workflow；没有符合发布条件的新提交时不会生成新版本。
 
+浏览器测试使用三个独立 runner，并通过 `--fully-parallel --workers=1` 按用例分片，每个 runner 内仍串行执行。当前 307 个用例分配为 103 / 102 / 102；原先按文件分片为 108 / 194 / 5，大测试文件导致总耗时取决于第二个 runner。调整不减少用例，不增加重试或跳过；实际提速以 Actions 耗时为准。
+
 发布使用 Node.js 24 和 npm OIDC Trusted Publishing，无需在仓库长期保存 npm token。工作流只授予发布 job `contents: write` 与 `id-token: write`；不向 issue 或 PR 发送评论。发布串行执行，不取消正在发布的任务。
 
 semantic-release 根据 Conventional Commits 自动决定版本，更新发布工作区的 package.json / lockfile，生成该版本 CHANGELOG.md，构建并发布 npm 包、创建 `vX.Y.Z` 标签和 GitHub Release，附上 `.tgz` 与更新日志。完整历史以 [GitHub Releases](https://github.com/vvebing/codex-workbench/releases) 为准。版本号与生成日志不回写 main，避免自动提交循环及绕过分支保护；仓库里的版本号不是最新发行版查询接口。首次没有历史标签时，semantic-release 默认从 **1.0.0** 开始。
@@ -18,11 +20,13 @@ semantic-release 根据 Conventional Commits 自动决定版本，更新发布�
 
 1. 确认 GitHub 仓库和 npm 包名均为 `vvebing/codex-workbench` / `codex-workbench`，并拥有发布权限。名称以 npm 实时查询结果为准。
 2. 如 npm 尚无该包，先在干净检出中完成下方验证门禁，使用 npm 账户登录并执行 `npm publish --access public` 发布当前引导版本（0.1.0）；此操作会通过 prepack 构建产物。不要用空包占位。首次登录/2FA 由包所有者完成。
-3. 在 npm 包 Settings → Trusted publishing 中添加 GitHub Actions：owner `vvebing`、repository `codex-workbench`、workflow filename **`release.yml`**，environment 留空（工作流未指定 environment）。按 npm 当前有效期要求及时完成首次可信发布。
+3. 在 npm 包 Settings → Trusted publishing 中添加 GitHub Actions：owner `vvebing`、repository `codex-workbench`、workflow filename **`release.yml`**，environment 留空（工作流未指定 environment）。勾选 **Allow npm publish** 与 **Allow npm dist-tag**，避免只允许暂存发布。按 npm 当前有效期要求及时完成首次可信发布。
 4. 在 GitHub 启用 Actions，允许工作流创建发布标签与 Releases；配置 main 分支保护和 CI 必需检查，推荐只允许 squash 合并并使用 PR 标题作为提交信息。若标签规则限制创建 `v*`，需允许发布工作流执行。
 5. 合并一个符合规范的 `feat:` 提交，或在已包含发布提交的 main 上运行 Release workflow。检查 npm 的 `latest`、GitHub Release、provenance 和打包附件，最后执行 `npx codex-workbench@latest --port 5181` 验收。
 
 如已有合法发布版本，迁移前确认对应提交有正确的 `vX.Y.Z` 标签，不要为尚未发布的版本虚构标签。后续不手动 `npm version` 或 `npm publish`。
+
+首次账户发布和创建 Trusted Publisher 都可能分别要求安全密钥/2FA 验证。不要只根据 CLI 的成功提示判断完成：需确认公开 registry 中真实版本、dist-tags 和 npx 入口。若仅看到 `0.0.0-stage` 占位版本，应检查 npm 的 Staged Packages 和元数据同步状态。
 
 官方配置依据：[npm Trusted Publishers](https://docs.npmjs.com/trusted-publishers/)、[semantic-release GitHub Actions](https://semantic-release.org/recipes/ci-configurations/github-actions/)。不要给 setup-node 设置 `registry-url`，以免生成的 npm 配置干扰 semantic-release 的 OIDC 认证。
 
