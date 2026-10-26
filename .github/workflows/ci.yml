@@ -14,6 +14,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      playwright-image: ${{ steps.playwright-image.outputs.image }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,6 +24,18 @@ jobs:
         with:
           node-version: "24"
           cache: npm
+      - name: Resolve Playwright image from lockfile
+        id: playwright-image
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync, appendFileSync } from "node:fs";
+          const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+          const version = lock.packages["node_modules/@playwright/test"].version;
+          if (!/^\d+\.\d+\.\d+$/.test(version)) {
+            throw new Error(`Unsupported Playwright image version: ${version}`);
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `image=mcr.microsoft.com/playwright:v${version}-noble\n`);
+          JS
       - run: npm ci
       - run: npm run patch:release-tools
       - name: Check pull request title (squash commit)
@@ -37,6 +51,9 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    container:
+      image: ${{ needs.check.outputs.playwright-image }}
+      options: --init --ipc=host
     strategy:
       fail-fast: false
       matrix:
@@ -49,8 +66,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run patch:release-tools
+      - name: Verify preinstalled Chromium
+        run: |
+          node --input-type=module <<'JS'
+          import { chromium } from "@playwright/test";
+          const browser = await chromium.launch();
+          console.log(`Preinstalled Chromium: ${browser.version()}`);
+          await browser.close();
+          JS
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
       # Split individual tests, including the large workbench.spec.ts suite.
       # Keep one worker per runner to preserve isolation and stable resource use.
       - run: npm run test:e2e -- --fully-parallel --workers=1 --shard=${{ matrix.shard }}/3

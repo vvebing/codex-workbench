@@ -12,6 +12,8 @@ semantic-release 所依赖的 npm 11.21.1 捆绑了旧版 undici 与 ip-address�
 
 浏览器测试使用三个独立 runner，并通过 `--fully-parallel --workers=1` 按用例分片，每个 runner 内仍串行执行。当前 307 个用例分配为 103 / 102 / 102；原先按文件分片为 108 / 194 / 5，大测试文件导致总耗时取决于第二个 runner。调整不减少用例，不增加重试或跳过；实际提速以 Actions 耗时为准。
 
+E2E job 使用官方 Playwright 容器，镜像标签从 `package-lock.json` 中的 `@playwright/test` 精确版本生成（`mcr.microsoft.com/playwright:v<version>-noble`），升级锁文件后自动匹配浏览器版本。镜像已包含浏览器和系统依赖，因此 CI 不再执行 `playwright install --with-deps`；仍通过 `npm ci` 安装项目依赖。构建前会实际启动、关闭 Chromium，尽早发现镜像或浏览器不兼容问题。容器使用 `--init --ipc=host`，保留三个分片、单 worker 和全量发布门禁。镜像拉取和容器初始化仍有开销，比较性能时应同时查看 job 总耗时与测试步骤耗时。
+
 发布使用 Node.js 24 和 npm OIDC Trusted Publishing，无需在仓库长期保存 npm token。工作流只授予发布 job `contents: write` 与 `id-token: write`；不向 issue 或 PR 发送评论。发布串行执行，不取消正在发布的任务。
 
 semantic-release 根据 Conventional Commits 自动决定版本，更新发布工作区的 package.json / lockfile，生成该版本 CHANGELOG.md，构建并发布 npm 包、创建 `vX.Y.Z` 标签和 GitHub Release，附上 `.tgz` 与更新日志。完整历史以 [GitHub Releases](https://github.com/vvebing/codex-workbench/releases) 为准。版本号与生成日志不回写 main，避免自动提交循环及绕过分支保护；仓库里的版本号不是最新发行版查询接口。首次没有历史标签时，semantic-release 默认从 **1.0.0** 开始。
