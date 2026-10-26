@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import {
   Button,
+  Checkbox,
   SelectField,
   IconButton,
   Menu,
@@ -302,6 +303,7 @@ export function ThreadMenu({
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            if (dialog === "delete" && !deleteConfirmed) return;
             void act(() =>
               dialog === "delete"
                 ? runtime.sessions.delete(thread.id)
@@ -320,14 +322,17 @@ export function ThreadMenu({
           }}
         >
           {dialog === "delete" && (
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
+            <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-elevated p-3 text-control leading-copy">
+              <Checkbox
+                className="mt-0.5"
                 checked={deleteConfirmed}
-                onChange={(event) => setDeleteConfirmed(event.target.checked)}
+                onCheckedChange={(checked) =>
+                  setDeleteConfirmed(checked === true)
+                }
+                disabled={disabled}
                 required
               />
-              我确认永久删除本会话及所有后代会话，且无法恢复。
+              <span>我确认永久删除本会话及所有后代会话，且无法恢复。</span>
             </label>
           )}
           {dialog === "section" && (
@@ -373,13 +378,14 @@ export function ThreadMenu({
             <Button
               type="button"
               variant="secondary"
+              autoFocus={dialog === "delete"}
               size="sm"
               onClick={() => setDialog(null)}
             >
               取消
             </Button>
             <Button
-              variant="primary"
+              variant={dialog === "delete" ? "danger" : "primary"}
               type="submit"
               disabled={
                 disabled ||

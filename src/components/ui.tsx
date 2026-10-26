@@ -1,5 +1,6 @@
 import {
   Dialog,
+  Checkbox as RadixCheckbox,
   DropdownMenu,
   Select,
   ScrollArea as RadixScrollArea,
@@ -104,6 +105,23 @@ const buttonVariants = {
     "border-transparent bg-transparent text-muted hover:bg-hover hover:text-foreground",
   danger: "border-transparent bg-danger-soft text-danger hover:bg-danger/20",
 };
+
+export function Checkbox({
+  className = "",
+  ...props
+}: ComponentPropsWithoutRef<typeof RadixCheckbox.Root>) {
+  return (
+    <RadixCheckbox.Root
+      {...props}
+      data-slot="checkbox"
+      className={`inline-flex size-4 shrink-0 items-center justify-center rounded border border-border bg-elevated text-background outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-elevated disabled:cursor-not-allowed disabled:opacity-40 data-[state=checked]:border-accent data-[state=checked]:bg-accent ${className}`}
+    >
+      <RadixCheckbox.Indicator>
+        <Check size={12} aria-hidden="true" />
+      </RadixCheckbox.Indicator>
+    </RadixCheckbox.Root>
+  );
+}
 
 export function Button({
   variant = "secondary",
