@@ -826,7 +826,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                   aria-selected={selected}
                   data-selected={selected}
                   style={{ height: row.height - 4 }}
-                  className={`group flex min-w-0 items-center gap-0.5 rounded-lg ${selected ? "bg-selected" : "hover:bg-hover"}`}
+                  className={`group relative flex min-w-0 items-center gap-0.5 rounded-lg ${selected ? "bg-selected" : "hover:bg-hover"}`}
                 >
                   <ThreadMenu
                     thread={thread}
@@ -848,7 +848,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                           ).toLocaleString(getLocale()),
                         },
                       )}
-                      className={`flex h-full min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left ${row.nested ? "pl-5" : "pl-2"}`}
+                      className="flex h-full min-w-0 flex-1 items-center gap-2 py-1.5 pl-5 pr-1 text-left"
                       onClick={() => {
                         setOpenError("");
                         environments.select(source.environment.id);
@@ -906,7 +906,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                       <IconButton
                         size="sm"
                         tabIndex={tabStop ? 0 : -1}
-                        className="navigation-row-menu mr-1"
+                        className="navigation-row-menu navigation-thread-menu"
                         label={t("会话操作：{{value0}}", {
                           value0: titleOf(thread),
                         })}

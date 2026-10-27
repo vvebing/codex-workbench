@@ -39,7 +39,11 @@
     "release:dry-run": "semantic-release --dry-run",
     "patch:release-tools": "node scripts/patch-release-tools.mjs",
     "check:release-tools": "node scripts/patch-release-tools.mjs --check",
-    "check:release": "node scripts/check-release.mjs"
+    "check:release": "node scripts/check-release.mjs",
+    "prepare": "node scripts/install-hooks.mjs",
+    "hooks:install": "node scripts/install-hooks.mjs",
+    "ci": "node scripts/ci.mjs",
+    "ci:e2e": "node scripts/ci.mjs --e2e"
   },
   "dependencies": {
     "i18next": "^26.5.11",

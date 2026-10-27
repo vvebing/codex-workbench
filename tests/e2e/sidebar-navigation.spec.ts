@@ -943,6 +943,10 @@ test("status icons are absolute and show opening and initialization without shif
     await expect(statusElement).toHaveCSS("position", "absolute");
     await expect(statusElement.locator("svg")).toHaveCount(1);
     const loading = (await titleElement.boundingBox())!;
+    const iconBounds = (await statusElement.boundingBox())!;
+    const rowBounds = (await button.boundingBox())!;
+    expect(iconBounds.x).toBeGreaterThanOrEqual(rowBounds.x);
+    expect(iconBounds.x + iconBounds.width).toBeLessThanOrEqual(loading.x);
     expect(loading.x).toBe(before.x);
     await expect(statusElement).toHaveCount(0);
     const after = (await titleElement.boundingBox())!;

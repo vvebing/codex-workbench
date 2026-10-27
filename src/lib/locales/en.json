@@ -1797,5 +1797,8 @@
   "不支持": "Unsupported",
   "加载中": "Loading",
   "Fast 模式使用优先服务；下次发送新轮次时生效，排队任务保留入队时设置。": "Fast mode uses priority service. Applies to the next new turn; queued tasks keep their saved settings.",
-  "尚未收到会话的 Fast 模式设置。": "The session's Fast mode setting has not been received yet."
+  "尚未收到会话的 Fast 模式设置。": "The session's Fast mode setting has not been received yet.",
+  "第 {{line}} 行，第 {{column}} 列": "Line {{line}}, column {{column}}",
+  "运行 {{kind}}": "Run {{kind}}",
+  "下级代理 · {{count}}": "Child agents · {{count}}"
 }

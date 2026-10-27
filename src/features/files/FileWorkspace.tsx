@@ -823,9 +823,10 @@ export function FileWorkspace({
                 <>
                   <span>{position.language}</span>
                   <span>
-                    {t("第")}
-                    {position.line} {t("行，第")}
-                    {position.column} {t("列")}
+                    {t("第 {{line}} 行，第 {{column}} 列", {
+                      line: position.line,
+                      column: position.column,
+                    })}
                   </span>
                 </>
               )}

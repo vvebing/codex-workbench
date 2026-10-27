@@ -112,8 +112,7 @@ export default function ProjectWorkspace({
                 disabled={!connected || busy || !project.commands[kind].trim()}
                 onClick={() => void store.run(kind, cwd)}
               >
-                {t("运行")}
-                {kind}
+                {t("运行 {{kind}}", { kind })}
               </Button>
             </div>
           ))}

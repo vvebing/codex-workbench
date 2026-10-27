@@ -8,7 +8,11 @@ npm run patch:release-tools
 npm run dev
 ```
 
-开发时单独启动 Codex app-server，详见 [README](README.md)。提交前执行 `npm run check`；涉及生产服务或打包时执行 `npm run build && npm run test:package`。浏览器验证见[开发文档](docs/development.md)。
+开发时单独启动 Codex app-server，详见 [README](README.md)。`npm ci` 会自动安装仓库 Git 钩子，也可运行 `npm run hooks:install` 安装。每次 commit 前，钩子会将暂存区导出到临时目录，安装锁定依赖，并运行与 GitHub CI 共用的 `npm run ci` 和 `npm run ci:e2e`（安全审计、静态检查、单元/集成测试、生产构建、打包验证和完整生产模式 E2E）。任一步失败即阻止提交；部分暂存也只检查实际提交内容，不会 stash 或改动工作区。首次使用请运行 `npx playwright install chromium`，并确保能访问 npm registry。检查结束后临时目录会清理。
+
+本地检查不能证明 GitHub 托管运行器上的 Actions 已成功；远端仍在推送后验证。Git 钩子可被 `--no-verify` 绕过，也不会随 clone 自动生效，团队还应使用分支保护要求 CI 成功才能合并。
+
+手动验证可执行 `npm run ci && npm run ci:e2e`。浏览器验证见[开发文档](docs/development.md)。
 
 ## 提交规范
 

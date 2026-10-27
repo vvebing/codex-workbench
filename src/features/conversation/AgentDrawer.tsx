@@ -132,8 +132,7 @@ export function AgentDrawer({
       {children.length > 0 && (
         <details className="shrink-0 border-b border-border px-4 py-2 text-xs">
           <summary className="cursor-pointer text-muted">
-            {t("下级代理 ·")}
-            {children.length}
+            {t("下级代理 · {{count}}", { count: children.length })}
           </summary>
           <ScrollArea aria-label={t("下级代理")} className="max-h-40">
             <div className="py-2">

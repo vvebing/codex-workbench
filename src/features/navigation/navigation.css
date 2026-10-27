@@ -46,9 +46,52 @@
   .navigation-row-menu[data-state="open"] {
     opacity: 1;
   }
+  [data-slot="thread-row"] {
+    --thread-action-background: var(--surface);
+  }
+  [data-slot="thread-row"]:hover {
+    --thread-action-background: var(--hover);
+  }
+  [data-slot="thread-row"][data-selected="true"] {
+    --thread-action-background: var(--selected);
+  }
+  .navigation-thread-menu {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    isolation: isolate;
+    pointer-events: none;
+  }
+  @media (min-width: 901px) {
+    [data-slot="thread-row"]:has([data-slot="thread-description"])
+      .navigation-thread-menu {
+      top: 2px;
+      transform: none;
+    }
+  }
+  .navigation-thread-menu::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 0 -24px;
+    z-index: -1;
+    border-radius: inherit;
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--thread-action-background) 50%
+    );
+    pointer-events: none;
+  }
+  .group:hover .navigation-thread-menu,
+  .group:focus-within .navigation-thread-menu,
+  .navigation-thread-menu[data-state="open"] {
+    pointer-events: auto;
+  }
   @media (hover: none) {
     .navigation-row-menu {
       opacity: 1;
+      pointer-events: auto;
     }
   }
   @media (max-width: 900px) {
@@ -57,6 +100,7 @@
     }
     .navigation-row-menu {
       opacity: 1;
+      pointer-events: auto;
     }
   }
 }

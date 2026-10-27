@@ -73,13 +73,14 @@ async function settings(page: Page, scope = "连接与账户") {
   return dialog;
 }
 async function menu(page: Page) {
-  await page
+  const trigger = page
     .getByRole("button", {
       name: "会话操作：接口分页与错误处理 · 10",
       exact: true,
     })
-    .first()
-    .click();
+    .first();
+  await trigger.locator("xpath=ancestor::*[@data-slot='thread-row']").hover();
+  await trigger.click();
   return page.getByRole("menu", { name: "会话操作" });
 }
 
