@@ -23,12 +23,13 @@ try {
   for (const { path } of packed.files) {
     assert.match(
       path,
-      /^(dist\/(client|server)\/|docs\/.*\.md$|package\.json$|README\.md$|SECURITY\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|LICENSE$)/,
+      /^(dist\/(client|server)\/|docs\/.*\.md$|package\.json$|README(?:\.zh-CN)?\.md$|SECURITY\.md$|CHANGELOG\.md$|CONTRIBUTING\.md$|LICENSE$)/,
     );
     assert.doesNotMatch(path, /\.(map|ts|tsx)$/);
   }
   assert(packed.files.some(({ path }) => path === "dist/client/index.html"));
   assert(packed.files.some(({ path }) => path === "dist/server/index.js"));
+  assert(packed.files.some(({ path }) => path === "README.zh-CN.md"));
   run(
     [
       "install",

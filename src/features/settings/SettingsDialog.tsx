@@ -1,8 +1,8 @@
 import { t, useLocale } from "../../lib/i18n";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Tabs } from "radix-ui";
 import { History, Plug, Plus, Settings2, Terminal } from "lucide-react";
-import { ScrollArea, Button, Modal, SelectField } from "../../components/ui";
+import { ScrollArea, Button, Modal } from "../../components/ui";
 import { useStore, useNarrow } from "../../components/hooks";
 import { environments } from "../connection/environments";
 import { ConfigMigration } from "./ConfigMigration";
@@ -17,9 +17,10 @@ import {
   useConnectionSettings,
 } from "./ConnectionSettings";
 import { EnvironmentSelector } from "./EnvironmentSelector";
-import { settingsSelectClass } from "./settings-ui";
 import { AppServerTerminal } from "./AppServerTerminal";
 import { ArchivedThreads } from "./ArchivedThreads";
+import { AttachmentSettings } from "./AttachmentSettings";
+import { FileSettings } from "./FileSettings";
 
 const sections = [
   {
@@ -123,30 +124,65 @@ export function SettingsDialog({
         }}
       >
         <Tabs.List
-          className="flex w-48 shrink-0 flex-col gap-1 border-r border-border bg-surface p-3 max-[900px]:grid max-[900px]:w-full max-[900px]:grid-cols-2 max-[900px]:border-r-0 max-[900px]:border-b"
+          className="flex w-48 shrink-0 flex-col gap-1 border-r border-border bg-surface p-3 max-[900px]:max-h-[40dvh] max-[900px]:overflow-y-auto max-[900px]:grid max-[900px]:w-full max-[900px]:grid-cols-2 max-[900px]:border-r-0 max-[900px]:border-b"
           aria-label={t("设置分类")}
         >
           {sections.map(({ value, label, Icon }) => (
-            <Tabs.Trigger
-              key={value}
-              value={value}
-              disabled={connectionSettings.busy}
-              className="flex min-h-10 min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-control text-muted hover:bg-hover data-[state=active]:bg-selected data-[state=active]:font-semibold data-[state=active]:text-accent max-[900px]:min-h-11 max-[900px]:justify-center max-[900px]:px-2 max-[550px]:text-xs"
-            >
-              <Icon
-                className="max-[550px]:hidden"
-                size={16}
-                aria-hidden="true"
-              />
-              <span className="min-w-0 break-words">{label}</span>
-            </Tabs.Trigger>
+            <Fragment key={value}>
+              <Tabs.Trigger
+                value={value}
+                disabled={connectionSettings.busy}
+                className={`flex min-h-10 min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-control text-muted hover:bg-hover data-[state=active]:font-semibold data-[state=active]:text-accent max-[900px]:min-h-11 max-[900px]:justify-center max-[900px]:px-2 max-[550px]:text-xs ${value !== "connections" ? "data-[state=active]:bg-selected" : ""}`}
+              >
+                <Icon
+                  className="max-[550px]:hidden"
+                  size={16}
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 break-words">{label}</span>
+              </Tabs.Trigger>
+              {value === "connections" && section === "connections" && (
+                <div
+                  className="ml-5 space-y-1 border-l border-border pl-2 max-[900px]:col-span-2 max-[900px]:order-last max-[900px]:ml-0 max-[900px]:grid max-[900px]:grid-cols-2 max-[900px]:gap-1 max-[900px]:space-y-0 max-[900px]:border-l-0 max-[900px]:border-t max-[900px]:pt-2 max-[900px]:pl-0"
+                  role="group"
+                  aria-label={t("工作环境设置")}
+                >
+                  {environmentPages.map(({ value: page, label: pageLabel }) => (
+                    <button
+                      key={page}
+                      type="button"
+                      aria-current={
+                        environmentPage === page ? "page" : undefined
+                      }
+                      disabled={
+                        connectionSettings.busy ||
+                        (page !== "connection" && !connectionSettings.selected)
+                      }
+                      className="flex min-h-10 w-full items-center rounded-lg px-3 py-2 text-left text-control text-muted hover:bg-hover aria-[current=page]:bg-selected aria-[current=page]:font-semibold aria-[current=page]:text-accent disabled:opacity-50 max-[900px]:min-h-11"
+                      onClick={() => {
+                        setEnvironmentPage(page);
+                        connectionSettings.clearSensitive();
+                      }}
+                    >
+                      {pageLabel}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Fragment>
           ))}
         </Tabs.List>
         <ScrollArea data-slot="settings-content" className="min-w-0 flex-1">
           <div className="min-w-0 space-y-6 p-6 [overflow-wrap:anywhere] max-[550px]:p-4">
             <header className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0 flex-1 space-y-2">
-                <h3 className="text-lg font-semibold">{current.label}</h3>
+                <h3 className="text-lg font-semibold">
+                  {section === "connections"
+                    ? environmentPages.find(
+                        (page) => page.value === environmentPage,
+                      )!.label
+                    : current.label}
+                </h3>
                 <p className="text-xs leading-relaxed text-muted">
                   {current.description}
                 </p>
@@ -186,19 +222,6 @@ export function SettingsDialog({
               <ConversationSettings />
             </Tabs.Content>
             <Tabs.Content value="connections" className="space-y-6">
-              {connectionSettings.selected && (
-                <SelectField
-                  label={t("工作环境设置")}
-                  className={settingsSelectClass}
-                  value={environmentPage}
-                  disabled={connectionSettings.busy}
-                  options={[...environmentPages]}
-                  onValueChange={(value) => {
-                    setEnvironmentPage(value as EnvironmentPage);
-                    connectionSettings.clearSensitive();
-                  }}
-                />
-              )}
               {environmentPage === "connection" ||
               !connectionSettings.selected ? (
                 <ConnectionSettings settings={connectionSettings} />
@@ -252,6 +275,18 @@ const environmentPages = [
     },
   },
   {
+    value: "files",
+    get label() {
+      return t("文件与差异");
+    },
+  },
+  {
+    value: "attachments",
+    get label() {
+      return t("附件存储");
+    },
+  },
+  {
     value: "migration",
     get label() {
       return t("配置迁移");
@@ -281,7 +316,7 @@ function EnvironmentPanels({
     <div className="space-y-6">
       <p className="text-xs leading-relaxed text-muted break-words">
         {t("当前设备：{{name}}。", { name: environment.name })}
-        {page !== "configuration" &&
+        {(page === "integrations" || page === "migration") &&
           (thread?.cwd
             ? t("工具按所选会话目录 {{v0}} 解析。", { v0: thread.cwd })
             : t("未选择会话，工具使用此设备的默认上下文。"))}
@@ -325,6 +360,10 @@ function EnvironmentPanels({
       {page === "migration" && (
         <ConfigMigration connection={connection} cwd={thread?.cwd} />
       )}
+      {page === "attachments" && (
+        <AttachmentSettings environment={environment} />
+      )}
+      {page === "files" && <FileSettings environment={environment} />}
     </div>
   );
 }

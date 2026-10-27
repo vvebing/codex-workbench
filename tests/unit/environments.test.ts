@@ -112,3 +112,71 @@ it("persists connection intent and restores the selected environment", async () 
     vi.unstubAllGlobals();
   }
 });
+
+it("persists attachment directories per environment and keeps them when connection details are saved", () => {
+  const values = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  });
+  try {
+    const store = new EnvironmentsStore(profiles);
+    const runtime = store.getSnapshot().entries[1].runtime;
+    store.setAttachmentDirectory("dev", "/srv/remote uploads/");
+    expect(store.getSnapshot().entries[0].attachmentDirectory).toBeUndefined();
+    expect(store.getSnapshot().entries[1].attachmentDirectory).toBe(
+      "/srv/remote uploads",
+    );
+    expect(store.active().id).toBe("local");
+    store.save({ ...profiles[1], name: "renamed" }, false);
+    expect(store.getSnapshot().entries[1].runtime).toBe(runtime);
+    expect(
+      new EnvironmentsStore().getSnapshot().entries[1].attachmentDirectory,
+    ).toBe("/srv/remote uploads");
+    vi.stubGlobal("localStorage", {
+      setItem: () => {
+        throw new Error("quota");
+      },
+    });
+    expect(() => store.setAttachmentDirectory("dev", "/another")).toThrow(
+      "quota",
+    );
+    expect(store.getSnapshot().entries[1].attachmentDirectory).toBe(
+      "/srv/remote uploads",
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it("stores file limits per environment, applies them to the runtime and restores them on reload", () => {
+  const values = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  });
+  try {
+    const store = new EnvironmentsStore(profiles);
+    const limits = {
+      normalBytes: 262144,
+      editableBytes: 524288,
+      viewBytes: 1048576,
+      diffBytes: 1048576,
+    };
+    store.setFileLimits("dev", limits);
+    expect(store.active().runtime.files.getSnapshot().limits.viewBytes).toBe(
+      8 * 1024 * 1024,
+    );
+    expect(
+      store.getSnapshot().entries[1].runtime.files.getSnapshot().limits,
+    ).toEqual(limits);
+    store.save({ ...profiles[1], name: "renamed" }, false);
+    const restored = new EnvironmentsStore();
+    expect(restored.getSnapshot().entries[1].fileLimits).toEqual(limits);
+    expect(
+      restored.getSnapshot().entries[1].runtime.files.getSnapshot().limits,
+    ).toEqual(limits);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

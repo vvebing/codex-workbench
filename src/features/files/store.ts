@@ -2,8 +2,10 @@ import { t } from "../../lib/i18n";
 import type { RpcCall } from "../../lib/rpc";
 import {
   fileTextInfo,
-  MAX_FILE_BYTES,
-  MAX_EDITABLE_FILE_BYTES,
+  DEFAULT_FILE_LIMITS,
+  normalizeFileLimits,
+  formatFileSize,
+  type FileLimits,
 } from "./file-limits";
 export { MAX_FILE_BYTES } from "./file-limits";
 import {
@@ -51,8 +53,10 @@ export interface FileDocument extends OpenFileRequest {
   recovered?: boolean;
   byteLength?: number;
   largeFile?: boolean;
+  sizeError?: boolean;
 }
 export interface FileWorkspaceSnapshot {
+  limits: FileLimits;
   documents: FileDocument[];
   activeId?: string;
   visible: boolean;
@@ -95,14 +99,21 @@ function encode(text: string): string {
     binary += String.fromCharCode(...bytes.subarray(start, start + 32768));
   return btoa(binary);
 }
-function decode(data: string): string {
-  if (data.length > Math.ceil(MAX_FILE_BYTES / 3) * 4)
+function decode(data: string, limit: number): string {
+  if (data.length > Math.ceil(limit / 3) * 4)
     throw new Error(
-      t("文件超过 8 MB，无法在此工作区打开。请使用本地编辑器查看。"),
+      t("文件超过 {{size}} 查看上限，请调整文件限制或使用本地编辑器查看。", {
+        size: formatFileSize(limit),
+      }),
     );
   const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
-  if (bytes.length > MAX_FILE_BYTES || bytes.includes(0))
-    throw new Error(t("二进制或超过 8 MB 的文件无法打开。"));
+  if (bytes.length > limit)
+    throw new Error(
+      t("文件超过 {{size}} 查看上限，请调整文件限制或使用本地编辑器查看。", {
+        size: formatFileSize(limit),
+      }),
+    );
+  if (bytes.includes(0)) throw new Error(t("二进制文件无法作为文本打开。"));
   return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
     bytes,
   );
@@ -144,7 +155,13 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     private persistenceScope = "",
     private initialEndpoint?: string,
   ) {
-    super({ documents: [], visible: false, revision: 0, openRevision: 0 });
+    super({
+      documents: [],
+      visible: false,
+      revision: 0,
+      openRevision: 0,
+      limits: { ...DEFAULT_FILE_LIMITS },
+    });
     if (initialEndpoint) this.restoreBuffers(initialEndpoint);
     else if (connection.getSnapshot().url)
       this.restoreBuffers(connection.getSnapshot().url);
@@ -170,6 +187,41 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
         }
     });
   }
+  setLimits(value: FileLimits) {
+    const limits = normalizeFileLimits(value);
+    if (
+      Object.keys(limits).every(
+        (key) =>
+          limits[key as keyof FileLimits] ===
+          this.state.limits[key as keyof FileLimits],
+      )
+    )
+      return;
+    for (const [id, doc] of this.documents) {
+      if (doc.kind === "image") continue;
+      const info = fileTextInfo(doc.text, limits);
+      const sizeError = doc.dirty && info.byteLength > limits.editableBytes;
+      this.documents.set(id, {
+        ...doc,
+        ...info,
+        readonly:
+          !!doc.gitComparison ||
+          (!doc.dirty &&
+            (info.byteLength > limits.editableBytes ||
+              (!!doc.error && !doc.text))),
+        sizeError,
+        error: sizeError
+          ? t(
+              "当前内容超过 {{size}} 编辑上限，请撤销、缩减内容或调整文件限制后保存。",
+              { size: formatFileSize(limits.editableBytes) },
+            )
+          : doc.sizeError
+            ? undefined
+            : doc.error,
+      });
+    }
+    this.publish({ limits });
+  }
   private restoreBuffers(url: string) {
     if (!url || this.recoveredEndpoints.has(url)) return;
     this.recoveredEndpoints.add(url);
@@ -182,7 +234,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
       this.urls.set(id, url);
       this.documents.set(id, {
         ...buffer,
-        ...fileTextInfo(buffer.text),
+        ...fileTextInfo(buffer.text, this.state.limits),
         id,
         navigationRevision: 0,
         dirty: true,
@@ -235,7 +287,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
           this.urls.set(id, url);
           this.documents.set(id, {
             ...buffer,
-            ...fileTextInfo(buffer.text),
+            ...fileTextInfo(buffer.text, this.state.limits),
             id,
             navigationRevision: 0,
             dirty: true,
@@ -514,11 +566,13 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
         this.connection.client,
         request,
         valid,
+        this.state.limits,
       );
       valid();
       this.patch(id, {
         path: result.path,
         text: result.modified,
+        ...fileTextInfo(result.modified, this.state.limits),
         baseText: result.modified,
         gitComparison: result.comparison,
         loading: false,
@@ -634,16 +688,20 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     if (doc.baseText.startsWith("\ufeff") && !text.startsWith("\ufeff"))
       text = `\ufeff${text}`;
     if (doc.baseText.includes("\r\n")) text = text.replace(/\r?\n/g, "\r\n");
-    const info = fileTextInfo(text);
+    const info = fileTextInfo(text, this.state.limits);
     this.patch(id, {
       text,
       ...info,
       dirty: text !== doc.baseText,
       preview: false,
       error:
-        info.byteLength > MAX_EDITABLE_FILE_BYTES
-          ? t("当前内容超过 5 MB 编辑上限，请撤销或缩减内容后保存。")
+        info.byteLength > this.state.limits.editableBytes
+          ? t(
+              "当前内容超过 {{size}} 编辑上限，请撤销、缩减内容或调整文件限制后保存。",
+              { size: formatFileSize(this.state.limits.editableBytes) },
+            )
           : undefined,
+      sizeError: info.byteLength > this.state.limits.editableBytes,
     });
   }
   private read(
@@ -706,13 +764,16 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
         return true;
       }
       if (doc.kind === "image") {
-        const imageUrl = imageDataUrl(result.dataBase64);
+        const imageUrl = imageDataUrl(
+          result.dataBase64,
+          this.state.limits.viewBytes,
+        );
         this.encoded.set(id, result.dataBase64);
         this.patch(id, { imageUrl, loading: false, readonly: true });
         return true;
       }
-      const text = decode(result.dataBase64);
-      const info = fileTextInfo(text);
+      const text = decode(result.dataBase64, this.state.limits.viewBytes);
+      const info = fileTextInfo(text, this.state.limits);
       this.encoded.set(id, result.dataBase64);
       const latest = this.documents.get(id)!;
       if (!discard && latest.dirty)
@@ -729,7 +790,8 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
           dirty: false,
           conflict: false,
           loading: false,
-          readonly: info.byteLength > MAX_EDITABLE_FILE_BYTES,
+          readonly: info.byteLength > this.state.limits.editableBytes,
+          sizeError: false,
           diskText: undefined,
           recovered: false,
         });
@@ -762,10 +824,14 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     if (!doc || !doc.dirty || doc.saving || doc.loading || doc.readonly) return;
     if (
       (doc.byteLength ?? fileTextInfo(doc.text).byteLength) >
-      MAX_EDITABLE_FILE_BYTES
+      this.state.limits.editableBytes
     ) {
       this.patch(id, {
-        error: t("当前内容超过 5 MB 编辑上限，请撤销或缩减内容后保存。"),
+        error: t(
+          "当前内容超过 {{size}} 编辑上限，请撤销、缩减内容或调整文件限制后保存。",
+          { size: formatFileSize(this.state.limits.editableBytes) },
+        ),
+        sizeError: true,
       });
       return;
     }
@@ -799,7 +865,7 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
         dataBase64: string;
       }>("fs/readFile", { path: doc.path });
       check();
-      const diskText = decode(result.dataBase64);
+      const diskText = decode(result.dataBase64, this.state.limits.viewBytes);
       if (diskText !== doc.baseText) {
         this.patch(id, { conflict: true, diskText });
         throw new Error(t("文件已被外部修改。请重新加载并合并后保存。"));
@@ -895,8 +961,14 @@ export class FileWorkspaceStore extends Store<FileWorkspaceSnapshot> {
     }
   }
   createFile(path: string, text = "") {
-    if (fileTextInfo(text).byteLength > MAX_EDITABLE_FILE_BYTES)
-      return Promise.reject(new Error(t("创建文件的内容不能超过 5 MB。")));
+    if (fileTextInfo(text).byteLength > this.state.limits.editableBytes)
+      return Promise.reject(
+        new Error(
+          t("创建文件的内容不能超过 {{size}}。", {
+            size: formatFileSize(this.state.limits.editableBytes),
+          }),
+        ),
+      );
     path = absoluteFilePath(path);
     return this.mutate(
       ["fs/writeFile", { path, dataBase64: encode(text) }],

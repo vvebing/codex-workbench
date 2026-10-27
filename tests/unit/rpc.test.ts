@@ -395,3 +395,17 @@ describe("CodexClient", () => {
     ).toHaveLength(1);
   });
 });
+
+it("exposes the app-server platform family and clears it after disconnect", async () => {
+  const { client, socket, connection } = setup();
+  socket.open();
+  socket.receive({ type: "bridge/ready" });
+  socket.receive({
+    id: 1,
+    result: { userAgent: "codex", platformFamily: "windows" },
+  });
+  await connection;
+  expect(client.platformFamily).toBe("windows");
+  client.disconnect();
+  expect(client.platformFamily).toBeNull();
+});

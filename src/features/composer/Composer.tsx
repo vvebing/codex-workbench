@@ -31,15 +31,18 @@ import { ImagePreview } from "../../components/ImagePreview";
 import { MessageEditor, type MessageEditorHandle } from "./MessageEditor";
 import { QueuedTasks } from "./QueuedTasks";
 import { referenceProjectFile } from "../shell/project-files";
+import { environments } from "../connection/environments";
+import { DEFAULT_ATTACHMENT_DIRECTORY } from "../settings/attachment-preferences";
 import {
   PROJECT_FILE_DRAG_TYPE,
   projectFileDrop,
   saveAttachment,
+  resolveAttachmentDirectory,
 } from "./file-attachments";
 
 import type { ReasoningEffort } from "../../generated/ReasoningEffort";
 import type { AskForApproval } from "../../generated/v2/AskForApproval";
-import { serviceTierLabel, serviceTierOptions } from "./service-tier";
+import { serviceTierOptions } from "./service-tier";
 import { approvalLabel, approvalOptions } from "./approval-policy";
 const policies = [
   {
@@ -152,6 +155,19 @@ export const Composer = memo(function Composer({
   const policyKey = JSON.stringify([connection.scope, threadId]);
   const policy = policyChoices[policyKey];
   const tier = serviceTierOptions(model, tierChoices[policyKey]).serviceTier;
+  const supportsFast = !!model?.serviceTiers?.some(
+    (item) => item.id === "priority",
+  );
+  const effectiveTier = tier !== undefined ? tier : threadSettings?.serviceTier;
+  const fastTier =
+    effectiveTier === null ? model?.defaultServiceTier : effectiveTier;
+  const fastUnknown = effectiveTier === undefined;
+  const fastInput = useCallback(
+    (node: HTMLInputElement | null) => {
+      if (node) node.indeterminate = fastUnknown;
+    },
+    [fastUnknown],
+  );
   const { running, executing, hasContent } = capabilities;
   const showStop = capabilities.showStop && !inputRequest;
   function goToQuestion() {
@@ -245,6 +261,32 @@ export const Composer = memo(function Composer({
     setReading(true);
     const epoch = connection.epoch;
     const failures: string[] = [];
+    const isCurrent = () =>
+      runtime.connection.getSnapshot().epoch === epoch &&
+      runtime.connection.getSnapshot().status === "connected" &&
+      runtime.sessions.getSnapshot().threadAccess[
+        runtime.sessions.resolveId(threadId)
+      ] !== "occupied";
+    const configuredDirectory =
+      environments
+        .getSnapshot()
+        .entries.find((environment) => environment.runtime === runtime)
+        ?.attachmentDirectory ?? DEFAULT_ATTACHMENT_DIRECTORY;
+    let attachmentDirectory: string | undefined;
+    const persist = async (file: File, encoded?: string) => {
+      attachmentDirectory ??= await resolveAttachmentDirectory(
+        runtime.connection.client,
+        configuredDirectory,
+        isCurrent,
+      );
+      return saveAttachment(
+        runtime.connection.client,
+        attachmentDirectory,
+        file,
+        isCurrent,
+        encoded,
+      );
+    };
     try {
       for (const file of files) {
         try {
@@ -256,20 +298,8 @@ export const Composer = memo(function Composer({
               file.type,
             )
           ) {
-            if (!thread?.cwd)
-              throw new Error(t("当前会话没有项目目录，无法保存文件附件。"));
-            const current = () =>
-              runtime.connection.getSnapshot().epoch === epoch &&
-              runtime.sessions.getSnapshot().threadAccess[
-                runtime.sessions.resolveId(threadId)
-              ] !== "occupied";
-            const path = await saveAttachment(
-              runtime.connection.client,
-              thread.cwd,
-              file,
-              current,
-            );
-            if (!current()) return;
+            const path = await persist(file);
+            if (!isCurrent()) return;
             referenceProjectFile(
               runtime.drafts,
               threadId,
@@ -326,6 +356,8 @@ export const Composer = memo(function Composer({
                 value0: file.name,
               }),
             );
+          await persist(file, url.slice(url.indexOf(",") + 1));
+          if (!isCurrent()) return;
           runtime.drafts.addImage(threadId, {
             id: crypto.randomUUID(),
             name: file.name || t("粘贴的图片"),
@@ -688,7 +720,7 @@ export const Composer = memo(function Composer({
             }
           }}
         />
-        <div className="@container flex flex-wrap items-center gap-[3px] px-[9px] pt-2 pb-[9px] @max-[550px]/conversation:gap-0 @max-[550px]/conversation:px-[7px] @max-[550px]/conversation:pt-[5px] @max-[550px]/conversation:pb-2">
+        <div className="composer-toolbar @container flex flex-wrap items-center gap-[3px] px-[9px] pt-2 pb-[9px] @max-[550px]/conversation:gap-1 @max-[550px]/conversation:px-[7px] @max-[550px]/conversation:pt-[5px] @max-[550px]/conversation:pb-2">
           <input
             hidden
             ref={input}
@@ -720,7 +752,7 @@ export const Composer = memo(function Composer({
               <button
                 data-slot="policy-choice"
                 type="button"
-                className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta text-muted hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 @max-[550px]/conversation:min-h-10 @max-[550px]/conversation:px-1 @max-[550px]/conversation:text-fine @max-[550px]/conversation:gap-[3px]"
+                className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta text-muted hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 @max-[550px]/conversation:min-h-11 @max-[550px]/conversation:px-1 @max-[550px]/conversation:text-fine @max-[550px]/conversation:gap-[3px]"
                 disabled={readOnly}
               >
                 <ShieldCheck size={15} />
@@ -788,7 +820,7 @@ export const Composer = memo(function Composer({
               <button
                 data-slot="model-choice"
                 type="button"
-                className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta text-foreground hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 @max-[550px]/conversation:min-h-10 @max-[550px]/conversation:px-1 @max-[550px]/conversation:text-fine"
+                className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta text-foreground hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 @max-[550px]/conversation:min-h-11 @max-[550px]/conversation:px-1 @max-[550px]/conversation:text-fine"
                 disabled={readOnly}
               >
                 <Cpu size={14} className="@max-[550px]/conversation:hidden" />
@@ -902,83 +934,42 @@ export const Composer = memo(function Composer({
               </>
             )}
           </Menu>
-          <Menu
-            label={t("服务档位")}
-            trigger={
-              <button
-                type="button"
-                data-slot="service-tier-choice"
-                disabled={readOnly}
-                className="flex min-h-[30px] max-w-[180px] min-w-0 items-center gap-1 rounded-[7px] px-[7px] text-meta text-muted hover:bg-hover disabled:opacity-40 @max-[550px]/conversation:min-h-11 @max-[550px]/conversation:max-w-[150px]"
-              >
-                <span className="truncate">
-                  {tier && tier !== threadSettings?.serviceTier
-                    ? t("下次：{{value0}}", {
-                        value0: serviceTierLabel(model, tier),
-                      })
-                    : t("档位：{{value0}}", {
-                        value0: serviceTierLabel(
-                          model,
-                          threadSettings?.serviceTier,
-                        ),
-                      })}
-                </span>
-                <ChevronDown size={12} />
-              </button>
-            }
+          <label
+            data-slot="service-tier-choice"
+            className="composer-fast flex min-h-[32px] shrink-0 items-center gap-2 rounded-[7px] px-2 text-meta text-muted hover:bg-hover has-disabled:cursor-not-allowed has-disabled:opacity-40"
+            title={[
+              supportsFast && fastUnknown
+                ? t("尚未收到会话的 Fast 模式设置。")
+                : "",
+              t(
+                "Fast 模式使用优先服务；下次发送新轮次时生效，排队任务保留入队时设置。",
+              ),
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
-            <MenuLabel>{t("服务档位 · 下次发送设置")}</MenuLabel>
-            <div className="max-w-80 px-3 py-2 text-fine text-muted">
-              {t("当前会话（服务端）：")}
-              {serviceTierLabel(model, threadSettings?.serviceTier)}
-              {t("。模型目录默认：")}
-              {serviceTierLabel(model, model?.defaultServiceTier)}
-              {t(
-                "。 新轮次发送后应用到会话及后续轮次；排队任务保留入队时设置。立即引导不改变当前轮次档位。 沿用不会撤销此前已发送的覆盖。问题卡片回答沿用会话设置，不使用此处未发送的选择。",
-              )}
-            </div>
-            {tier && (
-              <div className="max-w-80 px-3 py-2 text-fine text-muted">
-                {t("本地持续显式选择：")}
-                {serviceTierLabel(model, tier)}
-                {t("。即使服务端已确认同值，后续新轮次仍会发送此设置。")}
-              </div>
-            )}
-            <DropdownMenu.RadioGroup
-              value={tier ?? "inherit"}
-              onValueChange={(value) =>
+            <input
+              ref={fastInput}
+              type="checkbox"
+              className="size-4 accent-accent"
+              aria-label={t("Fast 模式")}
+              checked={fastTier === "priority"}
+              disabled={readOnly || !supportsFast}
+              onChange={(event) =>
                 setTierChoices((choices) => ({
                   ...choices,
-                  [policyKey]: value === "inherit" ? undefined : value,
+                  [policyKey]: event.target.checked ? "priority" : "default",
                 }))
               }
-            >
-              <DropdownMenu.RadioItem value="inherit">
-                {t("沿用当前服务档位")}
-              </DropdownMenu.RadioItem>
-              {model?.serviceTiers?.map((item) => (
-                <DropdownMenu.RadioItem key={item.id} value={item.id}>
-                  <span>
-                    <strong>{item.name}</strong>
-                    <small>{item.description}</small>
-                  </span>
-                </DropdownMenu.RadioItem>
-              ))}
-            </DropdownMenu.RadioGroup>
-            {!model?.serviceTiers?.length && (
-              <div className="max-w-80 px-3 py-2 text-fine text-muted">
-                {model
-                  ? t("当前模型未声明可选服务档位。")
-                  : t("尚未获取模型服务档位。")}
-              </div>
+            />
+            <span>{t("Fast 模式")}</span>
+            {!supportsFast && (
+              <span className="text-fine text-subtle">
+                {model ? t("不支持") : t("加载中")}
+              </span>
             )}
-            {tierChoices[policyKey] && !tier && (
-              <div className="max-w-80 px-3 py-2 text-fine text-warning">
-                {t("之前选择的档位不适用于当前模型，本次将沿用会话设置。")}
-              </div>
-            )}
-          </Menu>
-          <div className="flex-1" />
+          </label>
+          <div className="composer-toolbar-spacer flex-1" />
           {thread && onInspectAgent && (
             <AgentEntry thread={thread} onSelect={onInspectAgent} />
           )}
@@ -1014,7 +1005,7 @@ export const Composer = memo(function Composer({
           )}
           <button
             data-slot="composer-action"
-            className={`ml-auto grid size-[31px] shrink-0 place-items-center rounded-[9px] border-0 disabled:bg-hover disabled:text-subtle @max-[550px]/conversation:size-10 ${showStop ? "bg-danger-soft text-danger enabled:hover:bg-danger/20" : "bg-accent text-background enabled:hover:bg-accent/90"}`}
+            className={`ml-auto grid size-[31px] shrink-0 place-items-center rounded-[9px] border-0 disabled:bg-hover disabled:text-subtle @max-[550px]/conversation:size-11 ${showStop ? "bg-danger-soft text-danger enabled:hover:bg-danger/20" : "bg-accent text-background enabled:hover:bg-accent/90"}`}
             type={inputRequest || showStop ? "button" : "submit"}
             onClick={
               inputRequest

@@ -1,5 +1,7 @@
 import { t } from "../../lib/i18n";
 import * as monaco from "monaco-editor/editor/editor.api.js";
+import { diffQuitEarly } from "./diff-status";
+import { DEFAULT_FILE_LIMITS } from "./file-limits";
 import { attachDiffModel } from "./diff-model";
 
 /** One offscreen diff instance for the active editor, using Monaco's worker. */
@@ -7,6 +9,7 @@ export function attachGitGutter(
   editor: monaco.editor.IStandaloneCodeEditor,
   baseline: string,
   onCompare: () => void,
+  normalBytes = DEFAULT_FILE_LIMITS.normalBytes,
 ) {
   const model = editor.getModel();
   if (!model) return () => {};
@@ -23,6 +26,7 @@ export function attachGitGutter(
     minimap: { enabled: false },
     ignoreTrimWhitespace: false,
     maxComputationTime: 1000,
+    maxFileSize: normalBytes / (1024 * 1024),
     renderOverviewRuler: false,
     accessibilitySupport: "off",
   });
@@ -30,7 +34,7 @@ export function attachGitGutter(
   const update = diff.onDidUpdateDiff(() => {
     if (disposed || model.isDisposed() || editor.getModel() !== model) return;
     const changes = diff.getLineChanges();
-    if (!changes) {
+    if (!changes || diffQuitEarly(diff)) {
       decorations.clear();
       return;
     }

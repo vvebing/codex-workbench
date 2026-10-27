@@ -1,8 +1,13 @@
 import { t, useLocale } from "../../lib/i18n";
 import { attachGitGutter } from "./git-gutter";
 import { attachDiffModel } from "./diff-model";
-import { isLargeFile } from "./file-limits";
-import { useEffect, useRef, useMemo } from "react";
+import {
+  isLargeFile,
+  DEFAULT_FILE_LIMITS,
+  type FileLimits,
+} from "./file-limits";
+import { diffQuitEarly } from "./diff-status";
+import { useEffect, useRef, useMemo, useState } from "react";
 import * as monaco from "monaco-editor/editor/editor.api.js";
 import "monaco-editor/basic-languages/monaco.contribution.js";
 import "monaco-editor/features/find/register.js";
@@ -56,7 +61,9 @@ export default function MonacoEditor({
   comparison,
   gitBaseline,
   onGitCompare,
+  limits = DEFAULT_FILE_LIMITS,
 }: {
+  limits?: FileLimits;
   comparison?: { original: string; label: string };
   gitBaseline?: string;
   onGitCompare?: () => void;
@@ -78,13 +85,32 @@ export default function MonacoEditor({
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const diffEditor = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
   const original = useRef<monaco.editor.ITextModel | null>(null);
+  const originalText = useRef<string | undefined>(undefined);
   const diffModelCleanup = useRef<(() => void) | undefined>(undefined);
   const gutterCleanup = useRef<(() => void) | undefined>(undefined);
+  const [diffTimedOut, setDiffTimedOut] = useState(false);
   const simplified = useMemo(
-    () => (void i18nLocale, document.largeFile ?? isLargeFile(document.text)),
-    [document.largeFile, document.text, i18nLocale],
+    () => (
+      void i18nLocale,
+      (document.largeFile ??
+        isLargeFile(document.text, document.byteLength, limits.normalBytes)) ||
+        (!!comparison &&
+          isLargeFile(comparison.original, undefined, limits.normalBytes))
+    ),
+    [
+      document.largeFile,
+      document.text,
+      document.byteLength,
+      comparison,
+      limits.normalBytes,
+      i18nLocale,
+    ],
   );
-  const comparing = comparison !== undefined && !simplified;
+  const comparing = comparison !== undefined;
+  useEffect(
+    () => setDiffTimedOut(false),
+    [document.id, document.text, comparison?.original],
+  );
   const simplifiedOptions =
     useMemo<monaco.editor.IStandaloneEditorConstructionOptions>(
       () => (
@@ -157,12 +183,21 @@ export default function MonacoEditor({
           ...options,
           originalEditable: false,
           renderSideBySide: true,
+          useInlineViewWhenSpaceIsLimited: false,
+          maxComputationTime: 1500,
+          maxFileSize: limits.diffBytes / (1024 * 1024),
+          ignoreTrimWhitespace: false,
+          hideUnchangedRegions: { enabled: false },
         })
       : null;
     const instance = diff
       ? diff.getModifiedEditor()
       : monaco.editor.create(container.current!, options);
     diffEditor.current = diff;
+    const diffStatus = diff?.onDidUpdateDiff(() =>
+      setDiffTimedOut(diffQuitEarly(diff)),
+    );
+
     editor.current = instance;
     const stopObservingAppearance = observeAppearance((appearance) => {
       const options = {
@@ -216,6 +251,7 @@ export default function MonacoEditor({
       );
     });
     return () => {
+      diffStatus?.dispose();
       selectionListener.dispose();
       gutterCleanup.current?.();
       gutterCleanup.current = undefined;
@@ -230,11 +266,12 @@ export default function MonacoEditor({
       else instance.dispose();
       original.current?.dispose();
       original.current = null;
+      originalText.current = undefined;
       diffEditor.current = null;
       selected.current = undefined;
       editor.current = null;
     };
-  }, [comparing, simplified, simplifiedOptions]);
+  }, [comparing, simplified, simplifiedOptions, limits.diffBytes]);
   useEffect(() => {
     const modelMap = models.current;
     const viewMap = views.current;
@@ -293,6 +330,7 @@ export default function MonacoEditor({
           comparison.original,
           model.getLanguageId(),
         );
+        originalText.current = comparison.original;
         diffModelCleanup.current = attachDiffModel(diffEditor.current, {
           original: original.current,
           modified: model,
@@ -306,12 +344,10 @@ export default function MonacoEditor({
     if (
       original.current &&
       comparison &&
-      original.current.getValue(
-        monaco.editor.EndOfLinePreference.TextDefined,
-        true,
-      ) !== comparison.original
+      originalText.current !== comparison.original
     ) {
       original.current.setValue(comparison.original);
+      originalText.current = comparison.original;
     }
     if (synchronized.current.get(document.id) !== document.text) {
       const view = instance.saveViewState();
@@ -325,11 +361,23 @@ export default function MonacoEditor({
       position?.column ?? 1,
       model.getLanguageId(),
     );
-    const readOnly = document.readonly || document.loading || document.saving;
+    const readOnly =
+      document.readonly ||
+      document.loading ||
+      document.saving ||
+      (comparing && simplified);
     instance.updateOptions({ readOnly });
     diffEditor.current?.updateOptions({ readOnly });
     updating.current = false;
-  }, [document, documents, comparison, comparing, simplified]);
+  }, [
+    document,
+    documents,
+    comparison,
+    comparing,
+    simplified,
+    limits.diffBytes,
+    i18nLocale,
+  ]);
   useEffect(() => {
     if (
       comparing ||
@@ -340,8 +388,11 @@ export default function MonacoEditor({
     )
       return;
     void i18nLocale;
-    const dispose = attachGitGutter(editor.current, gitBaseline, () =>
-      callbacks.current.onGitCompare?.(),
+    const dispose = attachGitGutter(
+      editor.current,
+      gitBaseline,
+      () => callbacks.current.onGitCompare?.(),
+      limits.normalBytes,
     );
     gutterCleanup.current = dispose;
     return () => {
@@ -354,6 +405,7 @@ export default function MonacoEditor({
     comparing,
     simplified,
     gitBaseline,
+    limits.normalBytes,
     document.id,
     document.loading,
     i18nLocale,
@@ -386,10 +438,22 @@ export default function MonacoEditor({
     document.loading,
   ]);
   return (
-    <div
-      className="file-monaco"
-      ref={container}
-      aria-label={t("代码编辑器：{{value0}}", { value0: document.path })}
-    />
+    <>
+      {comparing && simplified && (
+        <p className="file-notice" role="status">
+          {t("大文件差异使用纯文本只读模式。")}
+        </p>
+      )}
+      {comparing && diffTimedOut && (
+        <p className="file-notice" role="status">
+          {t("差异计算超时，当前仅显示两侧内容，差异标记可能不完整。")}
+        </p>
+      )}
+      <div
+        className="file-monaco"
+        ref={container}
+        aria-label={t("代码编辑器：{{value0}}", { value0: document.path })}
+      />
+    </>
   );
 }

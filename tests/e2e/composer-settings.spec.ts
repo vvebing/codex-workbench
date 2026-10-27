@@ -76,8 +76,9 @@ async function setup(page: Page) {
   await page.getByRole("menuitemradio", { name: /Settings model/ }).click();
 }
 async function chooseTier(page: Page, name: string) {
-  await page.locator('[data-slot="service-tier-choice"]').click();
-  await page.getByRole("menuitemradio", { name }).click();
+  await page
+    .getByRole("checkbox", { name: "Fast 模式" })
+    .setChecked(name === "优先档位");
 }
 async function send(page: Page, text: string) {
   await page.getByRole("textbox", { name: "消息输入框" }).fill(text);
@@ -117,9 +118,9 @@ test("composer settings show server approval and next overrides, and snapshot qu
   await expect(page.locator('[data-slot="policy-choice"]')).toContainText(
     "审批：按需审批",
   );
-  await page.locator('[data-slot="service-tier-choice"]').click();
-  await expect(page.getByText(/当前会话（服务端）：服务端默认/)).toBeVisible();
-  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("checkbox", { name: "Fast 模式" }),
+  ).not.toBeChecked();
   const threadId = first.params!.threadId;
   server.publish({
     method: "thread/settings/updated",
@@ -145,6 +146,7 @@ test("composer settings show server approval and next overrides, and snapshot qu
   await expect(page.locator('[data-slot="policy-choice"]')).toContainText(
     "下次：按需审批",
   );
+  await expect(page.getByRole("checkbox", { name: "Fast 模式" })).toBeChecked();
   await chooseTier(page, "标准档位");
   await send(page, "queued settings task");
   await expect(
@@ -174,16 +176,12 @@ test("composer settings reject incompatible tier selections after a model switch
   await chooseTier(page, "优先档位");
   await page.locator('[data-slot="model-choice"]').click();
   await page.getByRole("menuitemradio", { name: /Other model/ }).click();
-  await page.locator('[data-slot="service-tier-choice"]').click();
   await expect(
-    page.getByText("当前模型未声明可选服务档位。", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("之前选择的档位不适用于当前模型，本次将沿用会话设置。", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
+    page.getByRole("checkbox", { name: "Fast 模式" }),
+  ).toBeDisabled();
+  await expect(page.locator('[data-slot="service-tier-choice"]')).toContainText(
+    "不支持",
+  );
   await send(page, "other model settings");
   await expect
     .poll(
@@ -217,13 +215,25 @@ test("composer settings remain within a 390px viewport", async ({ page }) => {
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
-  await page.locator('[data-slot="service-tier-choice"]').click();
-  await expect(
-    page.getByRole("menuitemradio", { name: /优先档位/ }),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  await expect(page.getByRole("checkbox", { name: "Fast 模式" })).toBeEnabled();
+  for (const width of [320, 375, 390, 667]) {
+    await page.setViewportSize({ width, height: width === 667 ? 375 : 844 });
+    expect(
+      await composer.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    await expect
+      .poll(async () => {
+        const action = await page
+          .locator('[data-slot="composer-action"]')
+          .boundingBox();
+        return (
+          !!action &&
+          action.x + action.width <= width &&
+          action.y + action.height <= (width === 667 ? 375 : 844)
+        );
+      })
+      .toBe(true);
+  }
 });

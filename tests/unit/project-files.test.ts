@@ -19,7 +19,20 @@ describe("project file preview", () => {
     );
     expect(() =>
       previewText(base64("x".repeat(MAX_PREVIEW_BYTES + 1))),
-    ).toThrow("256 KB");
+    ).toThrow("8 MB");
+  });
+
+  it("previews larger text using the workspace byte limit", () => {
+    const text = "x".repeat(1024 * 1024);
+    expect(previewText(base64(text))).toBe(text);
+    expect(previewText(base64("中文"), 6)).toBe("中文");
+    expect(() => previewText(base64("中文"), 5)).toThrow("预览");
+    expect(() =>
+      previewText(
+        base64("x".repeat(MAX_PREVIEW_BYTES + 1)),
+        MAX_PREVIEW_BYTES * 2,
+      ),
+    ).toThrow("8 MB");
   });
 
   it("keeps relative candidates inside the project and supports Windows roots", () => {

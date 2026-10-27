@@ -19,6 +19,10 @@ it("uses catalog tier names and only sends supported session-level overrides", (
   expect(serviceTierOptions(model, "priority")).toEqual({
     serviceTier: "priority",
   });
+  expect(serviceTierOptions(model, "default")).toEqual({
+    serviceTier: "default",
+  });
+  expect(serviceTierOptions(undefined, "default")).toEqual({});
   expect(serviceTierOptions(model)).toEqual({});
   expect(serviceTierOptions(model, "unsupported")).toEqual({});
   expect(serviceTierOptions(undefined, "priority")).toEqual({});

@@ -1,9 +1,10 @@
 import { t } from "../../lib/i18n";
+import { MAX_FILE_BYTES, formatFileSize } from "../files/file-limits";
 import type { JSONContent } from "@tiptap/core";
 import type { DraftsStore } from "../composer/drafts";
 import { textDocument } from "../composer/editor-document";
 
-export const MAX_PREVIEW_BYTES = 256 * 1024;
+export const MAX_PREVIEW_BYTES = MAX_FILE_BYTES;
 
 export function workspacePath(root: string, relative: string): string {
   const parts = relative.replace(/\\/g, "/").split("/");
@@ -17,12 +18,25 @@ export function workspacePath(root: string, relative: string): string {
   return `${root.replace(/[\\/]$/, "")}/${parts.join("/")}`;
 }
 
-export function previewText(base64: string): string {
-  if (base64.length > Math.ceil(MAX_PREVIEW_BYTES / 3) * 4)
-    throw new Error(t("文件超过 256 KB，无法在面板中预览。可以引用到输入框。"));
+export function previewText(
+  base64: string,
+  rawByteLimit = MAX_PREVIEW_BYTES,
+): string {
+  const limit = Math.min(rawByteLimit, MAX_FILE_BYTES);
+  const oversized = () =>
+    new Error(
+      t("文件超过 {{value0}}，无法在面板中预览。可以引用到输入框。", {
+        value0: formatFileSize(limit),
+      }),
+    );
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 0 ||
+    base64.length > Math.ceil(limit / 3) * 4
+  )
+    throw oversized();
   const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-  if (bytes.length > MAX_PREVIEW_BYTES)
-    throw new Error(t("文件超过 256 KB，无法在面板中预览。"));
+  if (bytes.length > limit) throw oversized();
   if (bytes.includes(0)) throw new Error(t("二进制文件不支持文本预览。"));
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);

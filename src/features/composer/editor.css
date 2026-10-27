@@ -40,9 +40,37 @@
   .composer-reference.ProseMirror-selectednode {
     outline: 2px solid var(--accent);
   }
+  @container conversation (max-width: 550px) {
+    .composer-toolbar {
+      gap: 4px;
+    }
+    .composer-toolbar [data-slot="policy-choice"],
+    .composer-toolbar [data-slot="model-choice"] {
+      min-height: 44px;
+      min-width: 0;
+    }
+    .composer-toolbar [data-slot="policy-choice"] {
+      max-width: calc(100% - 52px);
+    }
+    .composer-toolbar [data-slot="policy-choice"] span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .composer-toolbar .composer-fast {
+      min-height: 44px;
+    }
+    .composer-toolbar [data-slot="composer-action"] {
+      width: 44px;
+      height: 44px;
+    }
+    .composer-toolbar-spacer {
+      flex-basis: 100%;
+      height: 0;
+    }
+  }
   @media (max-width: 550px) {
     .composer-editor {
-      font-size: var(--text-base);
+      font-size: max(16px, var(--text-base));
     }
   }
 }

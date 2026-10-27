@@ -63,10 +63,7 @@ async function details(page: Page) {
 }
 async function environmentScope(page: Page, name: string) {
   const dialog = page.getByRole("dialog", { name: "连接与设置" });
-  await dialog
-    .getByRole("combobox", { name: "工作环境设置", exact: true })
-    .click();
-  await page.getByRole("option", { name, exact: true }).click();
+  await dialog.getByRole("button", { name, exact: true }).click();
 }
 async function settings(page: Page, scope = "连接与账户") {
   await page.locator("[data-settings-trigger]").first().click();

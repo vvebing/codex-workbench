@@ -116,3 +116,63 @@ it("preserves oversized edits for undo but blocks writes until reduced", async (
     error: undefined,
   });
 });
+
+it("applies configured view and editing limits and reclassifies open buffers without losing edits", async () => {
+  const text = ("x".repeat(127) + "\n").repeat(5000);
+  const { files } = setup(text);
+  files.setLimits({
+    normalBytes: 256 * 1024,
+    editableBytes: 512 * 1024,
+    viewBytes: 1024 * 1024,
+    diffBytes: 1024 * 1024,
+  });
+  await files.open({ path: "/work/configured.txt" });
+  const id = files.getSnapshot().activeId!;
+  expect(files.getSnapshot().documents[0]).toMatchObject({
+    readonly: true,
+    largeFile: true,
+  });
+  files.setLimits({
+    normalBytes: 256 * 1024,
+    editableBytes: 1024 * 1024,
+    viewBytes: 1024 * 1024,
+    diffBytes: 1024 * 1024,
+  });
+  files.setText(id, `edited\n${text}`);
+  files.setLimits({
+    normalBytes: 256 * 1024,
+    editableBytes: 512 * 1024,
+    viewBytes: 1024 * 1024,
+    diffBytes: 1024 * 1024,
+  });
+  expect(files.getSnapshot().documents[0]).toMatchObject({
+    readonly: false,
+    dirty: true,
+    text: `edited\n${text}`,
+    error: expect.stringContaining("512 KB"),
+  });
+  files.setLimits({
+    normalBytes: 256 * 1024,
+    editableBytes: 1024 * 1024,
+    viewBytes: 1024 * 1024,
+    diffBytes: 1024 * 1024,
+  });
+  await files.save(id);
+  expect(files.getSnapshot().documents[0]).toMatchObject({
+    text: `edited\n${text}`,
+    dirty: false,
+  });
+  const smaller = setup(text).files;
+  smaller.setLimits({
+    normalBytes: 256 * 1024,
+    editableBytes: 512 * 1024,
+    viewBytes: 512 * 1024,
+    diffBytes: 512 * 1024,
+  });
+  await smaller.open({ path: "/work/configured.txt" });
+  expect(smaller.getSnapshot().documents[0]).toMatchObject({
+    text: "",
+    readonly: true,
+    error: expect.stringContaining("512 KB"),
+  });
+});

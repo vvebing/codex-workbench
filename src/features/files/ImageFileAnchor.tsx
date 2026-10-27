@@ -23,7 +23,8 @@ export function ImageFileAnchor({
   const i18nLocale = useLocale();
   void i18nLocale;
 
-  const { connection } = useRuntime();
+  const { connection, files } = useRuntime();
+  const { limits } = useStore(files);
   const { status, scope, epoch } = useStore(connection);
   const trigger = useRef<HTMLAnchorElement>(null);
   const [open, setOpen] = useState(false);
@@ -43,7 +44,7 @@ export function ImageFileAnchor({
     void connection.client
       .request<FsReadFileResponse>("fs/readFile", { path })
       .then((response) => {
-        const url = imageDataUrl(response.dataBase64);
+        const url = imageDataUrl(response.dataBase64, limits.viewBytes);
         if (
           !cancelled &&
           connection.getSnapshot().scope === scope &&
@@ -60,7 +61,7 @@ export function ImageFileAnchor({
     return () => {
       cancelled = true;
     };
-  }, [connection, open, path, status, scope, epoch]);
+  }, [connection, open, path, status, scope, epoch, limits.viewBytes]);
   // Scope changes immediately hide bytes belonging to the previous environment.
   return (
     <>

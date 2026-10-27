@@ -156,10 +156,7 @@ async function themeColor(page: Page, token: string) {
 async function environmentScope(page: Page, name: string) {
   const dialog = page.getByRole("dialog", { name: "连接与设置" });
   await dialog.getByRole("tab", { name: "工作环境", exact: true }).click();
-  await dialog
-    .getByRole("combobox", { name: "工作环境设置", exact: true })
-    .click();
-  await page.getByRole("option", { name, exact: true }).click();
+  await dialog.getByRole("button", { name, exact: true }).click();
   return dialog;
 }
 async function connect(page: Page) {
@@ -2266,8 +2263,8 @@ for (const width of [375, 1440])
     ).toHaveCount(0);
     await dialog.getByRole("tab", { name: "工作环境", exact: true }).click();
     await expect(
-      dialog.getByRole("combobox", { name: "工作环境设置", exact: true }),
-    ).toContainText("连接与账户");
+      dialog.getByRole("button", { name: "连接与账户", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
     await expect(dialog.getByLabel("App-server 地址")).toBeVisible();
     await expect(
       dialog.getByRole("heading", { name: "账号与用量", exact: true }),

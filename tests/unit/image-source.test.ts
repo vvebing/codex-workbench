@@ -23,4 +23,17 @@ describe("saved conversation image sources", () => {
     );
     expect(() => imageDataUrl("%%%notbase64")).toThrow();
   });
+  it("supports raw-byte workspace limits independently of conversation encoding limits", () => {
+    const limit = 8 * 1024 * 1024;
+    const data = btoa("\x89PNG\r\n\x1a\n" + "x".repeat(limit - 8));
+    expect(imageDataUrl(data, limit).startsWith("data:image/png;base64,")).toBe(
+      true,
+    );
+    expect(() => imageDataUrl(data)).toThrow("10 MB");
+    expect(() => imageDataUrl(data, limit - 1)).toThrow("查看上限");
+    // Equal encoded lengths may still contain different decoded byte counts.
+    const padded = btoa("\x89PNG\r\n\x1a\nabc");
+    expect(() => imageDataUrl(padded, 11)).not.toThrow();
+    expect(() => imageDataUrl(padded, 10)).toThrow("查看上限");
+  });
 });

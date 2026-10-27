@@ -1,16 +1,18 @@
 import { t } from "../../lib/i18n";
 import type { Model } from "../../generated/v2/Model";
 
-/** Only catalog-supported choices may override the thread tier. */
+/** Priority-capable models can explicitly return to standard speed. */
 export function serviceTierOptions(
   model: Model | undefined,
   choice?: string,
 ): {
   serviceTier?: string;
 } {
-  return choice && model?.serviceTiers?.some((tier) => tier.id === choice)
-    ? { serviceTier: choice }
-    : {};
+  const tiers = model?.serviceTiers;
+  const supported =
+    tiers?.some((tier) => tier.id === choice) ||
+    (choice === "default" && tiers?.some((tier) => tier.id === "priority"));
+  return choice && supported ? { serviceTier: choice } : {};
 }
 
 export function serviceTierLabel(

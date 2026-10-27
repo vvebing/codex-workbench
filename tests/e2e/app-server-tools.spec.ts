@@ -63,10 +63,7 @@ async function details(page: Page) {
 }
 async function environmentScope(page: Page, name: string) {
   const dialog = page.getByRole("dialog", { name: "连接与设置" });
-  await dialog
-    .getByRole("combobox", { name: "工作环境设置", exact: true })
-    .click();
-  await page.getByRole("option", { name, exact: true }).click();
+  await dialog.getByRole("button", { name, exact: true }).click();
 }
 async function settings(page: Page, scope = "连接与账户") {
   await page.locator("[data-settings-trigger]").first().click();
@@ -428,7 +425,7 @@ test("configuration migration requires selected items and displays asynchronous 
     .getByRole("button", { name: "探测可迁移内容", exact: true })
     .click();
   await expect(
-    migration.getByRole("button", { name: "导入所选 0 项", exact: true }),
+    migration.getByRole("button", { name: "导入所选（0）", exact: true }),
   ).toBeDisabled();
   await migration.getByRole("checkbox", { name: /AGENTS_MD/ }).check();
   expect(
@@ -437,11 +434,11 @@ test("configuration migration requires selected items and displays asynchronous 
     ),
   ).toBe(false);
   await migration
-    .getByRole("button", { name: "导入所选 1 项", exact: true })
+    .getByRole("button", { name: "导入所选（1）", exact: true })
     .click();
   await expect(migration.getByText(/导入已完成/)).toBeVisible();
   await expect(
-    migration.getByText("AGENTS_MD：成功 1，失败 0", { exact: true }),
+    migration.getByText(/AGENTS_MD：成功\s*1，失败\s*0/),
   ).toBeVisible();
   const imported = server.requestLog.find(
     (entry) => entry.method === "externalAgentConfig/import",
@@ -451,7 +448,7 @@ test("configuration migration requires selected items and displays asynchronous 
   const history = dialog.locator("section").filter({
     has: page.getByRole("heading", { name: "迁移历史", exact: true }),
   });
-  await expect(history.getByText(/成功 1，失败 0/)).toBeVisible();
+  await expect(history.getByText(/成功\s*1，失败\s*0/)).toBeVisible();
 });
 
 test("one section manager filters by device and clears edits on device changes", async ({

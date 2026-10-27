@@ -529,6 +529,7 @@ export function createMockServer(options: MockOptions = {}) {
         ...(method === "config/read" ? { cwd: msg.params?.cwd } : {}),
         ...(method === "command/exec"
           ? {
+              ...(msg.params?.streamStdoutStderr ? { params: msg.params } : {}),
               cwd: msg.params?.cwd,
               command: msg.params?.command,
               sandboxPolicy: msg.params?.sandboxPolicy,
@@ -750,20 +751,52 @@ export function createMockServer(options: MockOptions = {}) {
           );
         }
         if (method === "command/exec") {
+          const args: string[] = p.command ?? [];
+          const result = (stdout = "", exitCode = 0, stderr = "") => {
+            if (p.streamStdoutStderr && typeof p.processId === "string") {
+              for (const [stream, output] of [
+                ["stdout", stdout],
+                ["stderr", stderr],
+              ]) {
+                const bytes = Buffer.from(output);
+                const cap =
+                  typeof p.outputBytesCap === "number"
+                    ? Math.min(bytes.length, p.outputBytesCap)
+                    : bytes.length;
+                for (let offset = 0; offset < cap; offset += 32768)
+                  notify("command/exec/outputDelta", {
+                    processId: p.processId,
+                    stream,
+                    deltaBase64: bytes
+                      .subarray(offset, Math.min(offset + 32768, cap))
+                      .toString("base64"),
+                    capReached: bytes.length > cap && offset + 32768 >= cap,
+                  });
+                if (cap === 0 && bytes.length > 0)
+                  notify("command/exec/outputDelta", {
+                    processId: p.processId,
+                    stream,
+                    deltaBase64: "",
+                    capReached: true,
+                  });
+              }
+              return reply(id, { exitCode, stdout: "", stderr: "" }, method);
+            }
+            return reply(id, { exitCode, stdout, stderr }, method);
+          };
           const custom = options.commandExec?.(p);
           if (custom)
-            return reply(
-              id,
-              {
-                stdout: custom.stdout,
-                stderr: custom.stderr ?? "",
-                exitCode: custom.exitCode ?? 0,
-              },
-              method,
+            return result(
+              custom.stdout,
+              custom.exitCode ?? 0,
+              custom.stderr ?? "",
             );
-          const args: string[] = p.command ?? [];
-          const result = (stdout = "", exitCode = 0, stderr = "") =>
-            reply(id, { exitCode, stdout, stderr }, method);
+          if (
+            args[0] === "sh" &&
+            args[1] === "-c" &&
+            args[2] === 'test -n "$HOME" && printf \'%s\' "$HOME"'
+          )
+            return result("/home/mock-user");
           if (args[0] !== "git")
             return fail(id, "Only Git commands supported by mock");
           const state = gitState(p.cwd);
@@ -796,7 +829,9 @@ export function createMockServer(options: MockOptions = {}) {
           if (args.includes("cat-file"))
             return result(
               args.includes("-s")
-                ? "7\n"
+                ? args.at(-1) === "c".repeat(40)
+                  ? "7\n"
+                  : "6\n"
                 : args.at(-1) === "c".repeat(40)
                   ? "before\n"
                   : "after\n",

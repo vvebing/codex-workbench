@@ -82,7 +82,7 @@ export function saveFileBuffers(
 }
 
 /** Large recovery buffers use structured clones, avoiding synchronous JSON copies. */
-export const MAX_RECOVERY_TEXT_LENGTH = 5 * 1024 * 1024;
+export const MAX_RECOVERY_TEXT_LENGTH = 8 * 1024 * 1024;
 const RECOVERY_DATABASE = "codex-workbench-file-recovery";
 const RECOVERY_STORE = "buffers";
 export const recoveryUnavailable = unavailable;

@@ -99,6 +99,11 @@ export class CodexClient {
   private cancelConnect?: (error: Error) => void;
   private currentStatus: ConnectionStatus = "disconnected";
   private currentServerVersion: string | null = null;
+  private currentPlatformFamily: string | null = null;
+
+  get platformFamily(): string | null {
+    return this.currentPlatformFamily;
+  }
 
   get serverVersion(): string | null {
     return this.currentServerVersion;
@@ -224,6 +229,10 @@ export class CodexClient {
               this.currentServerVersion = appServerVersion(
                 isRecord(result) ? result.userAgent : null,
               );
+              this.currentPlatformFamily =
+                isRecord(result) && typeof result.platformFamily === "string"
+                  ? result.platformFamily
+                  : null;
               this.send({ method: "initialized", params: {} });
               clearTimeout(timer);
               this.cancelConnect = undefined;
@@ -384,6 +393,7 @@ export class CodexClient {
 
   private terminate(error: Error): void {
     this.currentServerVersion = null;
+    this.currentPlatformFamily = null;
     const socket = this.socket;
     this.socket = undefined;
     if (socket) {

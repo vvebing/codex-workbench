@@ -38,7 +38,11 @@ import { useRuntime } from "../../lib/runtime-context";
 import { textDocument } from "../composer/editor-document";
 import { referenceProjectFile } from "../shell/project-files";
 import "./files.css";
-import { isLargeFile, MAX_EDITABLE_FILE_BYTES } from "./file-limits";
+import {
+  isLargeFile,
+  DEFAULT_FILE_LIMITS,
+  formatFileSize,
+} from "./file-limits";
 import { relativeWorkspaceFile } from "./tree-navigation";
 import { FileDialog } from "./FileDialog";
 import { FileImagePreview } from "./FileImagePreview";
@@ -98,10 +102,13 @@ export function FileWorkspace({
     : undefined;
   const connected = useStore(connection).status === "connected";
   const state = useStore(files);
+  const limits = state.limits ?? DEFAULT_FILE_LIMITS;
   const narrow = useNarrow();
   const document = state.documents.find((item) => item.id === state.activeId);
   const largeFile =
-    !!document && (document.largeFile ?? isLargeFile(document.text));
+    !!document &&
+    (document.largeFile ??
+      isLargeFile(document.text, document.byteLength, limits.normalBytes));
   const byteLength = useMemo(
     () => (
       void i18nLocale,
@@ -110,13 +117,13 @@ export function FileWorkspace({
     ),
     [document?.byteLength, document?.text, i18nLocale],
   );
-  const sizeLabel =
-    byteLength >= 1024 * 1024
-      ? `${(byteLength / (1024 * 1024)).toFixed(1)} MB`
-      : `${Math.ceil(byteLength / 1024)} KB`;
+  const sizeLabel = formatFileSize(byteLength);
   const largeReadonly =
-    largeFile && !!document?.readonly && byteLength > MAX_EDITABLE_FILE_BYTES;
-  const gitBaseline = useGitBaseline(state.visible ? document : undefined);
+    largeFile && !!document?.readonly && byteLength > limits.editableBytes;
+  const gitBaseline = useGitBaseline(
+    state.visible ? document : undefined,
+    limits,
+  );
   const image = document?.kind === "image";
   const [selection, setSelection] = useState<{
     text: string;
@@ -131,10 +138,9 @@ export function FileWorkspace({
   const gitComparison = document?.gitComparison;
   const baseText = document?.baseText;
   const diskText = document?.diskText;
-  const comparison = useMemo(() => {
+  const requestedComparison = useMemo(() => {
     void i18nLocale;
 
-    if (largeFile) return undefined;
     if (gitComparison)
       return {
         original: gitComparison.original,
@@ -146,8 +152,7 @@ export function FileWorkspace({
         : compare === "disk"
           ? diskText
           : baseText;
-    if (!compare || original === undefined || isLargeFile(original))
-      return undefined;
+    if (!compare || original === undefined) return undefined;
     return {
       original,
       label:
@@ -163,9 +168,17 @@ export function FileWorkspace({
     diskText,
     gitComparison,
     gitBaseline?.text,
-    largeFile,
     i18nLocale,
   ]);
+  const comparisonTooLarge = useMemo(
+    () =>
+      !!requestedComparison &&
+      (byteLength > limits.diffBytes ||
+        new TextEncoder().encode(requestedComparison.original).length >
+          limits.diffBytes),
+    [requestedComparison, byteLength, limits.diffBytes],
+  );
+  const comparison = comparisonTooLarge ? undefined : requestedComparison;
   const [saveAs, setSaveAs] = useState<string>();
   const [discard, setDiscard] = useState<{
     type: "close" | "reload";
@@ -384,7 +397,7 @@ export function FileWorkspace({
                   <Save size={16} aria-hidden="true" />
                 )}
               </IconButton>
-              {!narrow && !gitComparison && !largeFile && (
+              {!gitComparison && (
                 <IconButton
                   label={t("比较未保存更改")}
                   disabled={!document.dirty || document.loading}
@@ -533,22 +546,34 @@ export function FileWorkspace({
             <p className="file-notice" role="status">
               {largeReadonly
                 ? t(
-                    "大文件只读模式（{{value0}}）：文件超过 5 MB，仅支持查看和下载。",
-                    { value0: sizeLabel },
+                    "大文件只读模式（{{value0}}）：文件超过 {{value1}}，仅支持查看和下载。",
+                    {
+                      value0: sizeLabel,
+                      value1: formatFileSize(limits.editableBytes),
+                    },
                   )
                 : narrow
                   ? t(
                       "大文件简化模式（{{value0}}）：当前屏幕仅支持查看；请在宽屏下编辑和保存。",
-                      { value0: sizeLabel },
+                      {
+                        value0: sizeLabel,
+                        value1: formatFileSize(limits.editableBytes),
+                      },
                     )
-                  : byteLength > MAX_EDITABLE_FILE_BYTES
+                  : byteLength > limits.editableBytes
                     ? t(
-                        "大文件简化模式（{{value0}}）：编辑内容超过 5 MB 保存上限，请缩减内容后保存；撤销历史保留。",
-                        { value0: sizeLabel },
+                        "大文件简化模式（{{value0}}）：编辑内容超过 {{value1}} 保存上限，请缩减内容后保存；撤销历史保留。",
+                        {
+                          value0: sizeLabel,
+                          value1: formatFileSize(limits.editableBytes),
+                        },
                       )
                     : t(
-                        "大文件简化模式（{{value0}}）：已关闭语法高亮、Markdown 预览和差异比较，可继续编辑和保存。",
-                        { value0: sizeLabel },
+                        "大文件简化模式（{{value0}}）：已关闭语法高亮和 Markdown 预览，可继续编辑和保存。",
+                        {
+                          value0: sizeLabel,
+                          value1: formatFileSize(limits.editableBytes),
+                        },
                       )}
             </p>
           )}
@@ -569,7 +594,7 @@ export function FileWorkspace({
           {document.conflict && (
             <div className="file-notice" role="alert">
               {t("磁盘文件已改变。请比较内容，重新加载或另存为新文件。")}
-              {!narrow && !largeFile && (
+              {!image && (
                 <Button
                   size="sm"
                   variant="quiet"
@@ -604,6 +629,13 @@ export function FileWorkspace({
                 {notice}
               </p>
             )
+          )}
+          {comparisonTooLarge && (
+            <ErrorNotice className="m-3 shrink-0">
+              {t("差异内容超过 {{value0}}，请提高文件限制后重新打开比较。", {
+                value0: formatFileSize(limits.diffBytes),
+              })}
+            </ErrorNotice>
           )}
           {comparison && (
             <div className="file-comparison-labels">
@@ -672,7 +704,8 @@ export function FileWorkspace({
               }
             >
               {document.error && !document.text ? null : narrow &&
-                !largeFile ? (
+                !largeFile &&
+                !comparison ? (
                 <ScrollArea orientation="both" className="flex-1">
                   <pre className="file-readonly" tabIndex={0}>
                     {gitComparison && (
@@ -701,6 +734,7 @@ export function FileWorkspace({
                   >
                     <MonacoEditor
                       comparison={comparison}
+                      limits={limits}
                       gitBaseline={gitBaseline?.text}
                       onGitCompare={() => {
                         setCompare("git");

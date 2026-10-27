@@ -93,6 +93,18 @@ for (const width of [320, 390, 768]) {
     for (const tab of await settings.getByRole("tab").all()) {
       await tab.click();
       await fitsViewport(page, tab);
+      if ((await tab.textContent())?.includes("工作环境")) {
+        const categories = settings.getByRole("group", {
+          name: "工作环境设置",
+        });
+        await expect(categories.getByRole("button")).toHaveCount(6);
+        for (const category of await categories.getByRole("button").all()) {
+          await category.scrollIntoViewIfNeeded();
+          await fitsViewport(page, category);
+          await category.click();
+          await expect(category).toHaveAttribute("aria-current", "page");
+        }
+      }
       const content = settings.locator("[data-slot=settings-content]");
       expect(
         await content.evaluate(

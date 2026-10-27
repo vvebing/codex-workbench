@@ -1,19 +1,30 @@
 import { t } from "../../lib/i18n";
-import { isLargeFile, MAX_NORMAL_FILE_BYTES } from "./file-limits";
+import {
+  isLargeFile,
+  DEFAULT_FILE_LIMITS,
+  formatFileSize,
+  type FileLimits,
+} from "./file-limits";
 import { useEffect, useRef, useState } from "react";
 import { useRuntime } from "../../lib/runtime-context";
 import { useStore } from "../../components/hooks";
 import { useWorkspaceGitStatus } from "../shell/workspace-git";
 import type { CommandExecResponse } from "../../generated/v2/CommandExecResponse";
 import { gitWorkspacePath } from "../shell/git-workspace-path";
+import { readGitBlob } from "./git-content";
 import type { FileDocument } from "./store";
 
 /** Read index objects only on Git refresh, never on keystrokes. */
-export function useGitBaseline(document: FileDocument | undefined) {
+export function useGitBaseline(
+  document: FileDocument | undefined,
+  limits: FileLimits = DEFAULT_FILE_LIMITS,
+) {
   const { connection } = useRuntime();
   const { epoch, scope } = useStore(connection);
   const large =
-    !!document && (document.largeFile ?? isLargeFile(document.text));
+    !!document &&
+    (document.largeFile ??
+      isLargeFile(document.text, document.byteLength, limits.normalBytes));
   const git = useWorkspaceGitStatus(
     !document || document.gitComparison || document.readonly || large
       ? ""
@@ -26,7 +37,7 @@ export function useGitBaseline(document: FileDocument | undefined) {
   }>();
   const cache = useRef(new Map<string, string>());
   const path = document?.path;
-  const key = JSON.stringify([epoch, scope, document?.id]);
+  const key = JSON.stringify([epoch, scope, document?.id, limits.normalBytes]);
   const root = git.value?.repoRoot;
   const enabled =
     !!document && !document.gitComparison && !document.readonly && !large;
@@ -63,7 +74,7 @@ export function useGitBaseline(document: FileDocument | undefined) {
           cwd: root,
           sandboxPolicy: { type: "readOnly", networkAccess: false },
           timeoutMs: 5000,
-          disableOutputCap: true,
+          outputBytesCap: 64 * 1024,
         },
       );
       if (!valid() || response.exitCode !== 0)
@@ -81,22 +92,34 @@ export function useGitBaseline(document: FileDocument | undefined) {
       if (records.length !== 1 || !match || match[1] === "160000")
         throw new Error(t("冲突或子模块暂不显示 Git 行标记"));
       const oid = match[2];
-      const cacheKey = JSON.stringify([epoch, scope, oid]);
+      const cacheKey = JSON.stringify([epoch, scope, oid, limits.normalBytes]);
       let text = cache.current.get(cacheKey);
       if (text === undefined) {
         const size = Number((await exec(["cat-file", "-s", oid])).trim());
         if (
           !Number.isSafeInteger(size) ||
           size < 0 ||
-          size > MAX_NORMAL_FILE_BYTES
+          size > limits.normalBytes
         )
-          throw new Error(t("Git 基线超过 1 MB"));
-        text = await exec(["cat-file", "blob", oid]);
+          throw new Error(
+            t("Git 基线超过 {{value0}}。", {
+              value0: formatFileSize(limits.normalBytes),
+            }),
+          );
+        text = await readGitBlob(
+          connection.client,
+          root,
+          oid,
+          size,
+          limits.normalBytes,
+          () => {
+            if (!valid()) throw new Error(t("连接已变化"));
+          },
+        );
         if (
           text.includes("\0") ||
-          text.includes("\ufffd") ||
-          new TextEncoder().encode(text).length > MAX_NORMAL_FILE_BYTES ||
-          isLargeFile(text)
+          new TextEncoder().encode(text).length > limits.normalBytes ||
+          isLargeFile(text, undefined, limits.normalBytes)
         )
           throw new Error(t("Git 基线不是可预览的 UTF-8 文本"));
         if (cache.current.size >= 16) cache.current.clear();
@@ -112,6 +135,7 @@ export function useGitBaseline(document: FileDocument | undefined) {
   }, [
     connection,
     enabled,
+    limits.normalBytes,
     epoch,
     scope,
     git.connected,

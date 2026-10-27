@@ -83,7 +83,7 @@ test("large editable files simplify rendering and recover unsaved edits before s
   await expect(workspace.locator(".monaco-editor")).toBeVisible();
   await expect(
     workspace.getByRole("button", { name: "比较未保存更改", exact: true }),
-  ).toBeHidden();
+  ).toBeDisabled();
   await workspace.locator(".view-lines").click({ position: { x: 80, y: 10 } });
   await page.keyboard.press("ControlOrMeta+Home");
   await page.keyboard.insertText("RECOVERED-LARGE-FILE\n");
@@ -140,7 +140,7 @@ test("markdown above five MB opens readonly without preview or diff controls", a
   ).toBeHidden();
   await expect(
     workspace.getByRole("button", { name: "比较未保存更改", exact: true }),
-  ).toBeHidden();
+  ).toBeDisabled();
   await expect(
     workspace.getByRole("button", { name: "保存", exact: true }),
   ).toBeDisabled();
@@ -187,4 +187,131 @@ test("small markdown retains preview and editing modes", async ({ page }) => {
   ).toBeVisible();
   await workspace.getByRole("button", { name: "编辑", exact: true }).click();
   await expect(workspace.locator(".monaco-editor")).toBeVisible();
+});
+
+async function fileSettings(page: Page) {
+  await page.locator("[data-settings-trigger]").click();
+  const dialog = page.getByRole("dialog", { name: "连接与设置" });
+  await dialog.getByRole("tab", { name: "工作环境", exact: true }).click();
+  await dialog.getByRole("button", { name: "文件与差异", exact: true }).click();
+  return dialog;
+}
+
+test("file size settings validate ordering, persist and enforce the selected editing limit", async ({
+  page,
+}) => {
+  await openFirst(page);
+  let dialog = await fileSettings(page);
+  const normal = dialog.getByLabel("普通模式上限（MB）", { exact: true });
+  const editing = dialog.getByLabel("编辑上限（MB）", { exact: true });
+  await expect(normal).toHaveValue("1");
+  await normal.fill("2");
+  await editing.fill("1");
+  await dialog.getByLabel("查看上限（MB）", { exact: true }).fill("2");
+  await dialog
+    .getByLabel("差异上限（每个版本，MB）", { exact: true })
+    .fill("2");
+  await dialog
+    .getByRole("button", { name: "保存文件限制", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText("普通模式");
+  await normal.fill("0.25");
+  await editing.fill("0.5");
+  await dialog
+    .getByRole("button", { name: "保存文件限制", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("status").filter({ hasText: "已保存" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "打开项目面板" }).click();
+  await page
+    .getByRole("complementary", { name: "项目面板" })
+    .getByRole("button", { name: "large.txt", exact: true })
+    .click();
+  const workspace = page.getByRole("region", { name: "文件编辑工作区" });
+  await expect(workspace.getByText(/文件超过 512 KB/)).toBeVisible();
+  await expect(
+    workspace.getByRole("button", { name: "保存", exact: true }),
+  ).toBeDisabled();
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toBeVisible();
+  dialog = await fileSettings(page);
+  await expect(
+    dialog.getByLabel("编辑上限（MB）", { exact: true }),
+  ).toHaveValue("0.5");
+  await dialog
+    .getByRole("button", { name: "恢复默认限制", exact: true })
+    .click();
+  await expect(
+    dialog.getByLabel("编辑上限（MB）", { exact: true }),
+  ).toHaveValue("5");
+  await expect(
+    dialog.getByLabel("差异上限（每个版本，MB）", { exact: true }),
+  ).toHaveValue("8");
+});
+
+test("raising the editing limit enables editing and recovery of a file above five MB", async ({
+  page,
+}) => {
+  const workspace = await openFile(page, "readonly.md");
+  await expect(workspace.getByText(/大文件只读模式/)).toBeVisible();
+  const dialog = await fileSettings(page);
+  await dialog.getByLabel("编辑上限（MB）", { exact: true }).fill("6");
+  await dialog
+    .getByRole("button", { name: "保存文件限制", exact: true })
+    .click();
+  await page.keyboard.press("Escape");
+  await expect(workspace.getByText(/大文件简化模式/)).toBeVisible();
+  await workspace.locator(".view-lines").click({ position: { x: 80, y: 10 } });
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.keyboard.insertText("EDITED-ABOVE-FIVE-MB\n");
+  await expect(
+    workspace.getByRole("button", { name: "保存", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    workspace.getByText("大文件草稿已保存到浏览器", { exact: true }),
+  ).toBeVisible();
+  await workspace.getByRole("button", { name: "保存", exact: true }).click();
+  await expect
+    .poll(() =>
+      server
+        .fileText(`${root}/readonly.md`)
+        ?.startsWith("EDITED-ABOVE-FIVE-MB\n"),
+    )
+    .toBe(true);
+  await expect(
+    workspace.getByRole("button", { name: "保存", exact: true }),
+  ).toBeDisabled();
+});
+
+test("large unsaved comparisons show both versions and preserve editor undo", async ({
+  page,
+}) => {
+  const workspace = await openFile(page, "large.txt");
+  await expect(workspace.getByText(/大文件简化模式/)).toBeVisible();
+  await workspace.locator(".view-lines").click({ position: { x: 80, y: 10 } });
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.keyboard.insertText("UNSAVED-LARGE-DIFF");
+  await workspace
+    .getByRole("button", { name: "比较未保存更改", exact: true })
+    .click();
+  const diff = workspace.locator(".monaco-diff-editor");
+  await expect(diff).toBeVisible();
+  await expect(diff.locator(".original .view-lines")).toContainText("xxxxxxxx");
+  await expect(diff.locator(".modified .view-lines")).toContainText(
+    "UNSAVED-LARGE-DIFF",
+  );
+  await workspace
+    .getByRole("button", { name: "返回编辑", exact: true })
+    .click();
+  await expect(diff).toBeHidden();
+  await workspace.locator(".view-lines").click({ position: { x: 80, y: 10 } });
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(workspace.locator(".view-lines")).not.toContainText(
+    "UNSAVED-LARGE-DIFF",
+  );
+  expect(
+    server.requestLog.filter((entry) => entry.method === "fs/writeFile"),
+  ).toHaveLength(0);
 });

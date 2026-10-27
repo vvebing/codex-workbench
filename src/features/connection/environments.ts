@@ -3,6 +3,8 @@ import { sameEnvironmentSessions } from "./environment-summary";
 import { createRuntime } from "../../lib/runtime";
 import { sameEndpoint } from "./store";
 import { Store } from "../../lib/store";
+import { normalizeAttachmentDirectory } from "../settings/attachment-preferences";
+import { normalizeFileLimits, type FileLimits } from "../files/file-limits";
 
 export interface Environment {
   id: string;
@@ -10,6 +12,8 @@ export interface Environment {
   kind: "local" | "remote";
   url: string;
   autoConnect?: boolean;
+  attachmentDirectory?: string;
+  fileLimits?: FileLimits;
   runtime: ReturnType<typeof createRuntime>;
 }
 export type EnvironmentProfile = Omit<Environment, "runtime">;
@@ -27,17 +31,37 @@ function savedProfiles(): EnvironmentProfile[] {
       localStorage.getItem("codex-environments") || "null",
     );
     if (!Array.isArray(value)) return [local];
-    const profiles = value.filter((entry): entry is EnvironmentProfile => {
-      if (!entry || typeof entry !== "object") return false;
-      const e = entry as EnvironmentProfile;
-      return (
-        typeof e.id === "string" &&
-        /^[\w-]{1,80}$/.test(e.id) &&
-        typeof e.name === "string" &&
-        typeof e.url === "string" &&
-        (e.kind === "local" || e.kind === "remote")
-      );
-    });
+    const profiles = value
+      .filter((entry): entry is EnvironmentProfile => {
+        if (!entry || typeof entry !== "object") return false;
+        const e = entry as EnvironmentProfile;
+        return (
+          typeof e.id === "string" &&
+          /^[\w-]{1,80}$/.test(e.id) &&
+          typeof e.name === "string" &&
+          typeof e.url === "string" &&
+          (e.kind === "local" || e.kind === "remote")
+        );
+      })
+      .map((entry) => {
+        let attachmentDirectory: string | undefined;
+        let fileLimits: FileLimits | undefined;
+        try {
+          if (entry.fileLimits !== undefined)
+            fileLimits = normalizeFileLimits(entry.fileLimits);
+        } catch {
+          /* Ignore malformed view preferences without losing connections. */
+        }
+        try {
+          if (typeof entry.attachmentDirectory === "string")
+            attachmentDirectory = normalizeAttachmentDirectory(
+              entry.attachmentDirectory,
+            );
+        } catch {
+          /* Keep valid connections even if a saved path is malformed. */
+        }
+        return { ...entry, attachmentDirectory, fileLimits };
+      });
     return [
       profiles.find((e) => e.id === "local") || local,
       ...profiles.filter((e) => e.id !== "local").slice(0, 19),
@@ -58,6 +82,7 @@ export class EnvironmentsStore extends Store<{
     }));
     for (const entry of entries) {
       const profile = profiles.find((item) => item.id === entry.id)!;
+      entry.runtime.files.setLimits(normalizeFileLimits(profile.fileLimits));
       if (profile.id === "local" && ["本机", "Local"].includes(profile.name)) {
         Object.defineProperty(entry, "name", {
           enumerable: true,
@@ -142,6 +167,9 @@ export class EnvironmentsStore extends Store<{
     const entry = {
       ...profile,
       autoConnect: profile.autoConnect ?? old?.autoConnect,
+      attachmentDirectory:
+        profile.attachmentDirectory ?? old?.attachmentDirectory,
+      fileLimits: profile.fileLimits ?? old?.fileLimits,
       runtime: old?.runtime || createRuntime({}, profile.id, profile.url),
     };
     if (old && !sameEndpoint(old.url, profile.url))
@@ -150,6 +178,7 @@ export class EnvironmentsStore extends Store<{
       ? this.state.entries.map((e) => (e.id === profile.id ? entry : e))
       : [...this.state.entries, entry];
     this.update({ ...this.state, entries });
+    entry.runtime.files.setLimits(normalizeFileLimits(entry.fileLimits));
     if (!old) this.observe(entry);
     entry.runtime.files.setForeground(entry.id === this.state.activeId);
     this.persist();
@@ -172,19 +201,55 @@ export class EnvironmentsStore extends Store<{
     this.select(this.state.activeId);
     this.persist();
   }
+  setAttachmentDirectory(id: string, directory: string) {
+    const normalized = normalizeAttachmentDirectory(directory);
+    if (!this.state.entries.some((entry) => entry.id === id)) return;
+    const entries = this.state.entries.map((entry) =>
+      entry.id === id ? { ...entry, attachmentDirectory: normalized } : entry,
+    );
+    // Report storage failures before announcing that the preference was saved.
+    localStorage.setItem("codex-environments", this.serialize(entries));
+    this.update({ ...this.state, entries });
+  }
+  setFileLimits(id: string, value: FileLimits) {
+    const limits = normalizeFileLimits(value);
+    const existing = this.state.entries.find((entry) => entry.id === id);
+    if (!existing) throw new Error(t("请选择已保存的工作环境。"));
+    const entries = this.state.entries.map((entry) =>
+      entry.id === id ? { ...entry, fileLimits: limits } : entry,
+    );
+    localStorage.setItem("codex-environments", this.serialize(entries));
+    existing.runtime.files.setLimits(limits);
+    this.update({ ...this.state, entries });
+  }
+  private serialize(entries: Environment[]) {
+    return JSON.stringify(
+      entries.map(
+        ({
+          id,
+          name,
+          kind,
+          url,
+          autoConnect,
+          attachmentDirectory,
+          fileLimits,
+        }) => ({
+          id,
+          name,
+          kind,
+          url,
+          autoConnect,
+          attachmentDirectory,
+          fileLimits,
+        }),
+      ),
+    );
+  }
   private persist() {
     try {
       localStorage.setItem(
         "codex-environments",
-        JSON.stringify(
-          this.state.entries.map(({ id, name, kind, url, autoConnect }) => ({
-            id,
-            name,
-            kind,
-            url,
-            autoConnect,
-          })),
-        ),
+        this.serialize(this.state.entries),
       );
     } catch {
       /* Connections work when browser storage is unavailable. */
