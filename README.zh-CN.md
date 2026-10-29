@@ -14,6 +14,42 @@
 
 采用 [MIT License](LICENSE)。
 
+## 产品预览
+
+**从任务讨论到代码核对，在一个工作台里完成。** 按项目组织会话，连接多个工作环境，并排查看对话、编辑器与项目文件。
+
+![Codex 工作台：项目会话导航、对话与代码编辑器并排显示](docs/images/workbench-overview.png)
+
+以下截图均使用独立环境中的虚构项目、会话与代码，不包含真实开发数据。点击图片可查看大图，展开下方场景了解特色功能。
+
+<details>
+<summary>审阅代码变更：逐行核对差异，区分已暂存、未暂存与未跟踪文件</summary>
+
+![代码审阅：左右对照代码差异，右侧按 Git 状态组织变更文件](docs/images/code-review.png)
+
+</details>
+
+<details>
+<summary>掌握执行边界：先查看命令、原因和目录，再决定是否允许执行</summary>
+
+![命令审批：查看测试命令与工作目录，允许一次、拒绝或取消执行](docs/images/approvals.png)
+
+</details>
+
+<details>
+<summary>跟进子代理协作：在主会话旁查看执行输出并处理子代理审批</summary>
+
+![子代理协作：主会话执行过程与子代理详情、命令输出和审批并排显示](docs/images/subagent-collaboration.png)
+
+</details>
+
+<details>
+<summary>集中处理待办：按工作环境汇总需要确认的事项，直接返回来源会话</summary>
+
+![待办中心：按本机和远程演示环境汇总主会话与子代理的待审批请求](docs/images/task-center.png)
+
+</details>
+
 ## 功能亮点
 
 | 功能         | 你可以做什么                                             |

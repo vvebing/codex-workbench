@@ -14,6 +14,42 @@ Organize projects, track execution, and review code changes in your browser. Con
 
 Licensed under the [MIT License](LICENSE).
 
+## Product tour
+
+**Go from task discussion to code review in one workbench.** Organize sessions by project, connect multiple environments, and view conversations, the editor, and project files side by side.
+
+![Codex Workbench with project sessions, a conversation, and the code editor side by side](docs/images/workbench-overview.png)
+
+All captures use fictional projects, conversations, and code in an isolated environment. No real development data is shown. The interface shown is Simplified Chinese; English is also available. Click an image for full size, or expand a workflow below.
+
+<details>
+<summary>Review code changes: compare lines and distinguish staged, unstaged, and untracked files</summary>
+
+![Code review with a side-by-side diff and files grouped by Git status](docs/images/code-review.png)
+
+</details>
+
+<details>
+<summary>Control execution: inspect the command, reason, and directory before granting approval</summary>
+
+![Command approval with the test command, working directory, and allow, deny, or cancel actions](docs/images/approvals.png)
+
+</details>
+
+<details>
+<summary>Follow subagent work: inspect live output and handle approvals beside the parent conversation</summary>
+
+![Parent conversation beside subagent details, command output, and an approval request](docs/images/subagent-collaboration.png)
+
+</details>
+
+<details>
+<summary>Handle pending work in one place: see requests by environment and jump to the source conversation</summary>
+
+![Task center grouping parent and subagent approval requests by local and remote demo environments](docs/images/task-center.png)
+
+</details>
+
 ## Features
 
 | Feature                     | What you can do                                                                                 |

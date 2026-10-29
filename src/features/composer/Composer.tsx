@@ -382,7 +382,7 @@ export const Composer = memo(function Composer({
     >
       <div
         data-slot="composer-status"
-        className="flex min-h-7 items-center gap-[7px] px-[5px] text-fine text-subtle @max-[550px]/conversation:min-h-[25px]"
+        className="composer-status"
         role="status"
       >
         {readOnly ? (
@@ -423,7 +423,7 @@ export const Composer = memo(function Composer({
           </>
         ) : executing ? (
           <>
-            <span className="inline-block size-1.5 shrink-0 animate-pulse rounded-full bg-success ring-[3px] ring-success/10" />
+            <span className="inline-block size-1.5 shrink-0 animate-pulse rounded-full bg-success" />
             {t("Codex 正在执行 ·")}{" "}
             {defaultSteering
               ? t("Enter 引导 · ⌘/Ctrl+Shift+Enter 排队")
@@ -488,7 +488,7 @@ export const Composer = memo(function Composer({
       )}
       <QueuedTasks key={`${connection.url}-${threadId}`} threadId={threadId} />
       <form
-        className={`relative overflow-hidden rounded-[15px] border bg-elevated shadow-sm focus-within:border-accent/60 focus-within:ring-[3px] focus-within:ring-accent/10 ${dragging ? "border-accent ring-[3px] ring-accent/20" : "border-border"}`}
+        className={`composer-form ${dragging ? "is-dragging" : ""}`}
         onDragEnter={(event) => {
           if (
             readOnly ||
@@ -720,357 +720,365 @@ export const Composer = memo(function Composer({
             }
           }}
         />
-        <div className="composer-toolbar @container flex flex-wrap items-center gap-[3px] px-[9px] pt-2 pb-[9px] @max-[550px]/conversation:gap-1 @max-[550px]/conversation:px-[7px] @max-[550px]/conversation:pt-[5px] @max-[550px]/conversation:pb-2">
-          <input
-            hidden
-            ref={input}
-            type="file"
-            multiple
-            onChange={(e) => void attach(Array.from(e.target.files || []))}
-          />
-          <IconButton
-            size="composer"
-            label={
-              reading
-                ? t("读取附件中")
-                : t("添加附件（可粘贴或拖放，每个最多 5 MB）")
-            }
-            disabled={readOnly || reading}
-            onClick={() => input.current?.click()}
-          >
-            {reading ? (
-              <LoaderCircle size={17} className="animate-spin" />
-            ) : (
-              <Paperclip size={18} />
-            )}
-          </IconButton>
-          <Menu
-            label={t("审批策略")}
-            open={policyOpen}
-            onOpenChange={setPolicyOpen}
-            trigger={
-              <button
-                data-slot="policy-choice"
-                type="button"
-                className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta text-muted hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 @max-[550px]/conversation:min-h-11 @max-[550px]/conversation:px-1 @max-[550px]/conversation:text-fine @max-[550px]/conversation:gap-[3px]"
-                disabled={readOnly}
-              >
-                <ShieldCheck size={15} />
-                <span>
-                  {policy &&
-                  JSON.stringify(policy) !==
-                    JSON.stringify(threadSettings?.approvalPolicy)
-                    ? t("下次：{{value0}}", { value0: approvalLabel(policy) })
-                    : t("审批：{{value0}}", {
-                        value0: approvalLabel(threadSettings?.approvalPolicy),
-                      })}
-                </span>
-                <ChevronDown size={12} />
-              </button>
-            }
-          >
-            <MenuLabel>{t("审批策略 · 下次发送设置")}</MenuLabel>
-            <div className="max-w-80 px-3 py-2 text-fine text-muted">
-              {t("当前会话（服务端）：")}
-              {approvalLabel(threadSettings?.approvalPolicy)}
-            </div>
-            <div className="max-w-80 px-3 py-2 text-fine text-muted">
-              {policy
-                ? t(
-                    "来源：本地持续显式选择（即使已与服务端值一致仍保留）。发送新轮次时覆盖当前及后续轮次；排队任务保留入队时的选择。",
-                  )
-                : t(
-                    "不发送审批覆盖；沿用服务端会话策略。沿用不会撤销此前已发送的覆盖。",
-                  )}
-              {t(
-                "立即引导沿用该轮策略；问题卡片回答沿用会话设置，不使用此处未发送的选择。此菜单不控制沙箱。",
-              )}
-            </div>
-            <DropdownMenu.RadioGroup
-              value={typeof policy === "string" ? policy : "inherit"}
-              onValueChange={(value) =>
-                setPolicyChoices((choices) => ({
-                  ...choices,
-                  [policyKey]: approvalOptions(
-                    value as AskForApproval | "inherit",
-                  ).approvalPolicy,
-                }))
-              }
-            >
-              {policies.map((p) => (
-                <DropdownMenu.RadioItem value={p.value} key={p.value}>
-                  <span className="w-4 shrink-0 text-accent">
-                    <DropdownMenu.ItemIndicator>
-                      <Check size={15} />
-                    </DropdownMenu.ItemIndicator>
-                  </span>
-                  <span>
-                    <strong>{p.name}</strong>
-                    <small>{p.description}</small>
-                  </span>
-                </DropdownMenu.RadioItem>
-              ))}
-            </DropdownMenu.RadioGroup>
-          </Menu>
-          <Menu
-            label={t("模型与推理强度")}
-            open={modelOpen}
-            onOpenChange={setModelOpen}
-            trigger={
-              <button
-                data-slot="model-choice"
-                type="button"
-                className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta text-foreground hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 @max-[550px]/conversation:min-h-11 @max-[550px]/conversation:px-1 @max-[550px]/conversation:text-fine"
-                disabled={readOnly}
-              >
-                <Cpu size={14} className="@max-[550px]/conversation:hidden" />
-                <span className="max-w-[160px] truncate @max-[650px]:max-w-[90px] @max-[550px]/conversation:max-w-[85px]">
-                  {model?.displayName ||
-                    modelId ||
-                    (localDraft ? t("设备默认") : t("服务端默认"))}
-                </span>
-                {effort && (
-                  <small className="text-fine text-subtle">
-                    · {efforts[effort] || effort}
-                  </small>
-                )}
-                <ChevronDown size={12} />
-              </button>
-            }
-          >
-            <MenuLabel>{t("模型")}</MenuLabel>
-            {!connected ? (
-              <p className="p-[9px] text-meta text-muted">
-                {t("连接工作环境后，可选择服务端提供的模型。")}
-              </p>
-            ) : connection.modelsLoading ? (
-              <p className="p-[9px] text-meta text-muted" role="status">
-                {t("正在读取可用模型…")}
-              </p>
-            ) : connection.modelsError ? (
-              <>
-                <ErrorNotice className="m-1">
-                  {t("读取模型失败：")}
-                  {connection.modelsError}
-                </ErrorNotice>
-                <DropdownMenu.Item
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    void runtime.connection.loadModels();
-                  }}
-                >
-                  {t("重试读取模型")}
-                </DropdownMenu.Item>
-              </>
-            ) : !models.length ? (
-              <p className="p-[9px] text-meta text-muted">
-                {t(
-                  "服务端未返回可选模型，继续使用当前会话模型或服务端默认模型。",
-                )}
-              </p>
-            ) : null}
-            <DropdownMenu.RadioGroup
-              value={modelId || ""}
-              onValueChange={(value) => {
-                setChosenModel(value);
-                setChosenEffort(undefined);
-              }}
-            >
-              {localDraft && !modelId && (
-                <DropdownMenu.RadioItem value="" disabled>
-                  <span className="w-4 shrink-0 text-accent">
-                    <DropdownMenu.ItemIndicator>
-                      <Check size={15} />
-                    </DropdownMenu.ItemIndicator>
-                  </span>
-                  <span>
-                    <strong>{t("设备默认")}</strong>
-                    <small>{t("发送时由设备配置决定")}</small>
-                  </span>
-                </DropdownMenu.RadioItem>
-              )}
-              {models.map((m) => (
-                <DropdownMenu.RadioItem key={m.id} value={m.model}>
-                  <span className="w-4 shrink-0 text-accent">
-                    <DropdownMenu.ItemIndicator>
-                      <Check size={15} />
-                    </DropdownMenu.ItemIndicator>
-                  </span>
-                  <span>
-                    <strong>{m.displayName}</strong>
-                    <small>{m.description}</small>
-                  </span>
-                </DropdownMenu.RadioItem>
-              ))}
-            </DropdownMenu.RadioGroup>
-            {model && (
-              <>
-                <MenuSeparator />
-                <MenuLabel data-menu-section="reasoning">
-                  {t("推理强度")}
-                </MenuLabel>
-                <DropdownMenu.RadioGroup
-                  value={effort || ""}
-                  onValueChange={(value) =>
-                    setChosenEffort(value as ReasoningEffort)
-                  }
-                >
-                  {model.supportedReasoningEfforts.map((e) => (
-                    <DropdownMenu.RadioItem
-                      key={e.reasoningEffort}
-                      value={e.reasoningEffort}
-                    >
-                      <span className="w-4 shrink-0 text-accent">
-                        <DropdownMenu.ItemIndicator>
-                          <Check size={15} />
-                        </DropdownMenu.ItemIndicator>
-                      </span>
-                      <span>
-                        {efforts[e.reasoningEffort] || e.reasoningEffort}
-                      </span>
-                    </DropdownMenu.RadioItem>
-                  ))}
-                </DropdownMenu.RadioGroup>
-              </>
-            )}
-          </Menu>
-          <label
-            data-slot="service-tier-choice"
-            className="composer-fast flex min-h-[32px] shrink-0 items-center gap-2 rounded-[7px] px-2 text-meta text-muted hover:bg-hover has-disabled:cursor-not-allowed has-disabled:opacity-40"
-            title={[
-              supportsFast && fastUnknown
-                ? t("尚未收到会话的 Fast 模式设置。")
-                : "",
-              t(
-                "Fast 模式使用优先服务；下次发送新轮次时生效，排队任务保留入队时设置。",
-              ),
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
+        <div className="composer-toolbar @container">
+          <div className="composer-tools">
             <input
-              ref={fastInput}
-              type="checkbox"
-              className="size-4 accent-accent"
-              aria-label={t("Fast 模式")}
-              checked={fastTier === "priority"}
-              disabled={readOnly || !supportsFast}
-              onChange={(event) =>
-                setTierChoices((choices) => ({
-                  ...choices,
-                  [policyKey]: event.target.checked ? "priority" : "default",
-                }))
-              }
+              hidden
+              ref={input}
+              type="file"
+              multiple
+              onChange={(e) => void attach(Array.from(e.target.files || []))}
             />
-            <span>{t("Fast 模式")}</span>
-            {!supportsFast && (
-              <span className="text-fine text-subtle">
-                {model ? t("不支持") : t("加载中")}
-              </span>
-            )}
-          </label>
-          <div className="composer-toolbar-spacer flex-1" />
-          {thread && onInspectAgent && (
-            <AgentEntry thread={thread} onSelect={onInspectAgent} />
-          )}
-          <ContextUsage key={threadId} usage={sessions.tokenUsage[threadId]} />
-          {inputRequest && running && access === "editable" && (
-            <Button
-              type="button"
-              variant="quiet"
-              size="sm"
-              disabled={!capabilities.canStop}
-              onClick={() => void stop()}
-              title={t("停止当前执行并暂停任务队列；不会提交问题回答")}
-            >
-              {stopping ? t("正在停止") : t("停止当前执行")}
-            </Button>
-          )}
-          {running && hasContent && !inputRequest && (
-            <Button
-              type="button"
-              variant="quiet"
-              size="sm"
-              className="shrink-0"
-              disabled={!capabilities.canSend || access !== "editable"}
-              title={
-                defaultSteering
-                  ? t("加入队列，当前轮次结束后发送（⌘/Ctrl+Shift+Enter）")
-                  : t("立即引导当前轮次（⌘/Ctrl+Enter）")
+            <IconButton
+              size="composer"
+              label={
+                reading
+                  ? t("读取附件中")
+                  : t("添加附件（可粘贴或拖放，每个最多 5 MB）")
               }
-              onClick={() => void send(defaultSteering ? "queue" : "steer")}
+              disabled={readOnly || reading}
+              onClick={() => input.current?.click()}
             >
-              {defaultSteering ? t("排队发送") : t("立即引导")}
-            </Button>
-          )}
-          <button
-            data-slot="composer-action"
-            className={`ml-auto grid size-[31px] shrink-0 place-items-center rounded-[9px] border-0 disabled:bg-hover disabled:text-subtle @max-[550px]/conversation:size-11 ${showStop ? "bg-danger-soft text-danger enabled:hover:bg-danger/20" : "bg-accent text-background enabled:hover:bg-accent/90"}`}
-            type={inputRequest || showStop ? "button" : "submit"}
-            onClick={
-              inputRequest
-                ? goToQuestion
-                : showStop
-                  ? () => void stop()
-                  : undefined
-            }
-            aria-label={
-              inputRequest
-                ? t("前往问题卡片回答")
-                : showStop
-                  ? stopping
-                    ? t("正在停止")
-                    : t("停止执行")
-                  : sending
-                    ? t("正在提交")
-                    : access === "occupied"
-                      ? t("重试发送")
-                      : defaultSteering
-                        ? t("立即引导")
-                        : queueing
-                          ? t("排队发送")
-                          : t("发送消息")
-            }
-            title={
-              inputRequest
-                ? t("前往问题卡片回答，普通消息草稿会保留")
-                : !connected
-                  ? t("请先连接")
-                  : showStop
-                    ? stopping
-                      ? t("正在停止")
-                      : t("停止执行")
-                    : waiting
-                      ? t("请先回答当前请求")
-                      : !hasContent
-                        ? t("输入消息或添加附件")
-                        : sending
-                          ? t("正在提交")
-                          : defaultSteering
-                            ? t("立即引导当前轮次（Enter）")
-                            : queueing
-                              ? t("加入队列，当前轮次结束后发送（Enter）")
-                              : t("发送消息")
-            }
-            disabled={
-              !inputRequest &&
-              (showStop ? !capabilities.canStop : !capabilities.canSend)
-            }
-          >
-            {inputRequest ? (
-              <ChevronDown size={19} className="rotate-180" />
-            ) : showStop ? (
-              stopping ? (
-                <LoaderCircle size={18} className="animate-spin" />
+              {reading ? (
+                <LoaderCircle size={17} className="animate-spin" />
               ) : (
-                <Square size={14} fill="currentColor" strokeWidth={0} />
-              )
-            ) : sending ? (
-              <LoaderCircle size={18} className="animate-spin" />
-            ) : (
-              <ArrowUp size={19} />
-            )}
-          </button>
+                <Paperclip size={18} />
+              )}
+            </IconButton>
+            <Menu
+              label={t("审批策略")}
+              open={policyOpen}
+              onOpenChange={setPolicyOpen}
+              trigger={
+                <button
+                  data-slot="policy-choice"
+                  type="button"
+                  className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta text-muted hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 @max-[550px]/conversation:min-h-11 @max-[550px]/conversation:px-1 @max-[550px]/conversation:text-fine @max-[550px]/conversation:gap-[3px]"
+                  disabled={readOnly}
+                >
+                  <ShieldCheck size={15} />
+                  <span>
+                    {policy &&
+                    JSON.stringify(policy) !==
+                      JSON.stringify(threadSettings?.approvalPolicy)
+                      ? t("下次：{{value0}}", { value0: approvalLabel(policy) })
+                      : t("审批：{{value0}}", {
+                          value0: approvalLabel(threadSettings?.approvalPolicy),
+                        })}
+                  </span>
+                  <ChevronDown size={12} />
+                </button>
+              }
+            >
+              <MenuLabel>{t("审批策略 · 下次发送设置")}</MenuLabel>
+              <div className="max-w-80 px-3 py-2 text-fine text-muted">
+                {t("当前会话（服务端）：")}
+                {approvalLabel(threadSettings?.approvalPolicy)}
+              </div>
+              <div className="max-w-80 px-3 py-2 text-fine text-muted">
+                {policy
+                  ? t(
+                      "来源：本地持续显式选择（即使已与服务端值一致仍保留）。发送新轮次时覆盖当前及后续轮次；排队任务保留入队时的选择。",
+                    )
+                  : t(
+                      "不发送审批覆盖；沿用服务端会话策略。沿用不会撤销此前已发送的覆盖。",
+                    )}
+                {t(
+                  "立即引导沿用该轮策略；问题卡片回答沿用会话设置，不使用此处未发送的选择。此菜单不控制沙箱。",
+                )}
+              </div>
+              <DropdownMenu.RadioGroup
+                value={typeof policy === "string" ? policy : "inherit"}
+                onValueChange={(value) =>
+                  setPolicyChoices((choices) => ({
+                    ...choices,
+                    [policyKey]: approvalOptions(
+                      value as AskForApproval | "inherit",
+                    ).approvalPolicy,
+                  }))
+                }
+              >
+                {policies.map((p) => (
+                  <DropdownMenu.RadioItem value={p.value} key={p.value}>
+                    <span className="w-4 shrink-0 text-accent">
+                      <DropdownMenu.ItemIndicator>
+                        <Check size={15} />
+                      </DropdownMenu.ItemIndicator>
+                    </span>
+                    <span>
+                      <strong>{p.name}</strong>
+                      <small>{p.description}</small>
+                    </span>
+                  </DropdownMenu.RadioItem>
+                ))}
+              </DropdownMenu.RadioGroup>
+            </Menu>
+            <Menu
+              label={t("模型与推理强度")}
+              open={modelOpen}
+              onOpenChange={setModelOpen}
+              trigger={
+                <button
+                  data-slot="model-choice"
+                  type="button"
+                  className="flex min-h-[30px] items-center gap-[5px] whitespace-nowrap rounded-[7px] border-0 bg-transparent px-[7px] py-1.5 text-meta text-foreground hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 @max-[550px]/conversation:min-h-11 @max-[550px]/conversation:px-1 @max-[550px]/conversation:text-fine"
+                  disabled={readOnly}
+                >
+                  <Cpu size={14} className="@max-[550px]/conversation:hidden" />
+                  <span className="max-w-[160px] truncate @max-[650px]:max-w-[90px] @max-[550px]/conversation:max-w-[85px]">
+                    {model?.displayName ||
+                      modelId ||
+                      (localDraft ? t("设备默认") : t("服务端默认"))}
+                  </span>
+                  {effort && (
+                    <small className="text-fine text-subtle">
+                      · {efforts[effort] || effort}
+                    </small>
+                  )}
+                  <ChevronDown size={12} />
+                </button>
+              }
+            >
+              <MenuLabel>{t("模型")}</MenuLabel>
+              {!connected ? (
+                <p className="p-[9px] text-meta text-muted">
+                  {t("连接工作环境后，可选择服务端提供的模型。")}
+                </p>
+              ) : connection.modelsLoading ? (
+                <p className="p-[9px] text-meta text-muted" role="status">
+                  {t("正在读取可用模型…")}
+                </p>
+              ) : connection.modelsError ? (
+                <>
+                  <ErrorNotice className="m-1">
+                    {t("读取模型失败：")}
+                    {connection.modelsError}
+                  </ErrorNotice>
+                  <DropdownMenu.Item
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      void runtime.connection.loadModels();
+                    }}
+                  >
+                    {t("重试读取模型")}
+                  </DropdownMenu.Item>
+                </>
+              ) : !models.length ? (
+                <p className="p-[9px] text-meta text-muted">
+                  {t(
+                    "服务端未返回可选模型，继续使用当前会话模型或服务端默认模型。",
+                  )}
+                </p>
+              ) : null}
+              <DropdownMenu.RadioGroup
+                value={modelId || ""}
+                onValueChange={(value) => {
+                  setChosenModel(value);
+                  setChosenEffort(undefined);
+                }}
+              >
+                {localDraft && !modelId && (
+                  <DropdownMenu.RadioItem value="" disabled>
+                    <span className="w-4 shrink-0 text-accent">
+                      <DropdownMenu.ItemIndicator>
+                        <Check size={15} />
+                      </DropdownMenu.ItemIndicator>
+                    </span>
+                    <span>
+                      <strong>{t("设备默认")}</strong>
+                      <small>{t("发送时由设备配置决定")}</small>
+                    </span>
+                  </DropdownMenu.RadioItem>
+                )}
+                {models.map((m) => (
+                  <DropdownMenu.RadioItem key={m.id} value={m.model}>
+                    <span className="w-4 shrink-0 text-accent">
+                      <DropdownMenu.ItemIndicator>
+                        <Check size={15} />
+                      </DropdownMenu.ItemIndicator>
+                    </span>
+                    <span>
+                      <strong>{m.displayName}</strong>
+                      <small>{m.description}</small>
+                    </span>
+                  </DropdownMenu.RadioItem>
+                ))}
+              </DropdownMenu.RadioGroup>
+              {model && (
+                <>
+                  <MenuSeparator />
+                  <MenuLabel data-menu-section="reasoning">
+                    {t("推理强度")}
+                  </MenuLabel>
+                  <DropdownMenu.RadioGroup
+                    value={effort || ""}
+                    onValueChange={(value) =>
+                      setChosenEffort(value as ReasoningEffort)
+                    }
+                  >
+                    {model.supportedReasoningEfforts.map((e) => (
+                      <DropdownMenu.RadioItem
+                        key={e.reasoningEffort}
+                        value={e.reasoningEffort}
+                      >
+                        <span className="w-4 shrink-0 text-accent">
+                          <DropdownMenu.ItemIndicator>
+                            <Check size={15} />
+                          </DropdownMenu.ItemIndicator>
+                        </span>
+                        <span>
+                          {efforts[e.reasoningEffort] || e.reasoningEffort}
+                        </span>
+                      </DropdownMenu.RadioItem>
+                    ))}
+                  </DropdownMenu.RadioGroup>
+                </>
+              )}
+            </Menu>
+          </div>
+          <div className="composer-submit">
+            <label
+              data-slot="service-tier-choice"
+              className="composer-fast flex min-h-[32px] shrink-0 items-center gap-2 rounded-md px-2 text-meta text-muted hover:bg-hover has-disabled:cursor-not-allowed has-disabled:opacity-40"
+              title={[
+                supportsFast && fastUnknown
+                  ? t("尚未收到会话的 Fast 模式设置。")
+                  : "",
+                t(
+                  "Fast 模式使用优先服务；下次发送新轮次时生效，排队任务保留入队时设置。",
+                ),
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              <input
+                ref={fastInput}
+                type="checkbox"
+                className="size-4 accent-accent"
+                aria-label={t("Fast 模式")}
+                checked={fastTier === "priority"}
+                disabled={readOnly || !supportsFast}
+                onChange={(event) =>
+                  setTierChoices((choices) => ({
+                    ...choices,
+                    [policyKey]: event.target.checked ? "priority" : "default",
+                  }))
+                }
+              />
+              <span>{t("Fast 模式")}</span>
+              {!supportsFast && (
+                <span className="text-fine text-subtle">
+                  {model ? t("不支持") : t("加载中")}
+                </span>
+              )}
+            </label>
+            <div className="composer-submit-actions">
+              {thread && onInspectAgent && (
+                <AgentEntry thread={thread} onSelect={onInspectAgent} />
+              )}
+              <ContextUsage
+                key={threadId}
+                usage={sessions.tokenUsage[threadId]}
+              />
+              {inputRequest && running && access === "editable" && (
+                <Button
+                  type="button"
+                  variant="quiet"
+                  size="sm"
+                  disabled={!capabilities.canStop}
+                  onClick={() => void stop()}
+                  title={t("停止当前执行并暂停任务队列；不会提交问题回答")}
+                >
+                  {stopping ? t("正在停止") : t("停止当前执行")}
+                </Button>
+              )}
+              {running && hasContent && !inputRequest && (
+                <Button
+                  type="button"
+                  variant="quiet"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={!capabilities.canSend || access !== "editable"}
+                  title={
+                    defaultSteering
+                      ? t("加入队列，当前轮次结束后发送（⌘/Ctrl+Shift+Enter）")
+                      : t("立即引导当前轮次（⌘/Ctrl+Enter）")
+                  }
+                  onClick={() => void send(defaultSteering ? "queue" : "steer")}
+                >
+                  {defaultSteering ? t("排队发送") : t("立即引导")}
+                </Button>
+              )}
+              <button
+                data-slot="composer-action"
+                className={`composer-send ${showStop ? "bg-danger-soft text-danger enabled:hover:bg-danger/20" : "bg-action text-on-action enabled:hover:bg-action/90"}`}
+                type={inputRequest || showStop ? "button" : "submit"}
+                onClick={
+                  inputRequest
+                    ? goToQuestion
+                    : showStop
+                      ? () => void stop()
+                      : undefined
+                }
+                aria-label={
+                  inputRequest
+                    ? t("前往问题卡片回答")
+                    : showStop
+                      ? stopping
+                        ? t("正在停止")
+                        : t("停止执行")
+                      : sending
+                        ? t("正在提交")
+                        : access === "occupied"
+                          ? t("重试发送")
+                          : defaultSteering
+                            ? t("立即引导")
+                            : queueing
+                              ? t("排队发送")
+                              : t("发送消息")
+                }
+                title={
+                  inputRequest
+                    ? t("前往问题卡片回答，普通消息草稿会保留")
+                    : !connected
+                      ? t("请先连接")
+                      : showStop
+                        ? stopping
+                          ? t("正在停止")
+                          : t("停止执行")
+                        : waiting
+                          ? t("请先回答当前请求")
+                          : !hasContent
+                            ? t("输入消息或添加附件")
+                            : sending
+                              ? t("正在提交")
+                              : defaultSteering
+                                ? t("立即引导当前轮次（Enter）")
+                                : queueing
+                                  ? t("加入队列，当前轮次结束后发送（Enter）")
+                                  : t("发送消息")
+                }
+                disabled={
+                  !inputRequest &&
+                  (showStop ? !capabilities.canStop : !capabilities.canSend)
+                }
+              >
+                {inputRequest ? (
+                  <ChevronDown size={19} className="rotate-180" />
+                ) : showStop ? (
+                  stopping ? (
+                    <LoaderCircle size={18} className="animate-spin" />
+                  ) : (
+                    <Square size={14} fill="currentColor" strokeWidth={0} />
+                  )
+                ) : sending ? (
+                  <LoaderCircle size={18} className="animate-spin" />
+                ) : (
+                  <ArrowUp size={19} />
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       </form>
       <ImagePreview

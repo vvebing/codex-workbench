@@ -49,3 +49,8 @@ screenshots/
 !public/icons/favicon.png
 !public/icons/icon-512.png
 !public/icons/product-icon.png
+!docs/images/workbench-overview.png
+!docs/images/code-review.png
+!docs/images/approvals.png
+!docs/images/task-center.png
+!docs/images/subagent-collaboration.png

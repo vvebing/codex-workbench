@@ -1,6 +1,18 @@
 @layer components {
+  [data-slot="conversation-composer"] {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: 100%;
+  }
+  .composer-input-surface {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
   .composer-editor {
-    min-height: 56px;
+    height: 100%;
+    min-height: 76px;
     max-height: min(190px, calc(var(--viewport-height, 100dvh) * 0.25));
     overscroll-behavior: contain;
     overflow-y: auto;
@@ -40,9 +52,106 @@
   .composer-reference.ProseMirror-selectednode {
     outline: 2px solid var(--accent);
   }
+  .composer-status {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 7px;
+    min-height: 30px;
+    padding: 4px 2px;
+    font-size: var(--text-meta);
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  .composer-form {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--elevated);
+    transition: border-color 160ms;
+  }
+  .composer-form:focus-within,
+  .composer-form.is-dragging {
+    border-color: var(--accent);
+  }
+  .composer-toolbar {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 6px 8px;
+    border-top: 1px solid var(--border);
+  }
+  .composer-tools,
+  .composer-submit,
+  .composer-submit-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+  }
+  .composer-tools {
+    flex: 1 1 auto;
+  }
+  .composer-submit {
+    flex: 1 1 auto;
+    justify-content: space-between;
+    gap: 4px 12px;
+    margin-left: auto;
+  }
+  .composer-submit-actions {
+    justify-content: flex-end;
+    margin-left: auto;
+  }
+  .composer-send {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    margin-left: 5px;
+    border: 0;
+    border-radius: 7px;
+    transition: background-color 160ms;
+  }
+  .composer-send:disabled {
+    color: var(--subtle);
+    background: var(--hover);
+    cursor: not-allowed;
+  }
   @container conversation (max-width: 550px) {
+    .composer-editor {
+      min-height: min(
+        64px,
+        max(44px, calc(var(--viewport-height, 100dvh) * 0.1))
+      );
+    }
     .composer-toolbar {
       gap: 4px;
+      padding: 4px 6px 6px;
+    }
+    .composer-tools {
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr);
+      flex-basis: 100%;
+      gap: 2px;
+    }
+    .composer-tools > :where(button) {
+      width: 100%;
+    }
+    .composer-tools > :where(button) > :where(svg) {
+      flex-shrink: 0;
+    }
+    .composer-submit {
+      flex: 1 1 100%;
+      padding-top: 4px;
+      border-top: 1px solid var(--border);
     }
     .composer-toolbar [data-slot="policy-choice"],
     .composer-toolbar [data-slot="model-choice"] {
@@ -50,9 +159,12 @@
       min-width: 0;
     }
     .composer-toolbar [data-slot="policy-choice"] {
-      max-width: calc(100% - 52px);
+      max-width: 100%;
     }
-    .composer-toolbar [data-slot="policy-choice"] span {
+    .composer-toolbar [data-slot="policy-choice"] span,
+    .composer-toolbar [data-slot="model-choice"] span {
+      flex: 1;
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
     }
@@ -62,10 +174,6 @@
     .composer-toolbar [data-slot="composer-action"] {
       width: 44px;
       height: 44px;
-    }
-    .composer-toolbar-spacer {
-      flex-basis: 100%;
-      height: 0;
     }
   }
   @media (max-width: 550px) {

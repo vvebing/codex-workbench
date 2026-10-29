@@ -2,7 +2,7 @@
   /* cmdk generates this heading; JSX exposes only the enclosing group. */
   .session-search-group :where([cmdk-group-heading]) {
     padding: 10px 12px;
-    font-size: var(--text-fine);
+    font-size: var(--text-meta);
     color: var(--subtle);
   }
 
@@ -28,7 +28,7 @@
   .session-search-coverage {
     margin: 5px 22px 8px;
     color: var(--subtle);
-    font-size: var(--text-fine);
+    font-size: var(--text-meta);
     line-height: 1.6;
   }
 
@@ -67,19 +67,22 @@
     gap: 5px;
     margin-top: 5px;
     color: var(--muted);
-    font-size: var(--text-fine);
+    font-size: var(--text-meta);
   }
 
   .session-search-sources span {
-    padding: 1px 5px;
-    border-radius: 4px;
-    background: var(--surface);
+    padding: 1px 0;
+  }
+
+  .session-search-sources span + span::before {
+    content: "·";
+    margin-right: 5px;
   }
 
   .session-search-time {
     flex-shrink: 0;
     white-space: nowrap;
-    font-size: var(--text-fine);
+    font-size: var(--text-meta);
   }
 
   .session-search-message {
@@ -98,7 +101,7 @@
     padding: 13px 22px;
     background: var(--surface);
     color: var(--muted);
-    font-size: var(--text-fine);
+    font-size: var(--text-meta);
   }
 
   .session-search-footer kbd {

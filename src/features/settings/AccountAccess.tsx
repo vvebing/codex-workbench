@@ -41,7 +41,7 @@ export function AccountAccess({ connection }: { connection: ConnectionStore }) {
         <div className="space-y-3 text-sm">
           {url ? (
             <a
-              className="break-all text-accent underline"
+              className="text-accent underline [overflow-wrap:anywhere]"
               href={url}
               target="_blank"
               rel="noopener noreferrer"

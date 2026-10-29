@@ -98,7 +98,7 @@ export function ProjectConfig({
         </p>
       )}
       {config.data && (
-        <div className="space-y-2 rounded-lg border border-border p-3 text-xs">
+        <div className="space-y-2 border-t border-border pt-4 text-caption">
           <p className="break-words">
             {t("查询目录：")}
             {cwd}

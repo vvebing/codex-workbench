@@ -19,7 +19,7 @@ export function EnvironmentSelector({
   useLocale();
   return (
     <div
-      className="flex flex-wrap gap-2 border-b border-border pb-4"
+      className="flex flex-wrap gap-1.5 border-b border-border pb-4"
       aria-label={t("选择要管理的工作环境")}
     >
       {entries.map((entry) => {
@@ -28,7 +28,7 @@ export function EnvironmentSelector({
         return (
           <button
             type="button"
-            className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg border border-border bg-elevated px-3 py-2 text-xs hover:bg-hover aria-pressed:border-accent/50 aria-pressed:bg-selected aria-pressed:text-accent max-[900px]:min-h-11"
+            className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-md border border-transparent px-3 py-2 text-control text-muted hover:bg-hover aria-pressed:border-border aria-pressed:bg-elevated aria-pressed:font-medium aria-pressed:text-foreground max-[900px]:min-h-11"
             key={entry.id}
             aria-pressed={selectedId === entry.id}
             disabled={disabled}
@@ -44,7 +44,7 @@ export function EnvironmentSelector({
         );
       })}
       {draft && (
-        <span className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-accent/50 bg-selected px-3 py-2 text-xs text-accent">
+        <span className="inline-flex min-h-9 items-center gap-2 rounded-md border border-border bg-elevated px-3 py-2 text-control">
           <Server size={15} />
           {t("新开发机")}
         </span>

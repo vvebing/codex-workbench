@@ -43,10 +43,10 @@ function EnvironmentTasks({
   ];
   return (
     <section
-      className="mb-5"
+      className="mb-6 min-w-0 border-t border-border pt-5 [overflow-wrap:anywhere]"
       aria-label={t("{{value0}}待办", { value0: environment.name })}
     >
-      <div className="mb-2 flex items-center gap-3">
+      <div className="mb-2 flex flex-wrap items-center gap-3">
         <h3 className="min-w-0 flex-1 text-sm font-medium">
           {environment.name} · {summary.label}
         </h3>
@@ -82,7 +82,7 @@ function EnvironmentTasks({
         const tasks = entries.filter((entry) => entry.category === category);
         return tasks.length ? (
           <div key={category} className="mb-3">
-            <h4 className="mb-1 text-xs text-muted">
+            <h4 className="mb-1 text-control font-medium">
               {t(category)} · {tasks.length}
             </h4>
             <p className="mb-2 text-fine text-muted">
@@ -93,7 +93,7 @@ function EnvironmentTasks({
                 key={entry.id}
                 type="button"
                 disabled={!entry.threadId}
-                className="mb-1 block w-full rounded-lg border border-border px-3 py-2 text-left hover:bg-hover disabled:opacity-60"
+                className="block min-h-12 w-full border-b border-border px-3 py-3 text-left hover:bg-hover focus-visible:bg-hover disabled:opacity-60 last:border-b-0"
                 onClick={() => {
                   environments.select(environment.id);
                   setError("");
@@ -119,7 +119,9 @@ function EnvironmentTasks({
                   );
                 }}
               >
-                <strong className="block text-xs">{entry.title}</strong>
+                <strong className="block text-control font-medium">
+                  {entry.title}
+                </strong>
                 <span className="mt-1 block text-xs text-muted">
                   {entry.threadId
                     ? titleOf(
@@ -167,7 +169,7 @@ export function TaskCenter({
         "查看各环境中需要你处理的事项，并前往来源会话继续。未连接环境会明确标记为待同步。",
       )}
     >
-      <ScrollArea className="max-h-[65vh]">
+      <ScrollArea className="min-w-0 max-h-[65vh]">
         <p className="mb-4 text-xs text-muted">
           {t(
             "排队由当前浏览器调度；关闭页面后不会发送。发送结果不确定时，请先核对记录。",

@@ -66,7 +66,7 @@ test("repository check detects credentials in the index without printing their v
   }
 });
 
-test("repository check permits product icons and rejects unrelated images", async () => {
+test("repository check permits reviewed product images and rejects unrelated images", async () => {
   const f = await fixture();
   try {
     await mkdir(join(f.directory, "public", "icons"), { recursive: true });
@@ -74,11 +74,43 @@ test("repository check permits product icons and rejects unrelated images", asyn
       join(f.directory, "public", "icons", "favicon.png"),
       "icon",
     );
+    await mkdir(join(f.directory, "docs", "images"), { recursive: true });
+    for (const name of [
+      "workbench-overview.png",
+      "code-review.png",
+      "approvals.png",
+      "task-center.png",
+      "subagent-collaboration.png",
+    ])
+      await writeFile(
+        join(f.directory, "docs", "images", name),
+        Buffer.from("reviewed synthetic capture\0"),
+      );
     assert.equal(f.check().status, 0);
+    await writeFile(
+      join(f.directory, "docs", "images", "private.png"),
+      "private screenshot",
+    );
     await writeFile(join(f.directory, "public", "private.png"), "screenshot");
     const result = f.check();
     assert.equal(result.status, 1);
     assert.match(result.stderr, /public\/private\.png: unapproved image/);
+    assert.match(result.stderr, /docs\/images\/private\.png: unapproved image/);
+  } finally {
+    await f.close();
+  }
+});
+
+test("repository check scans staged text larger than the default child process buffer", async () => {
+  const f = await fixture();
+  try {
+    await writeFile(
+      join(f.directory, "font-index.json"),
+      JSON.stringify({ data: "a".repeat(2 * 1024 * 1024) }),
+    );
+    f.git("add", "font-index.json");
+    const result = f.check();
+    assert.equal(result.status, 0, result.stderr);
   } finally {
     await f.close();
   }

@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 import { lstat, readFile } from "node:fs/promises";
 import { extname } from "node:path";
 
-// These product icons are the only raster assets approved for the repository.
-const productIcons = new Set([
+// Only individually reviewed product icons and synthetic product captures belong here.
+const approvedImages = new Set([
   "public/favicon.ico",
   "public/icons/apple-touch-icon.png",
   "public/icons/favicon-running.png",
@@ -11,6 +11,11 @@ const productIcons = new Set([
   "public/icons/favicon.png",
   "public/icons/icon-512.png",
   "public/icons/product-icon.png",
+  "docs/images/workbench-overview.png",
+  "docs/images/code-review.png",
+  "docs/images/approvals.png",
+  "docs/images/task-center.png",
+  "docs/images/subagent-collaboration.png",
 ]);
 const imageExtensions = new Set([
   ".png",
@@ -57,7 +62,7 @@ for (const entry of git(["ls-files", "--stage", "-z"]).split("\0")) {
     );
 }
 function inspect(path, buffer, source) {
-  if (buffer.includes(0) && !productIcons.has(path))
+  if (buffer.includes(0) && !approvedImages.has(path))
     findings.add(`${path}: unapproved binary in ${source}`);
   const text = buffer.toString("utf8").replaceAll("\0", "");
   if (credentials.some((pattern) => pattern.test(text)))
@@ -69,7 +74,7 @@ for (const path of files) {
   if (artifactPath.test(path)) findings.add(`${path}: generated artifact`);
   if (
     imageExtensions.has(extname(path).toLowerCase()) &&
-    !productIcons.has(path)
+    !approvedImages.has(path)
   )
     findings.add(`${path}: unapproved image`);
   try {
@@ -80,7 +85,13 @@ for (const path of files) {
     if (error.code !== "ENOENT") throw error;
   }
   if (staged.has(path))
-    inspect(path, execFileSync("git", ["show", `:${path}`]), "Git index");
+    inspect(
+      path,
+      execFileSync("git", ["show", `:${path}`], {
+        maxBuffer: 64 * 1024 * 1024,
+      }),
+      "Git index",
+    );
 }
 if (findings.size) {
   console.error("Repository check failed (secret values are never printed):");

@@ -18,7 +18,7 @@ export function ToolAnswerRecord({ answer }: { answer: SubmittedAnswer }) {
       data-question-answer-for={`tool:${answer.epoch}:${answer.id}`}
       data-slot="tool-answer-record"
       data-reading-id={`answer:${answer.epoch}:${answer.id}`}
-      className="my-3 rounded-xl border border-border bg-elevated p-4 text-control"
+      className="my-3 rounded-lg bg-surface p-4 text-control"
     >
       <p className="mb-2 font-semibold">{t("你的回答")}</p>
       <dl className="space-y-2">

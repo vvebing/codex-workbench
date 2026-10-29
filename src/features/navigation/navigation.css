@@ -23,17 +23,17 @@
   }
   .navigation-environment[data-state="active"] {
     background: var(--elevated);
-    color: var(--accent);
-    box-shadow: 0 1px 3px #0000000c;
+    color: var(--foreground);
+    font-weight: 500;
   }
   .navigation-view {
     min-height: 30px;
-    border-bottom: 2px solid transparent;
+    border-bottom: 1px solid transparent;
     font-size: var(--text-caption);
-    color: var(--subtle);
+    color: var(--muted);
   }
   .navigation-view[data-state="active"] {
-    border-color: var(--accent);
+    border-color: var(--foreground);
     color: var(--foreground);
     font-weight: 600;
   }

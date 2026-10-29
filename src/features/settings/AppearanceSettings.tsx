@@ -5,7 +5,6 @@ import {
   setLanguagePreference,
   type LanguagePreference,
 } from "../../lib/i18n";
-import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "./theme";
 import { resetSidebarWidths } from "../shell/sidebar-layout";
 import {
@@ -34,7 +33,6 @@ const themes = [
     get label() {
       return t("浅色");
     },
-    Icon: Sun,
     get description() {
       return t("明亮清晰");
     },
@@ -44,7 +42,6 @@ const themes = [
     get label() {
       return t("深色");
     },
-    Icon: Moon,
     get description() {
       return t("适合暗光环境");
     },
@@ -54,7 +51,6 @@ const themes = [
     get label() {
       return t("跟随系统");
     },
-    Icon: Monitor,
     get description() {
       return t("自动切换外观");
     },
@@ -93,13 +89,13 @@ export function AppearanceSettings() {
           />
         </SettingsField>
       </SettingsSection>
-      <fieldset className="space-y-4">
+      <fieldset className="space-y-3 border-t border-border pt-6">
         <legend className="text-sm font-semibold">{t("显示主题")}</legend>
-        <div className="grid grid-cols-3 gap-3 max-[550px]:grid-cols-1">
-          {themes.map(({ value, label, Icon, description }) => (
+        <div className="grid grid-cols-3 gap-2 max-[550px]:grid-cols-1">
+          {themes.map(({ value, label, description }) => (
             <label
               key={value}
-              className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface p-4 text-sm hover:bg-hover has-[:checked]:border-accent has-[:checked]:bg-selected has-[:checked]:text-accent has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent"
+              className="flex min-w-0 cursor-pointer items-center gap-2.5 rounded-lg border border-border px-3 py-3 text-control hover:bg-hover has-[:checked]:border-accent has-[:checked]:bg-selected has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent"
             >
               <input
                 type="radio"
@@ -110,7 +106,6 @@ export function AppearanceSettings() {
                 onChange={() => setTheme(value)}
                 className="size-4 shrink-0 accent-accent"
               />
-              <Icon size={18} aria-hidden="true" />
               <span className="min-w-0">
                 <span className="block font-medium">{label}</span>
                 <span className="mt-1 block text-meta font-normal text-muted">
@@ -163,7 +158,7 @@ export function AppearanceSettings() {
           </Button>
         }
       >
-        <div className="grid grid-cols-2 gap-4 max-[550px]:grid-cols-1">
+        <div className="space-y-5">
           {[
             {
               key: "fontSize",
@@ -219,7 +214,7 @@ export function AppearanceSettings() {
           ))}
         </div>
         <div
-          className="space-y-2 rounded-xl border border-border bg-surface p-4"
+          className="space-y-2 border-t border-border pt-4"
           role="group"
           aria-label={t("字体预览")}
         >

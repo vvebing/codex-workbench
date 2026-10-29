@@ -418,25 +418,27 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
   return (
     <aside
       data-slot="sidebar"
-      className="flex h-full min-w-0 flex-col border-r border-border bg-surface"
+      className="flex h-full min-w-0 flex-col bg-surface"
     >
-      <div className="flex h-[62px] shrink-0 items-center gap-2.5 px-4">
-        <ProductIcon className="size-7 shrink-0" />
-        <strong className="text-brand tracking-[-0.6px]">Codex</strong>
-        <span className="flex-1 text-meta text-muted">{t("工作台")}</span>
+      <div className="flex min-h-14 shrink-0 items-center gap-2 px-4 py-2">
+        <ProductIcon className="size-6 shrink-0" />
+        <strong className="text-body font-semibold tracking-[-0.02em]">
+          Codex
+        </strong>
+        <span className="flex-1 text-caption text-muted">{t("工作台")}</span>
         <IconButton label={t("收起导航")} onClick={props.onCollapse}>
           <PanelLeftClose size={17} />
         </IconButton>
       </div>
-      <div data-slot="sidebar-actions" className="shrink-0 px-3 pb-3">
+      <div data-slot="sidebar-actions" className="shrink-0 px-3 pb-4">
         <Button
           variant="secondary"
-          className="mb-1.5 w-full justify-start shadow-sm"
+          className="mb-1.5 w-full justify-start border-border bg-elevated text-foreground"
           onClick={() => props.onNew(undefined, newTarget?.environment.id)}
         >
           <Plus size={17} />
           {t("新建会话")}
-          <span className="ml-auto text-fine text-subtle">
+          <span className="ml-auto text-meta text-subtle">
             {mac ? "⌘ ⇧ O" : "Ctrl ⇧ O"}
           </span>
         </Button>
@@ -447,7 +449,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
         >
           <Search size={16} />
           {t("搜索会话")}
-          <span className="ml-auto text-fine text-subtle">
+          <span className="ml-auto text-meta text-subtle">
             {mac ? "⌘ K" : "Ctrl K"}
           </span>
         </Button>
@@ -478,15 +480,15 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           </button>
         )}
       </div>
-      <div className="shrink-0 px-3 pb-3">
+      <div className="shrink-0 border-t border-border px-3 pt-3 pb-2">
         <EnvironmentFilter
           entries={state.entries}
           value={props.filter}
           onValueChange={props.onFilterChange}
         />
       </div>
-      <div className="shrink-0 px-3 pb-2">
-        <div className="mb-2 flex items-center gap-1">
+      <div className="shrink-0 px-3 pb-3">
+        <div className="mb-2 flex min-h-9 items-center gap-1">
           <Tabs.Root
             value={preferences.view}
             onValueChange={(view) =>
@@ -494,7 +496,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             }
             className="min-w-0 flex-1"
           >
-            <Tabs.List aria-label={t("会话视图")} className="flex gap-4">
+            <Tabs.List aria-label={t("会话视图")} className="flex gap-4 px-1">
               <Tabs.Trigger value="projects" className="navigation-view">
                 {t("项目")}
               </Tabs.Trigger>
@@ -587,7 +589,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           onValueChange={(status) =>
             navigationState.setStatus(status as NavigationStatus)
           }
-          className="w-full min-h-8 bg-transparent py-1 text-xs"
+          className="w-full min-h-8 border-transparent bg-transparent px-2 py-1 text-caption"
         />
         {(showSections || anySection) && (
           <div className="mt-2 flex items-center justify-between gap-2 text-fine text-muted">
@@ -682,18 +684,18 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                       <ChevronDown size={13} />
                     )}
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1 text-xs font-semibold text-muted">
+                      <span className="flex items-center gap-1 text-caption font-semibold text-foreground">
                         {pinned && (
                           <Star size={11} className="fill-accent text-accent" />
                         )}
                         <span className="truncate">{project.name}</span>
                         {project.attention > 0 && (
-                          <span className="ml-auto text-fine text-warning">
+                          <span className="ml-auto shrink-0 whitespace-nowrap text-fine text-warning">
                             {project.attention} {t("待处理")}
                           </span>
                         )}
                       </span>
-                      <span className="block truncate text-fine text-subtle">
+                      <span className="block truncate text-meta text-subtle">
                         {props.filter === "all"
                           ? `${project.source.environment.name} · `
                           : ""}
@@ -763,7 +765,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                     getLocale(),
                   ),
                 })}
-                className="shrink-0 text-fine text-subtle"
+                className="shrink-0 text-meta text-subtle"
               >
                 {relativeTime(activityAt, now)}
               </time>
@@ -876,7 +878,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                           )}
                           <span
                             data-slot="thread-title"
-                            className="min-w-0 flex-1 truncate text-xs"
+                            className="min-w-0 flex-1 truncate text-control"
                           >
                             {navigationTitle(thread)}
                           </span>
@@ -886,7 +888,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                         {description && (
                           <span
                             data-slot="thread-description"
-                            className="mt-0.5 flex min-w-0 items-center gap-1 text-fine text-subtle"
+                            className="mt-0.5 flex min-w-0 items-center gap-1 text-meta text-subtle"
                           >
                             <span
                               className={`min-w-0 flex-1 truncate ${item.waiting || status === t("待核实") ? "text-warning" : item.failed ? "text-danger" : ""}`}
@@ -1050,7 +1052,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
           </Button>
         </nav>
         <div
-          className="flex items-center gap-1.5 px-2 pt-1 text-fine text-subtle"
+          className="flex items-center gap-1.5 px-2 pt-1 text-meta text-subtle"
           title={data
             .map((source) =>
               t("{{value0}}：{{value1}}", {

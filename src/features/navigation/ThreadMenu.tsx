@@ -438,7 +438,7 @@ function ThreadMenuSurface({
           <ContextMenu.Content
             aria-label={t("会话操作")}
             data-slot="menu"
-            className="menu-content z-[60] min-w-[205px] rounded-[11px] border border-border bg-elevated p-[5px] text-foreground shadow-xl"
+            className="menu-content z-[60] min-w-[205px] rounded-xl border border-border bg-elevated p-[5px] text-foreground shadow-lg"
           >
             {children}
           </ContextMenu.Content>

@@ -21,7 +21,8 @@ import {
   PanelLeft,
   PanelRight,
   Plus,
-  ArrowUpRight,
+  ArrowRight,
+  Settings,
   X,
   Folder,
   Check,
@@ -95,7 +96,6 @@ const Details = lazy(() =>
 import { CompletionNotifications } from "../navigation/CompletionNotifications";
 import { ApprovalQueue } from "../approvals/ApprovalQueue";
 import { protectPageExit } from "../../lib/page-exit";
-import { ProductIcon } from "../../components/ProductIcon";
 import {
   browserIconState,
   updateBrowserIcon,
@@ -226,7 +226,7 @@ function AppView() {
   const [taskCenter, setTaskCenter] = useState(false);
   const [settings, setSettings] = useState(false);
   const [settingsSection, setSettingsSection] = useState<
-    "general" | "activity"
+    "general" | "connections" | "activity"
   >("general");
   const [newOpen, setNewOpen] = useState(false);
   const [newCreated, setNewCreated] = useState(false);
@@ -474,6 +474,11 @@ function AppView() {
     setSettings(true);
     setMobileNav(false);
   }, []);
+  const openConnectionSettings = useCallback(() => {
+    setSettingsSection("connections");
+    setSettings(true);
+    setMobileNav(false);
+  }, []);
   const collapseNavigation = useCallback(() => {
     if (narrow) setMobileNav(false);
     else setSidebar(false);
@@ -503,7 +508,7 @@ function AppView() {
   );
   const detailView = (
     <div data-slot="details-shell" className="flex h-full flex-col bg-surface">
-      <header className="flex h-[57px] shrink-0 items-center justify-between border-b border-border px-[17px] text-caption font-medium">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4 text-control font-medium">
         <span>{t("项目面板")}</span>
         <IconButton label={t("关闭项目面板")} onClick={() => setDetails(false)}>
           <X size={17} />
@@ -531,7 +536,7 @@ function AppView() {
     >
       <header
         data-slot="topbar"
-        className="flex h-[57px] min-h-[57px] items-center gap-[9px] border-b border-border/60 px-[22px] max-[1100px]:px-[13px] max-[900px]:gap-[5px] max-[900px]:px-[9px] max-[550px]:h-[55px] max-[550px]:min-h-[55px]"
+        className="flex min-h-14 shrink-0 items-center gap-2 border-b border-border px-5 py-2 max-[1100px]:px-3 max-[900px]:gap-1 max-[900px]:px-2"
       >
         {(narrow || !sidebar) && (
           <IconButton
@@ -544,18 +549,21 @@ function AppView() {
         )}
         <div
           data-slot="breadcrumb"
-          className="flex min-w-0 items-center gap-[9px] text-caption text-muted max-[900px]:flex-1 max-[900px]:gap-1.5 max-[550px]:[&>span]:hidden"
+          className="flex min-w-0 items-center gap-2 text-control text-muted max-[900px]:flex-1 max-[900px]:gap-1.5 max-[550px]:[&>span]:hidden"
         >
           <EnvironmentIcon environment={environment} cwd={thread?.cwd} />
-          <span title={thread?.cwd}>
-            {thread ? folderOf(thread.cwd) : t("工作环境")}
+          <span
+            className="max-w-40 truncate"
+            title={thread?.cwd || environment.name}
+          >
+            {thread ? folderOf(thread.cwd) : environment.name}
           </span>
           <span className="text-subtle">/</span>
           <strong
             className="max-w-[280px] truncate font-medium text-foreground max-[1100px]:max-w-[180px] max-[550px]:max-w-[150px]"
-            title={titleOf(thread)}
+            title={thread ? titleOf(thread) : t("工作台")}
           >
-            {titleOf(thread)}
+            {thread ? titleOf(thread) : t("工作台")}
           </strong>
         </div>
         {thread && (
@@ -741,38 +749,72 @@ function AppView() {
         ) : (
           <ScrollArea
             data-slot="welcome"
-            className="m-auto max-h-full"
-            viewportProps={{
-              className:
-                "px-6 pt-[30px] pb-[90px] text-center max-[550px]:pb-[55px]",
-            }}
+            className="min-h-0 flex-1"
+            viewportProps={{ className: "h-full" }}
           >
-            <ProductIcon className="mx-auto mb-[25px] size-16" />
-            <span className="text-fine font-semibold tracking-[1.1px] text-muted">
-              CODEX WORKBENCH
-            </span>
-            <h1 className="mt-[13px] mb-[17px] text-display font-[550] tracking-[-1px] max-[550px]:text-title">
-              {t("把想法，变成下一步。")}
-            </h1>
-            <p className="mb-[27px] text-body leading-intro text-muted">
-              {t("在你的工作区里思考、编写与验证。")}
-              <br />
-              {t("从一个清晰的任务开始。")}
-            </p>
-            <Button
-              variant="primary"
-              onClick={() => (connected ? newChat() : setSettings(true))}
-            >
-              <Plus size={17} />
-              {connected ? t("开始新会话") : t("连接工作环境")}
-              <ArrowUpRight size={16} />
-            </Button>
-            {connected && (
-              <div className="mt-[22px] text-meta text-muted">
-                {t("从左侧选择历史会话，或按")}
-                <kbd>⌘ K</kbd> {t("搜索")}
+            <div className="workbench-start">
+              <div className="workbench-start-content">
+                <h1 className="text-title font-semibold tracking-[-0.02em]">
+                  {t("开始一项工作")}
+                </h1>
+                <p className="mt-3 max-w-lg text-body leading-copy text-muted">
+                  {t("选择项目目录并描述任务，或继续之前的会话。")}
+                </p>
+                <div className="mt-7 flex flex-wrap items-center gap-3">
+                  <Button
+                    variant="primary"
+                    onClick={() =>
+                      connected ? newChat() : openConnectionSettings()
+                    }
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    {connected ? t("开始新会话") : t("连接工作环境")}
+                  </Button>
+                  <Button variant="secondary" onClick={openSearch}>
+                    <Search size={16} aria-hidden="true" />
+                    {t("搜索会话")}
+                  </Button>
+                </div>
+                <div className="workbench-environment">
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <span className="mt-0.5 text-muted" aria-hidden="true">
+                      <EnvironmentIcon
+                        environment={environment}
+                        focusable={false}
+                      />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-caption text-muted">
+                        {t("当前工作环境")}
+                      </p>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-control">
+                        <strong className="max-w-full break-words font-medium">
+                          {environment.name}
+                        </strong>
+                        <span
+                          className={`inline-flex items-center gap-1.5 text-caption ${connected ? "text-muted" : "text-warning"}`}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`size-1.5 rounded-full ${connected ? "bg-success" : "bg-warning"}`}
+                          />
+                          {connected ? t("已连接") : t("未连接")}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="quiet"
+                    size="sm"
+                    onClick={openConnectionSettings}
+                  >
+                    <Settings size={14} aria-hidden="true" />
+                    {t("管理工作环境")}
+                    <ArrowRight size={14} aria-hidden="true" />
+                  </Button>
+                </div>
               </div>
-            )}
+            </div>
           </ScrollArea>
         )}
       </ConversationWorkspace>

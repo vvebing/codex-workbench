@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-29T08:24:54.168827+00:00",
+  "title": "Design System: Codex Workbench",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "dialog",
+        "value": "0 18px 64px var(--shadow-color)",
+        "purpose": "Floating dialogs; shadow-color is #00000033."
+      },
+      {
+        "name": "sticky-project",
+        "value": "0 1px 0 var(--border), 0 4px 8px color-mix(in srgb, var(--background) 80%, transparent)",
+        "purpose": "Separate a pinned navigation project heading from scrolling rows."
+      }
+    ],
+    "motion": [
+      {
+        "name": "button-color",
+        "value": "background-color 140ms, color 140ms, border-color 140ms",
+        "purpose": "Shared button feedback; default CSS easing."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation: none !important; transition: none !important; scroll-behavior: auto !important",
+        "purpose": "Global prefers-reduced-motion override."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile-shell",
+        "value": "900px"
+      },
+      {
+        "name": "compact-conversation-container",
+        "value": "550px"
+      },
+      {
+        "name": "settings-field-container",
+        "value": "560px"
+      },
+      {
+        "name": "compact-settings-viewport",
+        "value": "550px"
+      },
+      {
+        "name": "compact-search-viewport",
+        "value": "450px"
+      }
+    ],
+    "focus": [
+      {
+        "name": "shared-outline",
+        "value": "2px solid var(--accent); outline-offset: 3px",
+        "purpose": "Keyboard focus on interactive elements."
+      },
+      {
+        "name": "checkbox-ring",
+        "value": "2px accent ring with 2px elevated offset",
+        "purpose": "Checked-control keyboard focus."
+      }
+    ],
+    "layout": {
+      "rootFontSize": "14px",
+      "conversationWidth": {
+        "reading": "928px",
+        "wide": "1128px",
+        "fluid": "100%"
+      },
+      "conversationPadding": "24px; 12px below a 550px conversation container",
+      "settingsMaximumWidth": "960px"
+    },
+    "themeMapping": {
+      "light": "Unprefixed frontmatter color keys; :root",
+      "dark": "dark- prefixed frontmatter color keys; :root[data-theme=\"dark\"]",
+      "preference": "light | dark | system"
+    },
+    "sources": [
+      "src/theme.css",
+      "src/styles.css",
+      "src/components/ui.tsx",
+      "src/components/menu.css",
+      "src/features/navigation/navigation.css",
+      "src/features/navigation/search.css",
+      "src/features/conversation/markdown.css",
+      "src/features/settings/settings-ui.tsx",
+      "src/features/settings/typography.ts",
+      "src/features/settings/conversation-layout.ts",
+      "src/features/settings/SettingsDialog.tsx"
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Shared primary action variant.",
+      "html": "<button class=\"ds-button ds-primary\">Save changes</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:8px 13px;border:1px solid;border-radius:var(--radius-lg);font-family:var(--font-sans);font-size:var(--text-control);font-weight:500;cursor:pointer;transition:background-color 140ms,color 140ms,border-color 140ms}.ds-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.ds-button:disabled{opacity:.45;pointer-events:none}@media(max-width:900px){.ds-button{min-height:44px}}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-primary{background:var(--action);color:var(--on-action);border-color:var(--action)}.ds-primary:hover{background:color-mix(in srgb,var(--action) 90%,transparent)}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Shared secondary action variant.",
+      "html": "<button class=\"ds-button ds-secondary\">Cancel</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:8px 13px;border:1px solid;border-radius:var(--radius-lg);font-family:var(--font-sans);font-size:var(--text-control);font-weight:500;cursor:pointer;transition:background-color 140ms,color 140ms,border-color 140ms}.ds-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.ds-button:disabled{opacity:.45;pointer-events:none}@media(max-width:900px){.ds-button{min-height:44px}}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-secondary{background:var(--elevated);color:var(--foreground);border-color:var(--border)}.ds-secondary:hover{background:var(--hover)}"
+    },
+    {
+      "name": "Quiet button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Shared quiet action variant.",
+      "html": "<button class=\"ds-button ds-quiet\">Details</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:8px 13px;border:1px solid;border-radius:var(--radius-lg);font-family:var(--font-sans);font-size:var(--text-control);font-weight:500;cursor:pointer;transition:background-color 140ms,color 140ms,border-color 140ms}.ds-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.ds-button:disabled{opacity:.45;pointer-events:none}@media(max-width:900px){.ds-button{min-height:44px}}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-quiet{background:transparent;color:var(--muted);border-color:transparent}.ds-quiet:hover{background:var(--hover);color:var(--foreground)}"
+    },
+    {
+      "name": "Danger button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Shared danger action variant.",
+      "html": "<button class=\"ds-button ds-danger\">Remove</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:8px 13px;border:1px solid;border-radius:var(--radius-lg);font-family:var(--font-sans);font-size:var(--text-control);font-weight:500;cursor:pointer;transition:background-color 140ms,color 140ms,border-color 140ms}.ds-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.ds-button:disabled{opacity:.45;pointer-events:none}@media(max-width:900px){.ds-button{min-height:44px}}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-danger{background:var(--danger-soft);color:var(--danger);border-color:transparent}.ds-danger:hover{background:color-mix(in srgb,var(--danger) 20%,transparent)}"
+    },
+    {
+      "name": "Settings input",
+      "kind": "input",
+      "refersTo": "settings-input",
+      "description": "Editable settings value with accent focus.",
+      "html": "<input class=\"ds-input\" aria-label=\"Project name\" placeholder=\"Project name\">",
+      "css": ".ds-input{min-height:40px;width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--background);color:var(--foreground);font-family:var(--font-sans);font-size:var(--text-sm);caret-color:var(--accent)}.ds-input::placeholder{color:var(--subtle);opacity:1}.ds-input:hover{border-color:var(--subtle)}.ds-input:focus-visible{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:3px}.ds-input:disabled{opacity:.5}@media(max-width:900px){.ds-input{min-height:44px;font-size:var(--mobile-input-size)}}"
+    },
+    {
+      "name": "Environment navigation",
+      "kind": "nav",
+      "refersTo": "navigation-environment",
+      "description": "Compact environment tabs with elevated active state.",
+      "html": "<nav aria-label=\"Environment\"><button class=\"ds-environment\" aria-current=\"page\">Local</button><button class=\"ds-environment\">Remote</button></nav>",
+      "css": ".ds-environment{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:30px;min-width:44px;padding:4px 9px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-family:var(--font-sans);font-size:var(--text-caption);cursor:pointer}.ds-environment[aria-current=page]{background:var(--elevated);color:var(--foreground);font-weight:500}.ds-environment:focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media(max-width:900px){.ds-environment{min-height:44px}}"
+    },
+    {
+      "name": "Error notice",
+      "kind": "custom",
+      "description": "Semantic error text in a restrained soft container.",
+      "html": "<div class=\"ds-error\" role=\"alert\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 8v4m0 4h.01\"/></svg><span>Connection failed. Try again.</span></div>",
+      "css": ".ds-error{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--danger) 20%,transparent);border-radius:var(--radius-lg);background:var(--danger-soft);color:var(--danger);font-family:var(--font-sans);font-size:var(--text-xs);line-height:1.625;overflow-wrap:anywhere}.ds-error svg{flex-shrink:0;margin-top:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Focused workbench",
+    "overview": "Codex Workbench uses a neutral graphite and white interface with forest green for actions and meaningful states. Content, lists, and dividers establish hierarchy across sessions, settings, files, and conversation tools.\n\nThis document records the implemented system. It describes the current source rather than a separately approved brand identity; configurable typography and themes remain part of the interface.",
+    "keyCharacteristics": [
+      "Compact controls with clear text hierarchy.",
+      "Flat working surfaces, divided lists, and restrained overlays.",
+      "Semantic colors paired with readable labels and interaction states."
+    ],
+    "rules": [
+      {
+        "name": "The Action Pair Rule",
+        "body": "Always pair action fills with on-action text; dark mode uses dark text on the lighter green fill.",
+        "section": "colors"
+      },
+      {
+        "name": "The Preference Rule",
+        "body": "New interface text follows scalable roles, and code follows the independent code preference. Mobile editable controls use at least (16px) to avoid focus zoom.",
+        "section": "typography"
+      },
+      {
+        "name": "The Overlay Rule",
+        "body": "Reserve pronounced shadow for floating controls, dialogs, and transient notices. Use divisions and tonal surfaces for routine content.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use semantic color variables so light and dark modes stay aligned.",
+      "Do preserve font scaling, independent code sizing, and mobile input sizing.",
+      "Do use dividers and spacing to group settings and working lists.",
+      "Do keep keyboard focus visible and respect reduced motion."
+    ],
+    "donts": [
+      "Don't hardcode white text on primary actions; use the on-action token.",
+      "Don't add decorative heroes, gradients, or repeated cards to working screens.",
+      "Don't hide row actions from keyboard focus or touch users.",
+      "Don't treat the start-page heading or smaller legacy text sizes as a reusable display system."
+    ]
+  }
+}

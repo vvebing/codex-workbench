@@ -37,7 +37,7 @@ it("disables only unsupported action methods, not authentication errors", () => 
   let html = renderToStaticMarkup(
     createElement(EnvironmentTools, { connection, group: "integrations" }),
   );
-  expect(html).toMatch(/<button[^>]*disabled=""[^>]*>重新加载 MCP 配置/);
+  expect(html).toMatch(/<button[^>]*\sdisabled=""[^>]*>重新加载 MCP 配置/);
   connection.client.capabilities.record(
     "config/mcpServer/reload",
     new RpcError("login", 401),
@@ -45,5 +45,7 @@ it("disables only unsupported action methods, not authentication errors", () => 
   html = renderToStaticMarkup(
     createElement(EnvironmentTools, { connection, group: "integrations" }),
   );
-  expect(html).toMatch(/<button(?![^>]*disabled)[^>]*>重新加载 MCP 配置/);
+  expect(html).toMatch(
+    /<button(?![^>]*\sdisabled(?:\s|=|>))[^>]*>重新加载 MCP 配置/,
+  );
 });

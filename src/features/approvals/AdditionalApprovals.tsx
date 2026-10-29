@@ -43,7 +43,7 @@ export function PermissionsApproval({
   return (
     <div>
       {params.reason && <p>{params.reason}</p>}
-      <p className="my-2 text-muted">
+      <p className="my-2 text-muted [overflow-wrap:anywhere]">
         {t("工作目录：")}
         {params.cwd}
       </p>
@@ -112,7 +112,11 @@ export function PermissionsApproval({
         </label>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button disabled={disabled} onClick={() => grant("turn")}>
+        <Button
+          variant="primary"
+          disabled={disabled}
+          onClick={() => grant("turn")}
+        >
           {t("本轮允许所选权限")}
         </Button>
         <Button disabled={disabled} onClick={() => grant("session")}>
@@ -174,7 +178,9 @@ export function ElicitationApproval({
   return (
     <div>
       <p className="text-muted">{params.serverName}</p>
-      <p className="my-3 whitespace-pre-wrap">{params.message}</p>
+      <p className="my-3 whitespace-pre-wrap [overflow-wrap:anywhere]">
+        {params.message}
+      </p>
       {params.mode === "url" ? (
         url ? (
           <p className="my-3">
@@ -343,7 +349,7 @@ export function ElicitationApproval({
           </Button>
         </form>
       )}
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         {url && (
           <Button disabled={disabled} onClick={() => send("accept")}>
             {t("已完成，确认继续")}

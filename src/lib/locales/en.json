@@ -1,4 +1,9 @@
 {
+  "你的消息": "Your message",
+  "开始一项工作": "Start a task",
+  "选择项目目录并描述任务，或继续之前的会话。": "Choose a project directory and describe your task, or continue a previous session.",
+  "当前工作环境": "Current environment",
+  "管理工作环境": "Manage environments",
   "关闭错误提示": "Dismiss error",
   "关闭": "Close",
   "请选择（可多选）": "Select one or more",
@@ -1800,5 +1805,10 @@
   "尚未收到会话的 Fast 模式设置。": "The session's Fast mode setting has not been received yet.",
   "第 {{line}} 行，第 {{column}} 列": "Line {{line}}, column {{column}}",
   "运行 {{kind}}": "Run {{kind}}",
-  "下级代理 · {{count}}": "Child agents · {{count}}"
+  "下级代理 · {{count}}": "Child agents · {{count}}",
+  "关闭标签页": "Close Tab",
+  "关闭其他标签页": "Close Others",
+  "关闭右侧标签页": "Close to the Right",
+  "关闭所有标签页": "Close All",
+  "将关闭所选标签页并丢弃以下文件尚未保存的修改，是否继续？": "Close the selected tabs and discard unsaved changes in the following files?"
 }

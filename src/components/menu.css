@@ -10,7 +10,8 @@
     align-items: center;
     gap: 9px;
     border-radius: var(--radius-md);
-    padding: 9px 10px;
+    min-height: 32px;
+    padding: 7px 10px;
     font-size: var(--text-caption);
     outline: none;
   }
@@ -28,7 +29,7 @@
     display: block;
     max-width: 265px;
     margin-top: 3px;
-    font-size: var(--text-fine);
+    font-size: var(--text-meta);
     line-height: var(--leading-help);
     color: var(--muted);
   }

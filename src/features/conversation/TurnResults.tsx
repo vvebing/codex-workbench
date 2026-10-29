@@ -45,7 +45,7 @@ export function TurnResults({
   return (
     <div
       data-slot="turn-results"
-      className="mt-4 rounded-lg border border-border bg-surface/30 text-control text-foreground"
+      className="mt-4 border-y border-border text-control text-foreground"
     >
       <div className="flex items-center gap-1 px-2 py-1">
         <Button
@@ -106,7 +106,7 @@ export function TurnResults({
       </div>
       <AnimatedDisclosure open={open}>
         {open && (
-          <div className="space-y-2 border-t border-border p-3">
+          <div className="space-y-3 border-t border-border py-3">
             {!results.aggregate && (
               <p>
                 {t(

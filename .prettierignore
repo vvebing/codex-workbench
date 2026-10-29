@@ -6,3 +6,4 @@ playwright-report
 test-results
 output
 coverage
+.agents/skills

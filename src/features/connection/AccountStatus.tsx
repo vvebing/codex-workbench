@@ -62,7 +62,7 @@ function UsageWindow({
           max={100}
           value={Math.min(100, Math.max(0, used))}
           aria-valuetext={t("已用 {{value0}}%", { value0: used })}
-          className="h-2 overflow-hidden rounded-full bg-hover"
+          className="h-1.5 overflow-hidden rounded-full bg-hover"
         >
           <Progress.Indicator
             className={`h-full rounded-full ${used >= 100 ? "bg-danger" : used >= 80 ? "bg-warning" : "bg-accent"}`}
@@ -91,7 +91,7 @@ function UsageBucket({
   const credits = snapshot.credits;
   const individual = snapshot.individualLimit;
   return (
-    <section className="space-y-4 rounded-lg border border-border p-3">
+    <section className="space-y-4 border-t border-border pt-4">
       <h5 className="text-sm font-medium">
         {snapshot.limitName ||
           snapshot.limitId ||
@@ -195,7 +195,7 @@ function ResetCredits({ connection }: { connection: ConnectionStore }) {
   );
   if (!summary || Number(summary.availableCount) <= 0) return feedback;
   return (
-    <section className="space-y-3 rounded-lg border border-border p-3">
+    <section className="space-y-3 border-t border-border pt-4">
       <h5 className="text-sm font-medium">{t("主动重置额度")}</h5>
       {summary && (
         <p>

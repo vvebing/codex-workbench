@@ -140,7 +140,7 @@ export function EnvironmentFilter({
         >
           <Tabs.List
             aria-label={t("按工作环境筛选会话")}
-            className="navigation-environments flex h-full min-w-0 gap-1 rounded-lg bg-hover p-1"
+            className="navigation-environments flex h-full min-w-0 gap-1 rounded-lg border border-border bg-transparent p-1"
           >
             {entries.length > 1 && (
               <Tabs.Trigger value="all" className="navigation-environment">

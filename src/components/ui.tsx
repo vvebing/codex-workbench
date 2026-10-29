@@ -102,7 +102,7 @@ export function ScrollArea({
 }
 
 const buttonVariants = {
-  primary: "border-accent bg-accent text-background hover:bg-accent/90",
+  primary: "border-action bg-action text-on-action hover:bg-action/90",
   secondary: "border-border bg-elevated hover:bg-hover",
   quiet:
     "border-transparent bg-transparent text-muted hover:bg-hover hover:text-foreground",
@@ -118,7 +118,7 @@ export function Checkbox({
     <RadixCheckbox.Root
       {...props}
       data-slot="checkbox"
-      className={`inline-flex size-4 shrink-0 items-center justify-center rounded border border-border bg-elevated text-background outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-elevated disabled:cursor-not-allowed disabled:opacity-40 data-[state=checked]:border-accent data-[state=checked]:bg-accent ${className}`}
+      className={`inline-flex size-4 shrink-0 items-center justify-center rounded border border-border bg-elevated text-on-action outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-elevated disabled:cursor-not-allowed disabled:opacity-40 data-[state=checked]:border-action data-[state=checked]:bg-action ${className}`}
     >
       <RadixCheckbox.Indicator>
         <Check size={12} aria-hidden="true" />
@@ -141,7 +141,9 @@ export function Button({
   return (
     <button
       type={type}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg border font-medium ${size === "sm" ? "min-h-8 px-2 py-1.5 text-caption max-[900px]:min-h-11" : "min-h-9 px-[13px] py-2 text-control max-[900px]:min-h-11"} ${buttonVariants[variant]} ${className}`}
+      data-slot="button"
+      data-variant={variant}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg border font-medium disabled:pointer-events-none ${size === "sm" ? "min-h-8 px-2 py-1.5 text-caption max-[900px]:min-h-11" : "min-h-9 px-[13px] py-2 text-control max-[900px]:min-h-11"} ${buttonVariants[variant]} ${className}`}
       {...props}
     />
   );
@@ -177,11 +179,11 @@ export function IconButton({
 
 const modalVariants = {
   default:
-    "left-1/2 top-1/2 flex flex-col max-h-[85dvh] w-[calc(100%-36px)] max-w-[520px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl",
+    "left-1/2 top-1/2 flex flex-col max-h-[85dvh] w-[calc(100%-36px)] max-w-[520px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl",
   search:
-    "left-1/2 top-1/2 flex flex-col max-h-[85dvh] w-[calc(100%-36px)] max-w-[660px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl pt-5",
+    "left-1/2 top-1/2 flex flex-col max-h-[85dvh] w-[calc(100%-36px)] max-w-[660px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl pt-5",
   settings:
-    "left-1/2 top-1/2 flex h-[min(720px,90dvh)] max-h-[90dvh] w-[calc(100%-48px)] max-w-[960px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl [--radius-lg:8px] [--radius-xl:12px] [--radius-2xl:16px] max-[900px]:h-[min(720px,92dvh)] max-[900px]:max-h-[92dvh] max-[900px]:w-[calc(100%-24px)]",
+    "left-1/2 top-1/2 flex h-[min(720px,90dvh)] max-h-[90dvh] w-[calc(100%-48px)] max-w-[960px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl [--radius-lg:8px] [--radius-xl:12px] [--radius-2xl:12px] max-[900px]:h-[min(720px,92dvh)] max-[900px]:max-h-[92dvh] max-[900px]:w-[calc(100%-24px)]",
   drawer: "inset-y-0 left-0 w-[min(340px,90vw)] overflow-hidden",
   details: "inset-y-0 right-0 w-[min(450px,95vw)] overflow-hidden",
 };
@@ -257,11 +259,11 @@ export function Modal({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-overlay backdrop-blur-[3px]" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-overlay" />
         <Dialog.Content
           data-slot="modal"
           data-variant={variant}
-          className={`fixed z-50 border border-border bg-elevated text-foreground shadow-2xl ${modalVariants[variant]} ${className}`}
+          className={`fixed z-50 bg-elevated text-foreground shadow-dialog ring-1 ring-border ${modalVariants[variant]} ${className}`}
           onEscapeKeyDown={(event) => {
             if (!dismissible) event.preventDefault();
           }}
@@ -281,6 +283,20 @@ export function Modal({
               // A drawer can close while opening settings. The new dialog owns focus.
               if (
                 document.querySelector('[data-slot="modal"][data-state="open"]')
+              )
+                return;
+              // A later interaction can own focus before this frame runs.
+              const focused = document.activeElement;
+              if (
+                focused instanceof HTMLElement &&
+                focused.isConnected &&
+                focused.checkVisibility() &&
+                focused.matches(
+                  'button, input, textarea, select, a[href], [tabindex], [contenteditable]:not([contenteditable="false"])',
+                ) &&
+                !focused.closest(
+                  '[data-slot="modal"], [inert], [aria-hidden="true"], [data-radix-focus-guard]',
+                )
               )
                 return;
               const preferred = returnFocusSelector
@@ -352,7 +368,7 @@ export function Menu({
         <DropdownMenu.Content
           aria-label={label}
           data-slot="menu"
-          className={`menu-content z-[60] max-h-[var(--radix-dropdown-menu-content-available-height)] ${matchTriggerWidth ? "min-w-[var(--radix-dropdown-menu-trigger-width)] max-w-[calc(100vw-24px)]" : "min-w-[205px] max-w-[min(360px,calc(100vw-24px))]"} overflow-hidden rounded-[11px] border border-border bg-elevated text-foreground shadow-xl`}
+          className={`menu-content z-[60] max-h-[var(--radix-dropdown-menu-content-available-height)] ${matchTriggerWidth ? "min-w-[var(--radix-dropdown-menu-trigger-width)] max-w-[calc(100vw-24px)]" : "min-w-[205px] max-w-[min(360px,calc(100vw-24px))]"} overflow-hidden rounded-xl border border-border bg-elevated text-foreground shadow-lg`}
           sideOffset={8}
           collisionPadding={12}
           align={align}
@@ -374,7 +390,7 @@ export function MenuLabel(
     <DropdownMenu.Label
       data-slot="menu-label"
       {...props}
-      className={`px-2.5 py-[9px] text-fine text-muted ${props.className || ""}`}
+      className={`px-2.5 py-2 text-meta font-medium text-muted ${props.className || ""}`}
     />
   );
 }
@@ -458,7 +474,7 @@ export function SelectField({
           <Select.Viewport>
             {options.map((option) => (
               <Select.Item
-                className={`flex cursor-pointer items-center justify-between gap-4 rounded px-3 py-2 ${typography} [overflow-wrap:anywhere] outline-none data-[highlighted]:bg-hover data-[state=checked]:text-accent max-[900px]:min-h-11`}
+                className={`flex cursor-pointer items-center justify-between gap-4 rounded px-3 py-2 ${typography} [overflow-wrap:anywhere] outline-none data-[highlighted]:bg-hover data-[state=checked]:font-medium max-[900px]:min-h-11`}
                 key={option.value}
                 value={option.value}
                 textValue={option.label}

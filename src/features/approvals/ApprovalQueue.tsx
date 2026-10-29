@@ -52,7 +52,7 @@ function ApprovalCard({
       onSubmitCapture={stable.preserve}
       data-question-request-id={requestId}
       tabIndex={requestId ? -1 : undefined}
-      className="mb-2.5 rounded-[10px] border border-border bg-elevated p-4 text-control"
+      className="mb-3 min-w-0 rounded-lg border border-border bg-elevated p-4 text-control leading-copy [overflow-wrap:anywhere]"
     >
       <h3 className="mb-3 flex items-center gap-2 text-control font-semibold">
         {title}
@@ -66,7 +66,7 @@ function AnswerOption({ children }: { children: ReactNode }) {
   void i18nLocale;
 
   return (
-    <label className="flex cursor-pointer items-start gap-[9px] py-2">
+    <label className="flex min-h-10 cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-hover has-[:checked]:bg-selected">
       {children}
     </label>
   );
@@ -143,7 +143,7 @@ function UserInputForm({
             question.options?.map((option) => (
               <AnswerOption key={option.label}>
                 <input
-                  className="mt-[3px] accent-accent"
+                  className="mt-1 size-4 shrink-0 accent-accent"
                   required
                   type="radio"
                   name={question.id}
@@ -166,7 +166,7 @@ function UserInputForm({
             !!question.options?.length && (
               <AnswerOption>
                 <input
-                  className="mt-[3px] accent-accent"
+                  className="mt-1 size-4 shrink-0 accent-accent"
                   type="radio"
                   name={question.id}
                   checked={values[question.id] === "__custom__"}
@@ -404,7 +404,7 @@ export function ApprovalQueue({ threadId }: { threadId: string }) {
   );
   return (
     <div
-      className="mx-auto max-w-[840px] px-4 sm:px-6"
+      className="mx-auto min-w-0 max-w-[840px] px-4 sm:px-6"
       aria-label={t("待处理请求")}
     >
       {requests.error && <ErrorNotice>{requests.error}</ErrorNotice>}

@@ -97,7 +97,7 @@ export function QueuedTasks({ threadId }: { threadId: string }) {
     <section
       aria-label={t("待发送任务")}
       data-slot="message-queue"
-      className="mb-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs"
+      className="mb-2 border-t border-border px-1 py-2 text-xs"
     >
       {queue.items.length > 0 && (
         <>

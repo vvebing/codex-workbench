@@ -1831,7 +1831,7 @@ test("topbar unavailable Git status keeps the change count unknown", async ({
   await expect(page.locator('[data-slot="global-error"]')).toHaveCount(0);
 });
 
-test("product icons load in the sidebar and welcome screen with static browser assets", async ({
+test("welcome offers task actions and sidebar product icons load with static browser assets", async ({
   page,
   request,
 }) => {
@@ -1840,7 +1840,46 @@ test("product icons load in the sidebar and welcome screen with static browser a
     page.locator("[data-slot=sidebar] [data-slot=product-icon]"),
   ).toBeVisible();
   await expect(
-    page.locator("[data-slot=welcome] [data-slot=product-icon]"),
+    page
+      .locator("[data-slot=welcome]")
+      .getByRole("heading", { name: "开始一项工作" }),
+  ).toBeVisible();
+  const welcome = page.locator("[data-slot=welcome]");
+  await expect(
+    welcome.getByRole("button", { name: "连接工作环境", exact: true }),
+  ).toBeVisible();
+  await expect(
+    welcome.getByRole("button", { name: "开始新会话", exact: true }),
+  ).toHaveCount(0);
+  await welcome
+    .getByRole("button", { name: "管理工作环境", exact: true })
+    .click();
+  const settings = page.getByRole("dialog", { name: "连接与设置" });
+  await expect(
+    settings.getByRole("tab", { name: "工作环境", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    settings.getByRole("heading", { name: "连接与账户", exact: true }),
+  ).toBeVisible();
+  await expect(settings.getByLabel("App-server 地址")).toBeVisible();
+  await settings.getByRole("button", { name: "关闭", exact: true }).click();
+  await welcome
+    .getByRole("button", { name: "连接工作环境", exact: true })
+    .click();
+  await expect(
+    settings.getByRole("tab", { name: "工作环境", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(settings.getByLabel("App-server 地址")).toBeVisible();
+  await settings.getByLabel("App-server 地址").fill(fixtureUrl);
+  await settings.getByRole("button", { name: "连接", exact: true }).click();
+  await expect(settings).toBeHidden();
+  await expect(
+    welcome.getByRole("button", { name: "开始新会话", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("[data-slot=welcome]")
+      .getByRole("button", { name: "搜索会话", exact: true }),
   ).toBeVisible();
   expect(
     await page.locator("[data-slot=product-icon]").evaluateAll((icons) =>
@@ -2229,17 +2268,34 @@ for (const width of [375, 1440])
       '[aria-label="选择要管理的工作环境"]',
     );
     const expectFieldSpacing = async () => {
-      const gaps = await dialog.locator("label[for]").evaluateAll((labels) =>
+      const fields = await dialog.locator("label[for]").evaluateAll((labels) =>
         labels.map((label) => {
           const control = document.getElementById(label.getAttribute("for")!);
-          return control
-            ? control.getBoundingClientRect().top -
-                label.getBoundingClientRect().bottom
-            : null;
+          if (!control) return null;
+          // SettingsField keeps its label and help text together. Wide fields
+          // align that block beside the control; narrow fields stack it above.
+          const description = label.parentElement!;
+          const labelBlock = description.getBoundingClientRect();
+          const field = control.getBoundingClientRect();
+          const beside = field.left >= labelBlock.right - 0.5;
+          return {
+            direction: beside ? "beside" : "below",
+            gap: beside
+              ? field.left - labelBlock.right
+              : field.top - labelBlock.bottom,
+            top: field.top - labelBlock.top,
+          };
         }),
       );
-      expect(gaps.length).toBeGreaterThan(0);
-      for (const gap of gaps) expect(gap).toBe(8);
+      expect(fields.length).toBeGreaterThan(0);
+      for (const field of fields) {
+        expect(field).not.toBeNull();
+        expect(field!.gap).toBeCloseTo(
+          field!.direction === "beside" ? 24 : 8,
+          1,
+        );
+        if (field!.direction === "beside") expect(field!.top).toBeCloseTo(0, 1);
+      }
     };
     await expect(environmentSelector).toHaveCount(0);
     await expect(
@@ -2483,9 +2539,17 @@ test("model menu keeps original model heading styling and applies it to reasonin
     .filter({ hasText: /^模型$/ });
   const reasoningLabel = menu.locator('[data-menu-section="reasoning"]');
   for (const label of [modelLabel, reasoningLabel]) {
-    await expect(label).toHaveCSS("font-size", "10px");
+    await expect(label).toHaveCSS("font-size", "11px");
+    await expect(label).toHaveCSS("font-weight", "500");
     await expect(label).toHaveCSS("color", await themeColor(page, "muted"));
-    await expect(label).toHaveCSS("padding", "9px 10px");
+    await expect(label).toHaveCSS("padding", "8px 10px");
+  }
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--font-scale", "1.25");
+  });
+  for (const label of [modelLabel, reasoningLabel]) {
+    await expect(label).toHaveCSS("font-size", "13.75px");
+    await expect(label).toHaveCSS("padding", "8px 10px");
   }
 });
 
@@ -2499,12 +2563,20 @@ for (const width of [375, 1440]) {
       "font-size",
       width < 900 ? "16px" : "14px",
     );
-    // Keep the editor inset on the shared spacing scale in production too.
+    const editorSurface = page.locator(".composer-input-surface");
+    await expect(
+      editorSurface.getByRole("textbox", { name: "消息输入框" }),
+    ).toBeVisible();
+    await expect(editorSurface).toHaveCSS("overflow", "hidden");
+    // The surface clips the editor; the editor owns its shared spacing inset.
     await expect(input(page)).toHaveCSS(
       "padding",
       width < 550 ? "12px 12px 8px" : "16px 16px 8px",
     );
-    await expect(input(page)).toHaveCSS("min-height", "56px");
+    await expect(input(page)).toHaveCSS(
+      "min-height",
+      width < 550 ? "64px" : "76px",
+    );
     await page.evaluate(() => {
       document.documentElement.style.setProperty("--font-scale", "1.25");
     });
@@ -2517,8 +2589,8 @@ for (const width of [375, 1440]) {
     const label = page
       .locator('[data-slot="menu-label"]')
       .filter({ hasText: /^模型$/ });
-    await expect(label).toHaveCSS("font-size", "12.5px");
-    await expect(label).toHaveCSS("padding", "9px 10px");
+    await expect(label).toHaveCSS("font-size", "13.75px");
+    await expect(label).toHaveCSS("padding", "8px 10px");
     await page.keyboard.press("Escape");
     await page.evaluate(() => {
       document.documentElement.style.setProperty("--font-scale", "0.75");
@@ -2527,6 +2599,13 @@ for (const width of [375, 1440]) {
       "font-size",
       width < 900 ? "16px" : "10.5px",
     );
+    if (width < 550) {
+      await page.setViewportSize({ width, height: 400 });
+      await expect(input(page)).toHaveCSS("min-height", "44px");
+      await expect(input(page)).toHaveCSS("max-height", "100px");
+      await page.setViewportSize({ width, height: 900 });
+      await expect(input(page)).toHaveCSS("min-height", "64px");
+    }
   });
 }
 
@@ -4609,8 +4688,19 @@ test("nested operation logs hand wheel scrolling to the conversation at both edg
     .toBeLessThan(beforeUp - 20);
   await output.hover();
   await output.evaluate((el) => {
-    el.scrollTop = el.scrollHeight;
+    el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - 100);
   });
+  // Reach the lower edge with a native wheel before testing the handoff.
+  // Fractional log line heights can give Chromium's compositor a different
+  // lower limit than a scripted scrollTop = scrollHeight assignment.
+  await page.mouse.wheel(0, 180);
+  await expect
+    .poll(() =>
+      output.evaluate((el) =>
+        Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop),
+      ),
+    )
+    .toBeLessThanOrEqual(1);
   const beforeDown = await viewport.evaluate((el) => el.scrollTop);
   await page.mouse.wheel(0, 180);
   await expect
@@ -5612,7 +5702,9 @@ for (const width of [375, 1440]) {
           .getByRole("button", { name: "连接工作环境", exact: true })
           .click();
       }
-      return page.getByRole("dialog", { name: "连接与设置" });
+      const settings = page.getByRole("dialog", { name: "连接与设置" });
+      await settings.getByRole("tab", { name: "通用", exact: true }).click();
+      return settings;
     };
     let dialog = await openSettings();
     await dialog.getByRole("radio", { name: "深色", exact: true }).check();

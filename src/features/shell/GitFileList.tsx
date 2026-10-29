@@ -87,7 +87,9 @@ export function GitFileList({
               >
                 <ChevronRight size={12} className="git-folder-chevron" />
                 <Folder size={14} className="text-muted" />
-                <span className="min-w-0 truncate">{child.name}</span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  {child.name}
+                </span>
                 <span className="git-folder-count">
                   {child.descendants.length}
                 </span>

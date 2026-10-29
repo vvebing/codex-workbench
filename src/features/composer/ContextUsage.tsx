@@ -55,25 +55,6 @@ export function ContextUsage({ usage }: { usage?: ThreadTokenUsage }) {
           onFocus={reveal}
           onBlur={dismiss}
         >
-          <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true">
-            <circle
-              className="fill-none stroke-border stroke-[2.5]"
-              cx="10"
-              cy="10"
-              r="7"
-            />
-            {percent !== null && (
-              <circle
-                className="fill-none stroke-current stroke-[2.5]"
-                cx="10"
-                cy="10"
-                r="7"
-                pathLength="100"
-                strokeDasharray={`${percent} 100`}
-                transform="rotate(-90 10 10)"
-              />
-            )}
-          </svg>
           <span>
             {percent !== null
               ? t("上下文 {{value0}}%", { value0: percent })

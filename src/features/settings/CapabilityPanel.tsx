@@ -96,13 +96,10 @@ export function CapabilityPanel({
         {t("服务器版本：")}
         {session.serverVersion ?? t("未知")}
       </p>
-      <div className="space-y-3">
+      <div className="divide-y divide-border border-y border-border">
         {groups.map((group) => (
-          <details
-            key={group.title}
-            className="rounded-lg border border-border bg-elevated p-3"
-          >
-            <summary className="cursor-pointer text-sm font-medium">
+          <details key={group.title} className="py-3">
+            <summary className="cursor-pointer px-1 text-control font-medium">
               {group.title}
             </summary>
             <div className="mt-2 space-y-2">
@@ -111,7 +108,7 @@ export function CapabilityPanel({
                 return (
                   <div
                     key={method}
-                    className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs leading-relaxed [overflow-wrap:anywhere]"
+                    className="space-y-2 border-t border-border px-3 py-3 text-caption leading-copy [overflow-wrap:anywhere]"
                   >
                     <p>
                       <code>{method}</code> ·{" "}

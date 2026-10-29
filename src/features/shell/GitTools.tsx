@@ -116,7 +116,7 @@ export function GitTools({
               key={tree}
               size="sm"
               variant="quiet"
-              className="w-full justify-start whitespace-normal break-all text-left"
+              className="w-full justify-start whitespace-normal text-left [overflow-wrap:anywhere]"
               disabled={busy}
               onClick={() => onSelectWorktree?.(tree)}
             >

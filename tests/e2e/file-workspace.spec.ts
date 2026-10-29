@@ -151,6 +151,199 @@ async function edit(page: Page, text: string) {
   await page.keyboard.insertText(text);
 }
 
+test("editor tab context menus close tabs relative to the clicked tab", async ({
+  page,
+}) => {
+  const { panel, workspace } = await openReadme(page);
+  const tabs = workspace.getByRole("tablist", { name: "已打开文件" });
+  await tabs.getByRole("tab", { name: "README.md", exact: true }).dblclick();
+  await panel.getByRole("button", { name: /^package\.json(?:，|$)/ }).click();
+  await tabs.getByRole("tab", { name: "package.json", exact: true }).dblclick();
+  await panel.getByRole("button", { name: /^new-file\.txt(?:，|$)/ }).click();
+  await expect(tabs.getByRole("tab")).toHaveCount(3);
+  await expect(
+    tabs.getByRole("tab", { name: "new-file.txt", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await tabs
+    .getByRole("tab", { name: "package.json", exact: true })
+    .click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "关闭右侧标签页", exact: true })
+    .click();
+  await expect(tabs.getByRole("tab")).toHaveText(["README.md", "package.json"]);
+  await tabs
+    .getByRole("tab", { name: "package.json", exact: true })
+    .click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: "关闭右侧标签页", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("menuitem", { name: "关闭其他标签页", exact: true })
+    .click();
+  await expect(tabs.getByRole("tab")).toHaveText(["package.json"]);
+  await expect(tabs.getByRole("tab")).toHaveAttribute("aria-selected", "true");
+  await panel.getByRole("button", { name: /^README\.md(?:，|$)/ }).click();
+  await tabs
+    .getByRole("tab", { name: "README.md", exact: true })
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: "关闭标签页", exact: true }).click();
+  await expect(tabs.getByRole("tab")).toHaveText(["package.json"]);
+  await tabs.getByRole("tab").click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: "关闭其他标签页", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("menuitem", { name: "关闭所有标签页", exact: true })
+    .click();
+  await expect(workspace).toBeHidden();
+});
+
+test("editor tab batch closing confirms all dirty files before closing any tabs", async ({
+  page,
+}) => {
+  const { panel, workspace } = await openReadme(page);
+  const tabs = workspace.getByRole("tablist", { name: "已打开文件" });
+  await edit(page, "Unsaved README");
+  await panel.getByRole("button", { name: /^package\.json(?:，|$)/ }).click();
+  await edit(page, '{"unsaved":true}');
+  await panel.getByRole("button", { name: /^new-file\.txt(?:，|$)/ }).click();
+  await expect(tabs.getByRole("tab")).toHaveCount(3);
+  const confirmation = page.getByRole("dialog", {
+    name: "关闭文件",
+    exact: true,
+  });
+  await tabs
+    .getByRole("tab", { name: "new-file.txt", exact: true })
+    .click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "关闭其他标签页", exact: true })
+    .click();
+  await expect(confirmation).toContainText(`${root}/README.md`);
+  await expect(confirmation).toContainText(`${root}/package.json`);
+  // Modal dialogs hide the background from the accessibility tree.
+  await expect(page.locator('.file-tab [role="tab"]')).toHaveCount(3);
+  await confirmation.getByRole("button", { name: "取消", exact: true }).click();
+  await tabs.getByRole("tab", { name: /README\.md$/ }).click();
+  await expect(workspace.locator(".view-lines")).toContainText(
+    "Unsaved README",
+  );
+  await tabs
+    .getByRole("tab", { name: /README\.md$/ })
+    .click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "关闭右侧标签页", exact: true })
+    .click();
+  await expect(confirmation).toContainText(`${root}/package.json`);
+  await expect(confirmation).not.toContainText(`${root}/README.md`);
+  await expect(page.locator('.file-tab [role="tab"]')).toHaveCount(3);
+  await confirmation
+    .getByRole("button", { name: "放弃修改并关闭", exact: true })
+    .click();
+  await expect(tabs.getByRole("tab")).toHaveText(["● README.md"]);
+  await expect(workspace.locator(".view-lines")).toContainText(
+    "Unsaved README",
+  );
+  await tabs.getByRole("tab").click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "关闭所有标签页", exact: true })
+    .click();
+  await confirmation
+    .getByRole("button", { name: "放弃修改并关闭", exact: true })
+    .click();
+  await expect(workspace).toBeHidden();
+  expect(server.fileText(`${root}/README.md`)).toBe(original);
+  expect(server.fileText(`${root}/package.json`)).toBe(
+    '{"name":"demo-project"}\n',
+  );
+  expect(
+    server.requestLog.some((request) => request.method === "fs/writeFile"),
+  ).toBe(false);
+});
+
+for (const width of [1440, 1920, 2240]) {
+  test(`mouse selects code fragments without resizing the editor at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 1116 });
+    const { workspace } = await openReadme(page);
+    const addSelection = workspace.getByRole("button", {
+      name: "添加选中代码到会话",
+    });
+    if (width >= 1920) {
+      await expect(page.locator(".conversation-workspace")).toHaveAttribute(
+        "data-layout",
+        "split",
+      );
+    }
+    const line = workspace.locator(".view-line").first();
+    await line.hover({ position: { x: 18, y: 10 } });
+    // Wait for Monaco's automatic layout after the file panel opens.
+    await expect
+      .poll(async () => {
+        const host = (await workspace.locator(".file-monaco").boundingBox())!;
+        const editor = (await workspace
+          .locator(".file-monaco > .monaco-editor")
+          .boundingBox())!;
+        return (
+          Math.abs(host.width - editor.width) +
+          Math.abs(host.height - editor.height)
+        );
+      })
+      .toBeLessThan(2);
+    // The project panel, update banner and Monaco each lay out asynchronously.
+    let previousBounds = "";
+    let stableFrames = 0;
+    await expect
+      .poll(
+        async () => {
+          const bounds = JSON.stringify(await line.boundingBox());
+          stableFrames = bounds === previousBounds ? stableFrames + 1 : 0;
+          previousBounds = bounds;
+          return stableFrames;
+        },
+        { intervals: [100] },
+      )
+      .toBeGreaterThanOrEqual(3);
+    const bounds = (await line.boundingBox())!;
+    const editorBounds = (await workspace
+      .locator(".file-monaco")
+      .boundingBox())!;
+    await page.mouse.move(bounds.x + 18, bounds.y + bounds.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + 90, bounds.y + bounds.height / 2, {
+      steps: 12,
+    });
+    await expect(addSelection).toBeEnabled();
+    expect(await workspace.locator(".file-monaco").boundingBox()).toEqual(
+      editorBounds,
+    );
+    const selectedWidth = (await workspace
+      .locator(".selected-text")
+      .first()
+      .boundingBox())!.width;
+    await page.mouse.move(bounds.x + 120, bounds.y + bounds.height / 2, {
+      steps: 6,
+    });
+    await expect
+      .poll(
+        async () =>
+          (await workspace.locator(".selected-text").first().boundingBox())!
+            .width,
+      )
+      .toBeGreaterThan(selectedWidth);
+    await page.mouse.up();
+    await expect(
+      workspace.getByRole("button", { name: "添加选中代码到会话" }),
+    ).toBeVisible();
+    await expect(workspace.locator(".selected-text").first()).toBeVisible();
+    await page.keyboard.insertText("REPLACED");
+    await expect(line).toContainText("REPLACED");
+    await expect(workspace.locator(".view-lines")).toContainText(
+      "Project file preview.",
+    );
+  });
+}
+
 test("unsaved file edits survive reload without writing to disk", async ({
   page,
 }) => {

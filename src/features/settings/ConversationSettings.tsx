@@ -76,12 +76,12 @@ export function ConversationSettings() {
           id="auto-collapse-process"
           checked={autoCollapse}
           aria-describedby="auto-collapse-process-description"
-          className="inline-flex h-6 w-11 shrink-0 items-center rounded-full bg-subtle p-0.5 data-[state=checked]:bg-accent"
+          className="inline-flex h-6 w-11 shrink-0 items-center rounded-full bg-subtle p-0.5 outline-accent focus-visible:outline-2 focus-visible:outline-offset-2 data-[state=checked]:bg-accent"
           onCheckedChange={(checked) =>
             save(() => setAutoCollapseProcess(checked))
           }
         >
-          <Switch.Thumb className="block size-5 rounded-full bg-background transition-transform data-[state=checked]:translate-x-5" />
+          <Switch.Thumb className="block size-5 rounded-full bg-background transition-transform motion-reduce:transition-none data-[state=checked]:translate-x-5" />
         </Switch.Root>
       </SettingsField>
       {feedback && (

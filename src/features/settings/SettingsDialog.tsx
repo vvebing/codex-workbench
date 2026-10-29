@@ -74,7 +74,7 @@ export function SettingsDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRestored: (id: string) => void;
-  initialSection?: "general" | "activity";
+  initialSection?: "general" | "connections" | "activity";
 }) {
   useLocale();
   const state = useStore(environments);
@@ -124,7 +124,7 @@ export function SettingsDialog({
         }}
       >
         <Tabs.List
-          className="flex w-48 shrink-0 flex-col gap-1 border-r border-border bg-surface p-3 max-[900px]:max-h-[40dvh] max-[900px]:overflow-y-auto max-[900px]:grid max-[900px]:w-full max-[900px]:grid-cols-2 max-[900px]:border-r-0 max-[900px]:border-b"
+          className="flex w-52 shrink-0 flex-col gap-1 border-r border-border bg-surface p-3 max-[900px]:max-h-[40dvh] max-[900px]:overflow-y-auto max-[900px]:grid max-[900px]:w-full max-[900px]:grid-cols-2 max-[900px]:border-r-0 max-[900px]:border-b"
           aria-label={t("设置分类")}
         >
           {sections.map(({ value, label, Icon }) => (
@@ -132,7 +132,7 @@ export function SettingsDialog({
               <Tabs.Trigger
                 value={value}
                 disabled={connectionSettings.busy}
-                className={`flex min-h-10 min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-control text-muted hover:bg-hover data-[state=active]:font-semibold data-[state=active]:text-accent max-[900px]:min-h-11 max-[900px]:justify-center max-[900px]:px-2 max-[550px]:text-xs ${value !== "connections" ? "data-[state=active]:bg-selected" : ""}`}
+                className={`flex min-h-10 min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-control text-muted hover:bg-hover data-[state=active]:font-semibold data-[state=active]:text-foreground max-[900px]:min-h-11 max-[900px]:justify-center max-[900px]:px-2 max-[550px]:text-xs ${value !== "connections" ? "data-[state=active]:bg-selected" : ""}`}
               >
                 <Icon
                   className="max-[550px]:hidden"
@@ -158,7 +158,7 @@ export function SettingsDialog({
                         connectionSettings.busy ||
                         (page !== "connection" && !connectionSettings.selected)
                       }
-                      className="flex min-h-10 w-full items-center rounded-lg px-3 py-2 text-left text-control text-muted hover:bg-hover aria-[current=page]:bg-selected aria-[current=page]:font-semibold aria-[current=page]:text-accent disabled:opacity-50 max-[900px]:min-h-11"
+                      className="flex min-h-10 w-full items-center rounded-lg px-3 py-2 text-left text-control text-muted hover:bg-hover aria-[current=page]:bg-selected aria-[current=page]:font-medium aria-[current=page]:text-foreground disabled:opacity-50 max-[900px]:min-h-11"
                       onClick={() => {
                         setEnvironmentPage(page);
                         connectionSettings.clearSensitive();
@@ -173,17 +173,17 @@ export function SettingsDialog({
           ))}
         </Tabs.List>
         <ScrollArea data-slot="settings-content" className="min-w-0 flex-1">
-          <div className="min-w-0 space-y-6 p-6 [overflow-wrap:anywhere] max-[550px]:p-4">
-            <header className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0 flex-1 space-y-2">
-                <h3 className="text-lg font-semibold">
+          <div className="mx-auto min-w-0 max-w-[860px] space-y-6 px-7 py-6 [overflow-wrap:anywhere] max-[550px]:p-4">
+            <header className="flex flex-wrap items-start justify-between gap-4 max-[550px]:flex-col">
+              <div className="min-w-0 flex-1 space-y-2 max-[550px]:w-full max-[550px]:flex-none">
+                <h3 className="text-base font-semibold">
                   {section === "connections"
                     ? environmentPages.find(
                         (page) => page.value === environmentPage,
                       )!.label
                     : current.label}
                 </h3>
-                <p className="text-xs leading-relaxed text-muted">
+                <p className="text-caption leading-copy text-muted">
                   {current.description}
                 </p>
               </div>
@@ -314,7 +314,7 @@ function EnvironmentPanels({
   const thread = selectedId ? state.threads[selectedId] : undefined;
   return (
     <div className="space-y-6">
-      <p className="text-xs leading-relaxed text-muted break-words">
+      <p className="text-caption leading-copy text-muted break-words">
         {t("当前设备：{{name}}。", { name: environment.name })}
         {(page === "integrations" || page === "migration") &&
           (thread?.cwd

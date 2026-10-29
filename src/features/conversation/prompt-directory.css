@@ -10,7 +10,7 @@
   width: 32px;
   padding-block: 4px;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 8px;
   background: var(--surface);
   color: var(--muted);
 }
@@ -36,7 +36,7 @@
   justify-content: center;
   width: 30px;
   height: 30px;
-  border-radius: 10px;
+  border-radius: 6px;
 }
 .prompt-dot > span {
   width: 6px;
@@ -75,7 +75,7 @@
   max-width: min(300px, calc(100vw - 72px));
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 6px;
   background: var(--surface);
   color: var(--foreground);
   font-size: var(--text-caption);

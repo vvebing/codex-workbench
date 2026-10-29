@@ -104,7 +104,7 @@ export function AsyncQuestions({
       style={{ minHeight: stable.minHeight }}
       data-async-question-id={item.id}
       tabIndex={-1}
-      className="mt-4 mb-3 rounded-xl border border-border bg-elevated p-4 text-control"
+      className="mt-4 mb-3 rounded-lg border border-border bg-background p-4 text-control"
       aria-label={!confirmed && !ignored ? t("回答异步问题") : undefined}
       onSubmit={async (event) => {
         event.preventDefault();
@@ -435,7 +435,7 @@ function ArchivedQuestions({ items }: { items: QuestionMessage[] }) {
       {items.map((item) => (
         <dl
           key={item.id}
-          className="mb-3 space-y-2 rounded-xl border border-border bg-elevated p-4"
+          className="mb-3 space-y-2 border-y border-border py-4"
         >
           {item.questions?.map((question, index) => (
             <div key={index}>

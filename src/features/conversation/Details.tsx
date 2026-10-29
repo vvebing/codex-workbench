@@ -59,7 +59,7 @@ export function Details({
       >
         <Tabs.List
           aria-label={t("项目工具")}
-          className="flex shrink-0 gap-1 border-b border-border p-2"
+          className="project-tool-tabs flex shrink-0 gap-1 border-b border-border px-2"
         >
           {(
             [
@@ -72,7 +72,7 @@ export function Details({
             <Tabs.Trigger
               key={value}
               value={value}
-              className="flex-1 rounded-md px-3 py-2 text-xs text-muted hover:bg-hover data-[state=active]:bg-selected data-[state=active]:font-medium data-[state=active]:text-accent"
+              className="relative min-h-11 min-w-0 flex-1 border-b-2 border-transparent px-2 py-2 text-xs text-muted hover:bg-hover data-[state=active]:border-foreground data-[state=active]:font-medium data-[state=active]:text-foreground"
             >
               {label}
             </Tabs.Trigger>

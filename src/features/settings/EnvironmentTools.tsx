@@ -115,7 +115,7 @@ export function EnvironmentTools({
           {state.mcp.data?.data.map((server) => (
             <div
               key={server.name}
-              className="space-y-1 rounded-lg border border-border p-3"
+              className="space-y-1 border-b border-border py-3 last:border-b-0"
             >
               <p>
                 {server.name} · {server.runtimeStatus ?? t("状态未知")} ·{" "}
@@ -283,7 +283,7 @@ export function EnvironmentTools({
         <div className="space-y-3">
           {state.skills.data?.data.map((entry) => (
             <div key={entry.cwd} className="space-y-2">
-              <p className="text-muted break-all">{entry.cwd}</p>
+              <p className="text-muted [overflow-wrap:anywhere]">{entry.cwd}</p>
               {entry.errors.map((error) => (
                 <p key={error.path} className="text-danger">
                   {error.path}: {error.message}
@@ -292,7 +292,7 @@ export function EnvironmentTools({
               {entry.skills.map((skill) => (
                 <div
                   key={skill.path}
-                  className="flex items-center justify-between gap-3"
+                  className="flex items-start justify-between gap-3 border-b border-border py-3 last:border-b-0 max-[550px]:flex-wrap"
                 >
                   <div className="min-w-0 flex-1">
                     <p>
@@ -394,12 +394,15 @@ export function EnvironmentTools({
         t("可用应用"),
         <div className="space-y-2">
           {state.apps.data?.data.map((app) => (
-            <div key={app.id} className="space-y-1">
+            <div
+              key={app.id}
+              className="space-y-2 border-b border-border py-3 last:border-b-0"
+            >
               <p>
                 {app.name} · {app.isEnabled ? t("已启用") : t("已停用")}
               </p>
               <p className="text-muted">{app.description}</p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   variant="secondary"

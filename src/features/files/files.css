@@ -16,13 +16,31 @@
   }
   .file-toolbar {
     display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .file-tabs-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 42px;
+    min-width: 0;
+  }
+  .file-document-actions {
+    display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 4px;
-    min-height: 40px;
-    padding: 0 8px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
+    min-height: 36px;
+    padding: 3px 0;
+    border-top: 1px solid var(--border);
+    background: var(--background);
+  }
+  .file-document-actions > :last-child {
+    margin-left: auto;
   }
   .file-tab > :where(.is-preview) {
     font-style: italic;
@@ -33,12 +51,13 @@
     min-height: 40px;
     padding-right: 4px;
     flex-shrink: 0;
-    border-right: 1px solid var(--border);
     border-bottom: 2px solid transparent;
+    color: var(--muted);
   }
   .file-tab.is-active {
-    border-bottom-color: var(--accent);
-    background: var(--selected);
+    border-bottom-color: var(--foreground);
+    background: var(--background);
+    color: var(--foreground);
   }
   .file-tab > :where([role="tab"]) {
     align-self: stretch;
@@ -57,7 +76,8 @@
     gap: 12px;
     align-items: center;
     min-height: 32px;
-    padding: 0 12px;
+    padding: 4px 12px;
+    color: var(--muted);
     font-size: var(--text-meta);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
@@ -108,6 +128,7 @@
     padding: 4px 12px;
     font-size: var(--text-meta);
     color: var(--muted);
+    background: var(--surface);
     flex-shrink: 0;
   }
   .file-status-group {
@@ -161,6 +182,8 @@
     gap: 4px;
     border-radius: 8px;
     background: var(--surface);
+    padding: 2px;
+    border: 1px solid var(--border);
   }
   .file-comparison-labels {
     display: flex;
@@ -196,9 +219,17 @@
       min-height: 44px;
       min-width: 44px;
     }
-    .file-toolbar {
-      flex-wrap: wrap;
+    .file-document-actions {
       gap: 4px 8px;
+    }
+    .file-dirty-indicator {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin-right: 6px;
+      border-radius: 50%;
+      background: var(--warning);
+      vertical-align: middle;
     }
     .file-breadcrumb {
       flex-wrap: wrap;

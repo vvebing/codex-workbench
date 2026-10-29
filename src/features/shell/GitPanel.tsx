@@ -109,12 +109,16 @@ function GitPanelContents({
   };
   return (
     <div className="min-w-0 pb-3 text-caption" aria-label={t("源代码管理")}>
-      <div className="flex items-center gap-2 border-b border-border p-3">
+      <div className="flex min-w-0 items-center gap-1 border-b border-border px-3 py-2">
         <div
           className="git-branch-label"
           title={state.connected ? state.value?.branch : undefined}
         >
-          <GitBranch size={15} className="text-accent" aria-hidden="true" />
+          <GitBranch
+            size={15}
+            className="shrink-0 text-muted"
+            aria-hidden="true"
+          />
           <span className="truncate">
             {state.connected
               ? (state.value?.branch ?? t("Git 工作区"))
@@ -159,7 +163,7 @@ function GitPanelContents({
       )}
       {!state.connected ? (
         <div className="git-empty">
-          <Unplug size={24} />
+          <Unplug size={20} aria-hidden="true" />
           <strong>{t("环境未连接")}</strong>
           <p>{t("连接环境后查看仓库更改。")}</p>
         </div>
@@ -174,7 +178,7 @@ function GitPanelContents({
         </p>
       ) : state.value.changedFiles === 0 ? (
         <div className="git-empty" role="status">
-          <CheckCheck size={28} className="text-success" />
+          <CheckCheck size={20} className="text-success" aria-hidden="true" />
           <strong>{t("工作区干净")}</strong>
           <p>{t("所有更改均已提交。")}</p>
         </div>
@@ -257,10 +261,10 @@ function GitPanelContents({
                           }}
                         >
                           <File size={14} className="text-muted" />
-                          <span className="min-w-0 truncate">
+                          <span className="min-w-0 [overflow-wrap:anywhere]">
                             {file.path.split("/").at(-1)}
                           </span>
-                          <span className="min-w-0 flex-1 truncate text-meta text-subtle">
+                          <span className="min-w-0 flex-1 truncate text-meta text-muted">
                             {!treeView && file.path.includes("/")
                               ? file.path.slice(0, file.path.lastIndexOf("/"))
                               : ""}

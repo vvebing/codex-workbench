@@ -220,5 +220,5 @@ export function MessageEditor(props: Props) {
       editor.commands.focus("end");
   }, [editor, props.autoFocus, props.draft.restored?.id]);
 
-  return <EditorContent editor={editor} />;
+  return <EditorContent editor={editor} className="composer-input-surface" />;
 }

@@ -597,7 +597,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
           >
             <button
               type="button"
-              className={`flex min-w-0 flex-1 items-center gap-1.5 rounded py-1.5 pr-2 text-left text-xs hover:bg-hover disabled:opacity-50 ${decoration?.className ?? (isIgnored ? "text-muted" : "")}`}
+              className={`flex min-w-0 flex-1 items-center gap-1.5 min-h-8 rounded py-1.5 pr-2 text-left text-caption max-[900px]:min-h-11 hover:bg-hover disabled:opacity-50 ${decoration?.className ?? (isIgnored ? "text-muted" : "")}`}
               style={{ paddingLeft: 12 + depth * 12 }}
               title={t("{{value0}}{{value1}}", {
                 value0: entry.path,
@@ -660,7 +660,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
               )}
             </button>
             <IconButton
-              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-[900px]:opacity-100"
+              className="text-muted opacity-60 group-hover:opacity-100 focus-visible:opacity-100 max-[900px]:opacity-100"
               label={t("更多操作：{{value0}}", { value0: entry.path })}
               title={t("更多操作")}
               aria-haspopup="menu"
@@ -689,7 +689,7 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
   };
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col"
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
       aria-label={t("项目文件")}
       onDragOver={(event) => {
         if (!event.dataTransfer.types.includes("Files")) return;
@@ -727,29 +727,31 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
           void receiveFiles(incoming, uploadDirectory.current);
         }}
       />
-      <div className="flex items-center gap-2 p-3">
-        <button
-          type="button"
-          aria-label={t("选择项目根目录")}
-          aria-pressed={selected === undefined}
-          onClick={() => {
-            setSelected(undefined);
-            setSelectedDirectory(false);
-          }}
-          className={`min-w-0 flex-1 truncate rounded px-1 text-left text-xs font-medium hover:bg-hover ${selected === undefined ? "bg-selected" : ""}`}
-          title={`${thread.cwd}${decorations.get("") ? `：${decorations.get("")!.label}` : ""}`}
-        >
-          {thread.cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? thread.cwd}
-        </button>
-        {decorations.get("") && (
-          <span
-            className={`text-xs font-mono ${decorations.get("")!.className}`}
-            title={decorations.get("")!.label}
-            aria-label={decorations.get("")!.label}
+      <div className="flex min-w-0 flex-wrap items-center gap-1 border-b border-border px-3 py-2">
+        <div className="mb-1 flex min-h-8 w-full min-w-0 items-center gap-2">
+          <button
+            type="button"
+            aria-label={t("选择项目根目录")}
+            aria-pressed={selected === undefined}
+            onClick={() => {
+              setSelected(undefined);
+              setSelectedDirectory(false);
+            }}
+            className={`min-h-8 min-w-0 flex-1 truncate rounded px-1 text-left text-control font-medium hover:bg-hover ${selected === undefined ? "bg-selected" : ""}`}
+            title={`${thread.cwd}${decorations.get("") ? `：${decorations.get("")!.label}` : ""}`}
           >
-            {decorations.get("")!.badge}
-          </span>
-        )}
+            {thread.cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? thread.cwd}
+          </button>
+          {decorations.get("") && (
+            <span
+              className={`text-xs font-mono ${decorations.get("")!.className}`}
+              title={decorations.get("")!.label}
+              aria-label={decorations.get("")!.label}
+            >
+              {decorations.get("")!.badge}
+            </span>
+          )}
+        </div>
         <IconButton
           label={t("上传文件")}
           title={t("上传到：{{value0}}（每个文件最多 8 MB）", {
@@ -823,9 +825,9 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
           {dropDirectory || t("项目根目录")}
         </p>
       )}
-      <div className="px-3 pb-2">
+      <div className="px-3 py-2">
         <input
-          className={settingsInputClass}
+          className={`${settingsInputClass} min-h-8 py-1.5 text-caption`}
           aria-label={t("搜索项目文件")}
           placeholder={t("搜索文件…")}
           value={query}

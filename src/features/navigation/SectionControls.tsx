@@ -174,7 +174,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
         </p>
       )}
       <form
-        className="rounded-xl border border-border bg-elevated p-3"
+        className="border-b border-border pb-5"
         onSubmit={(event) => {
           event.preventDefault();
           if (!busy && newName.trim())
@@ -233,7 +233,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
         >
           <div className="space-y-2">
             {state.sections.length === 0 && (
-              <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-caption text-muted">
+              <div className="px-1 py-6 text-caption text-muted">
                 {state.sectionsLoading
                   ? t("正在加载分区…")
                   : state.sectionsError
@@ -244,7 +244,7 @@ function SectionEditor({ environment }: { environment: Environment }) {
             {state.sections.map((section) => (
               <div
                 key={section.id}
-                className="rounded-xl border border-border p-3"
+                className="border-b border-border py-4 last:border-b-0"
               >
                 {editing === section.id ? (
                   <form

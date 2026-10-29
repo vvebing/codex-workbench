@@ -9,7 +9,7 @@ export function AppServerVersion({ version }: { version: string | null }) {
   const { latest, status, error } = useStore(releaseCheck);
   return (
     <div
-      className="space-y-2 rounded-lg border border-border bg-surface p-3"
+      className="space-y-2 border-b border-border pb-4"
       data-slot="app-server-version"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">

@@ -8,6 +8,43 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @layer components {
+  .workbench-start {
+    display: flex;
+    min-height: 100%;
+    padding: 80px 40px;
+    align-items: center;
+  }
+  .workbench-start-content {
+    width: 100%;
+    max-width: 600px;
+    margin-inline: auto;
+    padding-bottom: 48px;
+  }
+  .workbench-environment {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  @container conversation (width < 550px) {
+    .workbench-start {
+      padding: 48px 24px;
+    }
+    .workbench-start-content {
+      padding-bottom: 0;
+    }
+    .workbench-environment {
+      align-items: flex-start;
+      flex-direction: column;
+      margin-top: 36px;
+    }
+    .workbench-environment > button {
+      margin-left: -8px;
+    }
+  }
+
   .conversation-content {
     width: 100%;
     min-width: 0;
@@ -34,6 +71,28 @@
   body {
     margin: 0;
     font-size: var(--text-body);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--foreground);
+  }
+  input,
+  textarea,
+  [contenteditable="true"] {
+    caret-color: var(--accent);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--subtle);
+    opacity: 1;
+  }
+  a {
+    text-underline-offset: 3px;
+  }
+  time {
+    font-variant-numeric: tabular-nums;
   }
   button {
     cursor: pointer;
@@ -58,7 +117,8 @@
   button {
     transition:
       background-color 140ms,
-      color 140ms;
+      color 140ms,
+      border-color 140ms;
   }
   svg {
     flex-shrink: 0;

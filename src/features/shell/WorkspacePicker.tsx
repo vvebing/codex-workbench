@@ -114,10 +114,10 @@ export function WorkspacePicker({
     else setAddressError(t("请输入完整的绝对路径，例如 /home 或 C:\\Users。"));
   };
   return (
-    <div className="mt-2">
-      <div className="flex items-start gap-2">
+    <div className="mt-2 min-w-0">
+      <div className="flex min-w-0 flex-wrap items-start gap-2">
         <div
-          className="min-w-0 flex-1"
+          className="min-w-[min(100%,220px)] flex-1"
           onBlur={(event) => {
             if (
               !event.currentTarget.contains(event.relatedTarget as Node | null)
@@ -214,7 +214,7 @@ export function WorkspacePicker({
                           aria-selected={active === index}
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => choose(name)}
-                          className="cursor-pointer break-all rounded px-3 py-2 text-caption hover:bg-hover aria-selected:bg-hover"
+                          className="cursor-pointer [overflow-wrap:anywhere] rounded px-3 py-2 text-caption hover:bg-hover aria-selected:bg-hover"
                         >
                           {name}
                           {separator(completion!.parent)}
@@ -257,7 +257,7 @@ export function WorkspacePicker({
       {browsePath !== null && (
         <section
           aria-label={t("目录浏览器")}
-          className="mt-3 rounded-lg border border-border p-3"
+          className="mt-3 min-w-0 rounded-lg border border-border p-3 [overflow-wrap:anywhere]"
         >
           <p className="mb-2 text-caption text-muted">
             {t("正在浏览：")}
@@ -289,7 +289,7 @@ export function WorkspacePicker({
           {addressError && (
             <ErrorNotice className="mt-2">{addressError}</ErrorNotice>
           )}
-          <div className="my-2 flex gap-2">
+          <div className="my-2 flex flex-wrap gap-2">
             <Button
               type="button"
               variant="secondary"
@@ -321,7 +321,10 @@ export function WorkspacePicker({
                 {t("正在读取目录…")}
               </p>
             ) : current.error ? (
-              <p role="status" className="break-all text-caption text-danger">
+              <p
+                role="status"
+                className="[overflow-wrap:anywhere] text-caption text-danger"
+              >
                 {current.error}
               </p>
             ) : current.directories.length === 0 ? (
@@ -338,12 +341,14 @@ export function WorkspacePicker({
                   className="flex min-h-10 w-full items-center gap-2 rounded px-2 py-2 text-left text-caption hover:bg-hover"
                 >
                   <Folder size={15} className="shrink-0 text-muted" />
-                  <span className="break-all">{name}</span>
+                  <span className="min-w-0 [overflow-wrap:anywhere]">
+                    {name}
+                  </span>
                 </button>
               ))
             )}
           </ScrollArea>
-          <div className="mt-3 flex justify-end gap-2">
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
             <Button
               type="button"
               variant="secondary"

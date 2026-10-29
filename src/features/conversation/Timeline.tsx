@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import "./conversation.css";
 import { getLocale, t } from "../../lib/i18n";
 import { asyncAnswerItemId } from "./async-questions";
 import {
@@ -930,7 +931,7 @@ export const Item = memo(function Item({
             ? "assistant-final-answer"
             : "assistant-answer"
         }
-        className="mb-6"
+        className="conversation-answer mb-6"
       >
         {!hideDivider && (item.phase === "final_answer" || action) && (
           <hr className="mb-5 border-0 border-t border-border" />
@@ -947,9 +948,13 @@ export const Item = memo(function Item({
         data-answer-record={item.clientId ?? item.id}
         data-question-answer-for={asyncAnswerItemId(item.clientId)}
         data-prompt-id={item.id}
+        data-slot="user-message"
         data-reading-id={item.id}
-        className="relative mb-6 ml-auto w-fit min-w-0 max-w-full rounded-xl border border-border bg-surface p-3 pr-12 sm:px-5 sm:py-4 sm:pr-12"
+        className="conversation-prompt relative mb-6 min-w-0 rounded-lg bg-surface p-4 pr-12"
       >
+        <div className="mb-2 text-meta font-medium text-muted">
+          {t("你的消息")}
+        </div>
         {action}
         <CollapsiblePrompt
           preview={item.content
@@ -1430,10 +1435,19 @@ function TimelineContent({
               <div
                 data-slot="conversation-loading"
                 role="status"
-                className="flex items-center justify-center gap-2 py-16 text-sm text-muted"
+                className="conversation-loading"
               >
-                <LoaderCircle size={18} className="animate-spin" />
-                {t("正在加载会话…")}
+                <span className="sr-only">{t("正在加载会话…")}</span>
+                <div
+                  aria-hidden="true"
+                  className="conversation-loading-prompt"
+                />
+                <div aria-hidden="true" className="conversation-loading-line" />
+                <div aria-hidden="true" className="conversation-loading-line" />
+                <div
+                  aria-hidden="true"
+                  className="conversation-loading-line w-2/3"
+                />
               </div>
             ) : !thread ? (
               <div
@@ -1476,7 +1490,7 @@ function TimelineContent({
                       data-slot={local ? "local-message" : "conversation-turn"}
                       data-delivery-status={local?.status}
                       data-turn-id={turn.id}
-                      className={`relative pt-3 pb-6 ${index > 0 ? "border-t border-border" : ""}`}
+                      className={`relative pt-4 pb-8 ${index > 0 ? "border-t border-border" : ""}`}
                       key={submissions.messages.identity(turn.id)}
                       aria-label={t("第 {{value0}} 轮对话", {
                         value0: index + 1,

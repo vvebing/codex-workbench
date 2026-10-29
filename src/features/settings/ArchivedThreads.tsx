@@ -155,9 +155,9 @@ export function ArchivedThreads({
         </IconButton>
       </div>
       {!connected && (
-        <div className="mt-6 flex flex-col items-center rounded-xl border border-dashed border-border bg-surface px-4 py-8 text-center text-muted">
-          <Archive size={30} strokeWidth={1.5} />
-          <h4 className="mt-4 mb-2 text-sm text-foreground">
+        <div className="mt-6 flex flex-col items-start px-1 py-6 text-left text-muted">
+          <Archive size={20} strokeWidth={1.5} aria-hidden="true" />
+          <h4 className="mt-3 mb-1 text-sm font-medium text-foreground">
             {t("先连接工作环境")}
           </h4>
           <p className="text-xs leading-relaxed">
@@ -190,11 +190,11 @@ export function ArchivedThreads({
       {[...groups].map(([cwd, entries]) => (
         <details
           data-slot="archive-group"
-          className="group mb-4 overflow-hidden rounded-xl border border-border bg-elevated"
+          className="group mb-4 border-y border-border"
           key={cwd}
           open
         >
-          <summary className="flex cursor-pointer list-none items-center gap-2 bg-surface p-4 [&::-webkit-details-marker]:hidden max-[550px]:p-3">
+          <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 bg-surface px-3 py-3 [&::-webkit-details-marker]:hidden">
             <ChevronDown
               size={15}
               className="-rotate-90 transition-transform group-open:rotate-0"
@@ -211,7 +211,7 @@ export function ArchivedThreads({
                 {cwd || t("未指定工作区")}
               </small>
             </span>
-            <span className="rounded-lg bg-hover px-2 py-1 text-meta text-muted">
+            <span className="px-1 text-meta tabular-nums text-muted">
               {entries.length}
             </span>
           </summary>
@@ -219,7 +219,7 @@ export function ArchivedThreads({
             {entries.map((thread) => (
               <div
                 data-slot="archive-thread"
-                className="flex items-center gap-4 border-t border-border p-4 max-[550px]:gap-2 max-[550px]:p-3"
+                className="flex items-center gap-4 border-t border-border px-3 py-3 max-[550px]:gap-2"
                 key={thread.id}
               >
                 <div className="min-w-0 flex-1">
@@ -273,9 +273,9 @@ export function ArchivedThreads({
         </details>
       ))}
       {connected && !threads.length && !busy && !error && (
-        <div className="mt-6 flex flex-col items-center rounded-xl border border-dashed border-border bg-surface px-4 py-8 text-center text-muted">
-          <Archive size={30} strokeWidth={1.5} />
-          <h4 className="mt-4 mb-2 text-sm text-foreground">
+        <div className="mt-6 flex flex-col items-start px-1 py-6 text-left text-muted">
+          <Archive size={20} strokeWidth={1.5} aria-hidden="true" />
+          <h4 className="mt-3 mb-1 text-sm font-medium text-foreground">
             {search ? t("没有匹配的会话") : t("还没有归档的会话")}
           </h4>
           <p className="text-xs leading-relaxed">

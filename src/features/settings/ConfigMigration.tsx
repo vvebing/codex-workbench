@@ -31,7 +31,7 @@ export function ConfigMigration({
           "先探测可迁移内容，再明确选择导入项。导入会修改当前环境的配置或文件。",
         )}
       >
-        <p className="break-all text-muted">
+        <p className="text-muted [overflow-wrap:anywhere]">
           {t("项目目录：")}
           {cwd ?? t("未选择（仅在开启下方选项后探测用户目录）")}
         </p>
@@ -68,7 +68,7 @@ export function ConfigMigration({
             {state.detected.items.map((item, index) => (
               <label
                 key={index}
-                className="flex items-start gap-2 rounded-lg border border-border p-3"
+                className="flex items-start gap-3 border-b border-border py-3 last:border-b-0"
               >
                 <input
                   type="checkbox"
@@ -158,7 +158,7 @@ export function ConfigMigration({
         {state.histories?.data.map((history) => (
           <div
             key={history.importId}
-            className="space-y-1 rounded-lg border border-border p-3"
+            className="space-y-1 border-b border-border py-3 last:border-b-0"
           >
             <p>
               {history.providerId ?? t("外部配置")} ·{" "}
