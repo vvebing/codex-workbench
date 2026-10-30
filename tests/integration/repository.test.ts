@@ -180,7 +180,7 @@ test("repository check rejects links in both working tree and index", async () =
   }
 });
 
-test("repository ignore rules preserve icons but exclude private images and keys", async () => {
+test("repository check rejects untracked private images and keys with current ignore rules", async () => {
   const fixtureState = await fixture();
   try {
     await copyFile(
@@ -201,11 +201,13 @@ test("repository ignore rules preserve icons but exclude private images and keys
       .git("ls-files", "--others", "--exclude-standard")
       .toString();
     assert.match(untracked, /public\/icons\/favicon\.png/);
-    assert.doesNotMatch(untracked, /private\.png|attachment\.pdf|id_ed25519/);
-    fixtureState.git("add", "-f", "private.png");
+    for (const path of ["private.png", "attachment.pdf", "id_ed25519"])
+      assert(untracked.split("\n").includes(path), `${path} should be visible`);
     const result = fixtureState.check();
     assert.equal(result.status, 1);
     assert.match(result.stderr, /private\.png: unapproved image/);
+    assert.match(result.stderr, /attachment\.pdf: unapproved image/);
+    assert.match(result.stderr, /id_ed25519: private configuration/);
   } finally {
     await fixtureState.close();
   }

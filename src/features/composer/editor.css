@@ -101,13 +101,12 @@
   }
   .composer-submit {
     flex: 1 1 auto;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 4px 12px;
     margin-left: auto;
   }
   .composer-submit-actions {
     justify-content: flex-end;
-    margin-left: auto;
   }
   .composer-send {
     display: grid;

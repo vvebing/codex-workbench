@@ -1,6 +1,6 @@
 # app-server 接口逐项清单
 
-由 `node scripts/audit-app-server.mjs` 从当前生成类型和业务调用生成；用 `--check` 校验清单是否过期。语义结论、修复与限制见 [审计报告](app-server-audit-2026-10-20.md)。
+由 `node scripts/audit-app-server.mjs` 从当前生成类型和业务调用生成；用 `--check` 校验清单是否过期。请求生命周期、交互处理和验证边界见 [协议约定](protocol.md)。
 
 ClientRequest：108 个，调用 67 个，未调用 41 个。ServerRequest：10 个；ServerNotification：86 个。
 

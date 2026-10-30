@@ -36,7 +36,7 @@ function CompletionNotice({
   return (
     <div
       data-slot="completion-notification"
-      className="flex items-center gap-2 rounded-xl border border-border bg-elevated p-3 shadow-lg"
+      className="pointer-events-auto flex items-center gap-2 rounded-xl border border-border bg-elevated p-3 shadow-lg"
       role="status"
     >
       <button
@@ -47,8 +47,8 @@ function CompletionNotice({
           void runtime.sessions.open(threadId).catch(() => {});
         }}
       >
-        <CircleCheck size={20} className="text-success" />
-        <span>
+        <CircleCheck size={20} className="shrink-0 text-success" />
+        <span className="min-w-0">
           <strong className="flex items-center gap-1.5 text-xs">
             <EnvironmentIcon environment={environment} focusable={false} />
             {t("会话已完成")}
@@ -313,9 +313,10 @@ export function CompletionNotifications() {
   void i18nLocale;
   const state = useStore(environments);
   return (
-    <div className="fixed top-[68px] right-4 z-70 w-[min(320px,calc(100vw-32px))]">
-      <ScrollArea className="max-h-[calc(100dvh-84px)]">
-        <div className="grid gap-2">
+    <div className="pointer-events-none fixed top-[68px] right-4 z-70 w-[min(320px,calc(100vw-32px))]">
+      <ScrollArea className="-m-3 max-h-[calc(100dvh-60px)] [&>[data-orientation]]:pointer-events-auto">
+        {/* Keep borders and shadows clear of viewport clipping and the scrollbar. */}
+        <div className="grid min-w-0 gap-2 p-3">
           {state.entries.map((environment) => (
             <RuntimeContext.Provider
               key={environment.id}
@@ -349,7 +350,7 @@ function ActionNotice({
     <div
       data-slot="action-notification"
       role="status"
-      className="flex items-center gap-2 rounded-xl border border-warning/40 bg-elevated p-3 shadow-lg"
+      className="pointer-events-auto flex items-center gap-2 rounded-xl border border-warning/40 bg-elevated p-3 shadow-lg"
     >
       <button
         type="button"

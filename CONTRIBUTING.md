@@ -1,39 +1,68 @@
 # 参与开发
 
-使用 Node.js 24 LTS 开发和发布（运行已发布的工作台支持 Node.js 22.12+）。
+Codex Workbench 使用 TypeScript、React 和 Node.js。开发与发布使用 Node.js 24；发行包的运行要求为 Node.js 22.12+。
+
+## 准备环境
 
 ```sh
 npm ci
 npm run patch:release-tools
+npx playwright install chromium
+```
+
+在两个终端分别启动协议服务和网页：
+
+```sh
+codex app-server --listen ws://127.0.0.1:4501
+```
+
+```sh
 npm run dev
 ```
 
-开发时单独启动 Codex app-server，详见 [README](README.md)。`npm ci` 会自动安装仓库 Git 钩子，也可运行 `npm run hooks:install` 安装。每次 commit 前，钩子会将暂存区导出到临时目录，安装锁定依赖，并运行与 GitHub CI 共用的 `npm run ci` 和 `npm run ci:e2e`（安全审计、静态检查、单元/集成测试、生产构建、打包验证和完整生产模式 E2E）。任一步失败即阻止提交；部分暂存也只检查实际提交内容，不会 stash 或改动工作区。首次使用请运行 `npx playwright install chromium`，并确保能访问 npm registry。检查结束后临时目录会清理。
+打开 `http://127.0.0.1:5180`，在工作环境设置中连接 app-server。开发服务不管理 app-server 进程。目录职责、状态约束和测试策略见[开发指南](docs/development.md)与[架构说明](docs/architecture.md)。
 
-本地检查不能证明 GitHub 托管运行器上的 Actions 已成功；远端仍在推送后验证。Git 钩子可被 `--no-verify` 绕过，也不会随 clone 自动生效，团队还应使用分支保护要求 CI 成功才能合并。
+## 完成一项变更
 
-手动验证可执行 `npm run ci && npm run ci:e2e`。浏览器验证见[开发文档](docs/development.md)。
+1. 明确用户可观察的行为，将代码放入对应 feature；共享能力放入 `src/lib/` 或 `src/components/`。
+2. 为行为变化补充适当的单元、集成或浏览器测试。文案与低风险文档变更检查格式、链接和事实即可。
+3. 同步用户指南、接口清单和相关设计约定；产品界面文案同时提供英文与简体中文。
+4. 检查工作区与暂存差异，确认没有凭据、真实会话、附件或本机产物。
+5. 运行相关验证，在 PR 中说明行为、验证结果和已知限制。
 
-## 提交规范
+完整本地门禁：
 
-使用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/)。可以手写提交信息，或使用 Commitizen 向导：
+```sh
+npm run ci
+npm run ci:e2e
+```
+
+`ci` 应用发布工具补丁、审计依赖，执行全部质量检查、构建和真实 tarball 安装验证；`ci:e2e` 使用生产构建执行浏览器测试。先完成 `ci` 再运行 `ci:e2e`。依赖安装和审计需要访问 npm registry。
+
+## Git 钩子
+
+仓库中的 `npm ci` 会安装 `.githooks`，也可运行 `npm run hooks:install`。已有其他 `core.hooksPath` 时，需先整合钩子配置。
+
+提交前钩子把暂存内容导出至临时仓库，安装锁定依赖并执行 `npm run ci` 和 `npm run ci:e2e`。部分暂存只验证将被提交的内容，不改变工作区或依赖目录；检查后清理临时目录。请预先安装 Chromium。任一检查失败会阻止提交。
+
+本地钩子可被绕过，远端 CI 仍是合并门禁。维护者应为 main 配置必需检查和分支保护。
+
+## 提交与 PR
+
+提交信息和 PR 标题遵循 Conventional Commits。可使用交互向导：
 
 ```sh
 git add <files>
 npm run commit
 ```
 
-`cz-conventional-changelog` 负责生成提交信息；semantic-release 根据这些信息决定版本并生成更新日志。
+| 类型                                                | 发布影响       |
+| --------------------------------------------------- | -------------- |
+| `fix(scope): description`                           | patch          |
+| `feat(scope): description`                          | minor          |
+| `feat!: description` 或正文中的 `BREAKING CHANGE:`  | major          |
+| `docs:`、`test:`、`chore:`、`ci:`、普通 `refactor:` | 不单独触发发布 |
 
-| 提交                                                            | 发布结果       |
-| --------------------------------------------------------------- | -------------- |
-| `fix(cli): validate port`                                       | patch          |
-| `feat(cli): support custom port`                                | minor          |
-| `feat!: remove deprecated option` 或正文中的 `BREAKING CHANGE:` | major          |
-| `docs:`、`test:`、`chore:`、`ci:`、普通 `refactor:`             | 不单独触发发布 |
+PR 描述先说明具体问题与最终行为，再给出验证结果。推荐 squash 合并并保留 PR 标题的提交语义。版本号、发布标签和发行更新日志由 semantic-release 管理，流程见[发布指南](docs/release.md)。
 
-PR 标题同样遵循该规范，CI 使用 commitlint 检查。推荐在 GitHub 启用 **Squash merge**，并将默认 squash 提交信息设置为 PR 标题；破坏性变更在标题中使用 `!`，避免合并时丢失语义。如果选择保留多个提交，每个提交都应符合规范。直接推送 main 也必须遵守约定。
-
-不要手工修改发布版本号、创建发布标签或提交生成的发布日志。版本与日志由 main 分支上的 semantic-release 管理；设置与首次发布步骤见[发布指南](docs/release.md)。
-
-贡献按仓库的 [MIT License](LICENSE) 提供。
+贡献按 [MIT License](LICENSE) 提供。安全问题按[安全说明](SECURITY.md)中的私密报告方式处理。

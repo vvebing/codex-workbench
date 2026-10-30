@@ -1,100 +1,70 @@
-# App-server 接入范围
+# app-server 功能范围
 
-本表以仓库生成的 [`ClientRequest`](../src/generated/ClientRequest.ts) 为协议基准：共 **108 个请求方法**，当前业务代码已使用 **67 个请求方法**，另 **41 个明确暂缓**。这是代码接入数量，不代表每个服务端版本、账户或受管环境都能成功调用，也不把服务端通知、审批响应或声明的类型算成新请求。
+本项目通过 Codex app-server 执行任务。协议类型来自 [`src/generated/`](../src/generated/ClientRequest.ts)，业务接入以实际请求调用为准。仓库协议包含 **108 个客户端方法、10 个服务端请求和 86 个通知**，业务代码调用其中 **67 个客户端方法**。
 
-统计方法：扫描 `src/` 中除 `generated/` 外的请求调用，包含分页辅助函数与 `writeRequest`、`threadRequest` 等封装，并与生成的方法集合交叉核对。连接初始化计入；用于工作目录、文件补全、文件监听和 Git 操作的后台请求也计入。同一方法被多个功能复用只计一次；文件树 Git 标记、Git 状态与差异查询复用已有接口，文件编辑与管理新增 5 个原生文件方法。后续增删请求时需同步调整。
-
-产品用法见[使用指南](user-guide.md)，协议行为参照[官方 App-server 文档](https://learn.chatgpt.com/docs/app-server)。生成协议是本仓库实际类型依据，官方文档可能描述较新或不同版本的字段。
-
-详细字段、调用位置、服务端请求和通知见 [逐项清单](app-server-interface-matrix.md)，问题与验证边界见 [审计报告](app-server-audit-2026-10-20.md)。本机 0.163.0 的 `--experimental` 输出另含 67 个方法；108 不是完整实验协议的方法总数。
+[接口逐项清单](app-server-interface-matrix.md)列出字段、响应类型与源码位置；[协议约定](protocol.md)说明握手、写入、审批和验证边界。静态引用只说明代码接入，不保证目标账户、策略或服务器提供对应能力。
 
 ## 已接入：67 个
 
 | 产品功能                 | 请求方法                                                                                                                                                                                                                                | 入口与边界                                                                                                                               |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 连接与模型（2）          | `initialize`、`model/list`                                                                                                                                                                                                              | 工作环境连接、模型目录分页。声明客户端实验 API 兼容能力以访问应用等接口；不修改服务端实验功能开关。                                      |
+| 连接与模型（2）          | `initialize`、`model/list`                                                                                                                                                                                                              | 工作环境连接、模型目录分页。声明客户端 experimentalApi 能力以访问应用等接口；不修改服务端实验功能开关。                                  |
 | 账户（6）                | `account/read`、`account/rateLimits/read`、`account/login/start`、`account/login/cancel`、`account/logout`、`account/rateLimitResetCredit/consume`                                                                                      | 环境账户、设备码／浏览器／API Key 登录、退出、套餐与用量、确认使用已有重置机会。用量读取失败不影响连接，不依据百分比或重置时间推断恢复。 |
-| 会话历史与生命周期（13） | `thread/start`、`thread/resume`、`thread/read`、`thread/list`、`thread/turns/list`、`thread/items/list`、`thread/name/set`、`thread/archive`、`thread/unarchive`、`thread/fork`、`thread/revert`、`thread/delete`、`thread/unsubscribe` | 草稿首次发送、历史分页／搜索／补读、重命名、归档、分叉、回滚、永久删除和订阅释放。旧格式历史能力不同。                                   |
+| 会话历史与生命周期（13） | `thread/start`、`thread/resume`、`thread/read`、`thread/list`、`thread/turns/list`、`thread/items/list`、`thread/name/set`、`thread/archive`、`thread/unarchive`、`thread/fork`、`thread/revert`、`thread/delete`、`thread/unsubscribe` | 草稿首次发送、历史分页／搜索／补读、重命名、归档、分叉、回滚、永久删除和订阅释放。历史读取遵循服务端声明的 historyMode。                 |
 | 分类（5）                | `thread/section/move`、`threadSection/create`、`threadSection/delete`、`threadSection/list`、`threadSection/update`                                                                                                                     | 侧栏分类管理；当前协议不支持持久置顶。                                                                                                   |
 | 执行与审查（4）          | `turn/start`、`turn/steer`、`turn/interrupt`、`review/start`                                                                                                                                                                            | 发送、队列、立即引导、停止、会话内代码审查；写操作不自动重放。                                                                           |
 | 上下文压缩（1）          | `thread/compact/start`                                                                                                                                                                                                                  | 输入区快捷命令触发压缩，由服务端执行。                                                                                                   |
 | 会话目标（3）            | `thread/goal/get`、`thread/goal/set`、`thread/goal/clear`                                                                                                                                                                               | 会话工具中的目标、状态与可选 Token 预算；保存可能继续执行。                                                                              |
 | 参考资料关联（4）        | `thread/attachment/add`、`thread/attachment/list`、`thread/attachment/remove`、`thread/attachmentOwner/list`                                                                                                                            | 名称、URL／路径与会话的关联记录、所属会话分页。不是上传或文件内容注入。                                                                  |
 | 项目文件与补全（10）     | `fs/readDirectory`、`fs/readFile`、`fs/watch`、`fs/unwatch`、`fuzzyFileSearch`、`fs/writeFile`、`fs/createDirectory`、`fs/getMetadata`、`fs/remove`、`fs/copy`                                                                          | 目录树、搜索、Monaco 独立编辑工作区、会话文件链接定位、引用、保存冲突检查、新建、复制与确认删除；手机只读。                              |
-| Git 与项目命令（3）      | `command/exec`、`command/exec/write`、`command/exec/terminate`                                                                                                                                                                          | Git 只读查询、补丁导出和已有 worktree 选择；项目命令流式日志、标准输入与停止。Git 写操作入口及实现已移除。                               |
+| Git 与项目命令（3）      | `command/exec`、`command/exec/write`、`command/exec/terminate`                                                                                                                                                                          | Git 只读查询、补丁导出和已有 worktree 选择；项目命令流式日志、标准输入与停止。Git 操作仅提供读取与补丁导出。                             |
 | MCP 管理（3）            | `mcpServerStatus/list`、`mcpServer/oauth/login`、`config/mcpServer/reload`                                                                                                                                                              | 状态分页、显式 OAuth 授权、重新加载磁盘配置；展示启动与登录通知。                                                                        |
 | 配置诊断与有限编辑（3）  | `config/read`、`configRequirements/read`、`config/value/write`                                                                                                                                                                          | 只展示选定诊断字段；只允许修改默认模型与审批策略，有用户配置版本时使用版本校验。不提供任意配置／凭据编辑器。                             |
 | 技能与 Hooks（4）        | `skills/list`、`skills/config/write`、`skills/extraRoots/set`、`hooks/list`                                                                                                                                                             | 技能错误、启停、进程级额外目录；Hooks 只读。监听技能变更。                                                                               |
 | 应用（3）                | `app/list`、`app/read`、`app/installed`                                                                                                                                                                                                 | 可用／已安装应用与工具摘要、草稿中的显式应用提及。安装与工具执行不在此入口完成。                                                         |
-| 外部配置迁移（3）        | `externalAgentConfig/detect`、`externalAgentConfig/import`、`externalAgentConfig/import/readHistories`                                                                                                                                  | 默认只探测所选目录；明确选择后写入，展示进度、完成与历史，支持通知先于响应。                                                             |
+| 外部配置导入（3）        | `externalAgentConfig/detect`、`externalAgentConfig/import`、`externalAgentConfig/import/readHistories`                                                                                                                                  | 默认只探测所选目录；明确选择后写入，展示进度、完成与历史，支持通知先于响应。                                                             |
 
 核算：2 + 6 + 13 + 5 + 4 + 1 + 3 + 4 + 10 + 3 + 3 + 3 + 4 + 3 + 3 = **67**。请求均可在 `src/features/` 和 [`src/lib/rpc.ts`](../src/lib/rpc.ts) 中定位。
 
-## 明确暂缓：41 个
+## 未提供的接口：41 个
 
-| 范围                            | 请求方法                                                                                                                                                                                                                                                                                                                | 暂缓原因与必要性                                                                                                         |
+| 范围                            | 请求方法                                                                                                                                                                                                                                                                                                                | 产品边界                                                                                                                 |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | 独立 Shell 与交互终端（2）      | `thread/shellCommand`、`command/exec/resize`                                                                                                                                                                                                                                                                            | 项目命令已有输入、输出及停止；完整终端还需要终端仿真与尺寸管理，目前不提供。                                             |
 | 插件与市场（15）                | `marketplace/add`、`marketplace/remove`、`marketplace/upgrade`、`plugin/list`、`plugin/installed`、`plugin/reconcile`、`plugin/read`、`plugin/skill/read`、`plugin/install`、`plugin/uninstall`、`plugin/share/save`、`plugin/share/updateTargets`、`plugin/share/list`、`plugin/share/checkout`、`plugin/share/delete` | 涉及安装来源、权限、依赖、共享对象和磁盘变更，需要单独产品流程；当前展示技能、MCP 与应用即可。                           |
 | MCP 通用资源／工具控制台（2）   | `mcpServer/resource/read`、`mcpServer/tool/call`                                                                                                                                                                                                                                                                        | 手工构造任意工具输入与资源读取需要专门表单及权限流程；当前由模型在正常任务中调用。                                       |
 | 特殊账户与提供方（4）           | `account/gatewayOAuth/read`、`account/gatewayOAuth/login`、`account/gatewayOAuth/cancel`、`modelProvider/capabilities/read`                                                                                                                                                                                             | 专用网关登录与提供方能力诊断不是当前三种账户登录方式的必要补充。                                                         |
-| 计费、工作区消息与营销操作（3） | `account/usage/read`、`account/workspaceMessages/read`、`account/sendAddCreditsNudgeEmail`                                                                                                                                                                                                                              | 累计 Token 活动和组织消息后续按需补充；发送邮件需要独立明确的组织操作流程。                                              |
+| 计费、工作区消息与营销操作（3） | `account/usage/read`、`account/workspaceMessages/read`、`account/sendAddCreditsNudgeEmail`                                                                                                                                                                                                                              | 不提供累计 Token 活动、组织消息与营销邮件入口。                                                                          |
 | 实验功能与权限档案管理（3）     | `experimentalFeature/list`、`experimentalFeature/enablement/set`、`permissionProfile/list`                                                                                                                                                                                                                              | 客户端实验 API 能力声明不等于开启这些服务端功能。当前沿用服务端配置与受管策略，不增加全局实验开关。                      |
 | Windows 沙箱设置（2）           | `windowsSandbox/setupStart`、`windowsSandbox/readiness`                                                                                                                                                                                                                                                                 | 属于宿主机安装／修复流程，当前工作台连接已运行的服务，不管理操作系统设置。                                               |
 | 低层历史／运行控制（4）         | `thread/metadata/update`、`thread/loaded/list`、`thread/inject_items`、`thread/approveGuardianDeniedAction`                                                                                                                                                                                                             | 元数据接口不声明置顶字段；普通历史和子代理读取已满足需求；直接注入历史或推翻拒绝决定不应作为通用 UI 暴露。               |
 | 辅助写入与反馈（3）             | `config/batchWrite`、`externalAgentConfig/import/recordHistory`、`feedback/upload`                                                                                                                                                                                                                                      | 两项配置使用单值写入即可；导入历史由导入流程产生，不手工伪造；上传反馈需要单独说明收集内容和提交目标。                   |
-| 旧版兼容请求（3）               | `getConversationSummary`、`gitDiffToRemote`、`getAuthStatus`                                                                                                                                                                                                                                                            | 分别已有当前历史、单轮变更／Git 工作区 diff 和账户读取路径；当前 Git 查询通过 `command/exec`，不调用 `gitDiffToRemote`。 |
+| 其他协议请求（3）               | `getConversationSummary`、`gitDiffToRemote`、`getAuthStatus`                                                                                                                                                                                                                                                            | 分别已有当前历史、单轮变更／Git 工作区 diff 和账户读取路径；当前 Git 查询通过 `command/exec`，不调用 `gitDiffToRemote`。 |
 
 核算：2 + **15** + 2 + 4 + 3 + 3 + 2 + 4 + 3 + 3 = **41**。
 
-## 项目文件与 Git 的实现边界
+## 文件与 Git
 
-项目面板分为「文件」「Git」「会话」，每轮执行结果留在对话底部。三种变更范围分别处理，不能互相代替：
+文件树、文件管理和编辑器通过 `fs/*` 方法访问所连接环境。文本查看上限默认 8 MB，完整编辑默认 1 MB，简化编辑默认 5 MB；差异每个版本默认上限 8 MB。具体限制见[使用指南](user-guide.md)。读取采用整文件传输，客户端限制不能当作服务端分段读取保证。
 
-| 展示范围       | 数据来源                                                | 语义与边界                                                                                                                                                          |
-| -------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 当前仓库工作区 | `command/exec` 执行 Git status 与 diff                  | 顶部、Git 页和文件树共用状态；包含手工修改及其他会话产生的改动，不表示当前会话的贡献。已暂存与未暂存可以同时包含同一文件，顶部总数按文件计一次。                    |
-| 当前项目文件树 | `fs/readDirectory`、`fuzzyFileSearch` 与 Git 状态       | 文件显示 `M/A/D/R/C/T/U/?` 标记、颜色和状态说明；目录汇总子树变更，冲突优先。通过仓库根目录映射子目录路径，重命名在同一子树只计一次；不伪造已删除文件的可打开条目。 |
-| 单轮执行记录   | `turn/plan/updated`、`turn/diff/updated` 与该轮文件条目 | 按 `threadId + turnId` 隔离；汇总 diff（包括明确为空的 diff）优先，历史回退仅展示该轮已完成的文件操作，不将历史 patch 拼接称为会话累计净变更。                      |
+保存前核对磁盘基线，新建和复制前检查目标；这些检查与写入之间不是原子操作。协议未提供 compare-and-swap、排他创建或原子移动，因此并发写入仍需用户核对。
 
-文件浏览按目录逐层读取，搜索复用忽略规则过滤。文本预览限 UTF-8 且不超过 256 KB；这是客户端解码／展示限制，`fs/readFile` 仍返回完整文件内容，不是流式或分段读取。文件树使用监听和手动刷新；Git 状态另有轮次通知、页面焦点／可见性和可见页面定时刷新。当前状态缓存按连接、连接代次、作用域及工作目录隔离，尚未将同一仓库不同子目录合并为一个缓存键。
+Git 面板通过 `command/exec` 执行固定参数的只读查询，禁用网络访问与可选索引锁。支持状态分组、文件差异、补丁导出及已有 worktree 选择。暂存、提交、推送、PR 和 worktree 创建不属于工作台功能。
 
-快速打开文件（`⌘ / Ctrl P`）复用 `fuzzyFileSearch`，支持行列定位和当前项目已打开文件。内容搜索（`⌘ / Ctrl Shift F`）先通过只读 `command/exec` 执行 `git ls-files --cached --others --exclude-standard -z` 获取文件范围；非 Git 项目通过 `fs/readDirectory` 逐目录应用 `.gitignore`，复用规则读取。随后仅对候选文件分批执行 `grep`（最多 64 个文件／16 KB 路径参数），逐批推送匹配行；不可用时以最多 8 个并发 `fs/readFile` 读取匹配。输出截断仅重试当前批次，不重新扫描项目。支持普通字符串、大小写、匹配行分组与跳转，无需创建会话轮次。单次最多显示 500 个匹配行，命令输出和文件遍历有上限；取消时通过 `command/exec/terminate` 停止命令，文件接口回退则在当前请求返回后停止。
+仓库状态与轮次变更分别展示：仓库状态包括人工及其他会话的修改；轮次变更按 `threadId + turnId` 隔离，优先采用该轮汇总 diff。文件操作累计行数不表示最终净变更。
 
-### Git 面板
+## 服务端请求与通知
 
-Git 查询使用固定 argv 的 `command/exec` 和只读沙箱策略，关闭网络访问，并通过 `--no-optional-locks` 避免可选的索引更新。面板显示当前分支，按已暂存、未暂存、未跟踪和冲突状态分组展示文件，支持目录树／列表切换、刷新和文件差异查看。
+交互界面处理命令审批、文件审批、同步问题、权限审批与 MCP elicitation。其他服务端请求返回未知方法错误，不自动同意。审批选项遵循服务端声明，权限批准限定在申请范围内。
 
-文件树的忽略状态通过 `git check-ignore` 获取；编辑器行标记通过 `git ls-files` 和 `git cat-file` 读取暂存区基线；版本比较通过 `git rev-parse` 和 `git cat-file` 读取 Git 对象。查询使用所连接环境的 Git 和仓库读取权限。
+通知用于驱动轮次、条目、目标、账户与环境工具状态。逐项清单中的处理位置是代码引用，不代表所有通知字段均被消费。未提供实时音视频、完整终端、插件市场安装或通用 MCP 调试控制台。
 
-实现位置：[Git 面板](../src/features/shell/GitPanel.tsx)、[共享 Git 状态](../src/features/shell/workspace-git.ts)、[文件树标记](../src/features/shell/tree-git.ts)、[单轮结果](../src/features/conversation/TurnResults.tsx)。端到端验证覆盖状态分组、差异查看、刷新和只读查询策略。
+## 维护清单
 
-## 文件编辑与文件管理边界
+```sh
+npm run audit:protocol
+npm run check:protocol
+npm run typecheck
+```
 
-文件树与会话 Markdown 文件链接统一打开主区域文件工作区，支持多个标签，并根据内容区域宽度在会话／编辑器分栏与单区域切换之间自适应；分隔线支持拖动和键盘调整，比例保存到浏览器。“专注编辑”可展开编辑区域，返回分栏或会话时保留编辑器实例、撤销记录、会话滚动位置与输入草稿。相对链接按来源会话（包括子代理）的工作目录解析，支持行列和行范围；历史变更的“打开当前文件”读取当前磁盘内容，历史 diff 保持原样。HTTP 等外部链接沿用链接过滤。
-
-桌面端按需加载 Monaco 与本地 worker，提供语法高亮和基础编辑；没有引入完整 VS Code 扩展宿主或项目语言服务器。手机只读。当前支持不超过 256 KB 的 UTF-8 文本，保留 BOM 与换行；二进制、非 UTF-8 和超限文件显示不可编辑原因。`fs/readFile` 没有分段读取能力，因此大小限制是收到内容后的客户端保护。
-
-Diff 与 Markdown 预览复用现有 Monaco、ReactMarkdown 及相关依赖，不新增 app-server 方法。未保存差异比较最近读取／保存的基线与编辑缓冲，冲突差异比较已读取的磁盘版本与缓冲；两者均不代表 Git HEAD／暂存区差异。普通编辑与 Diff 共用缓冲模型与撤销记录。Markdown 支持编辑、预览和分屏，相对文件链接按文档所在目录解析；本地图片目前提示占位。
-
-普通文件编辑视图的左侧显示 Git 行标记：绿色为新增、蓝色为修改、红色三角为删除。标记比较暂存区与当前编辑缓冲，包含未保存草稿；仅已暂存且草稿与暂存区相同时不显示标记。悬停查看原内容，点击进入差异视图；未跟踪文件以空内容为基线。基线随 Git 状态刷新，输入时仅在本地计算差异。冲突、子模块、非文本或超限基线不显示标记并提示不可用。
-
-Git 页点击未暂存、已暂存或未跟踪文件，会在主编辑区打开只读 Diff 预览标签；点击文件行右侧的“打开当前文件”图标可直接打开工作区文件，并保留已有的未保存草稿。已删除文件的打开图标置灰，仍可点击文件名查看差异。Diff 预览标签使用斜体文件名，连续查看不同文件时复用一个临时标签；双击标签或点击“固定当前标签”可保留它。普通文件编辑使用固定标签，已有草稿不会被预览替换。未暂存比较暂存区与磁盘文件，已暂存比较 HEAD 与暂存区，未跟踪以空文件为基线；重命名使用原路径读取 HEAD，删除以空的新版本展示。快照不包含未保存草稿，可重新加载更新，也可点击“编辑当前文件”返回原编辑缓冲。冲突文件打开当前文件处理。版本内容通过已有 `command/exec` 只读命令获取，不新增协议方法。
-
-编辑缓冲按环境及文件绝对路径隔离，切换会话、面板和连接不会直接丢弃未保存内容。文件监听与轮询发现外部修改时，未修改的缓冲刷新，已修改的缓冲提示冲突。保存前重新读取并比较基线；冲突可比较、重新加载或另存为。超时或断线后的写入不自动重放。未保存文件参与离页保护，并阻止相关删除；刷新或关闭页面仍会丢失内存缓冲。
-
-新建和复制前用 `fs/getMetadata` 检查目标，已有目标不覆盖。删除明确提示永久删除及路径，并显式传递 `force: false` 与所需的 `recursive`。原生协议没有版本条件写入、排他创建或原子移动接口；保存和目标检查只能减少竞态，不能保证其他进程同时写入时的原子冲突保护。重命名／移动暂缓，不用复制后删除模拟原子移动。文件保存通过 `fs/writeFile` 执行，使用连接环境的文件写入权限；保存失败时显示错误并保留未保存草稿。此次在独立临时目录通过真实 app-server 验证了 metadata、写入、读取、新建目录、复制、删除；目标不存在返回 `No such file or directory (os error 2)`。探测还确认原生 `fs/copy` 会覆盖已有文件，因此 UI 的目标存在检查不可省略；该检查仍非原子保证。
-
-实现位置：[文件状态与操作](../src/features/files/store.ts)、[编辑工作区](../src/features/files/FileWorkspace.tsx)、[链接解析](../src/features/files/file-links.ts)。
-
-## 通知、审批与协议外范围
-
-审批、权限请求、用户问题和 MCP elicitation 属于服务端请求的响应，不增加上述 `ClientRequest` 数量。工作台也处理会话／轮次／条目更新、单轮计划与汇总 diff、文件系统变更、账号与用量更新、警告与模型重路由、MCP 启动／OAuth、技能／应用变更和迁移进度／完成等通知。结构化计划与汇总 diff 来自实时通知，当前历史 `Turn` 没有直接恢复这两项的字段；刷新后不能保证恢复，也不会用其他轮次的数据补齐。
-
-实时音视频、远程控制、预测、部分进程和平台专属通知可能存在于生成类型或官方文档中；本版本没有相应 UI，也没有为了达到接口数量而启用它们。此处的 108 方法统计仅针对仓库当前生成的 `ClientRequest`，不把通知名称误算成可调用方法。
-
-可选端点不支持、实验接口被服务端拒绝或账户权限不足时，显示对应功能错误并保留其他功能。断线或切换环境后忽略旧回复；超时的写操作不自动重试，需先核实服务端结果。
-
-### Git 操作的接入边界
-
-`command/exec` 是沙箱内命令接口，不是原生 Git 写入 API；当前生成协议没有该接口的提权或审批参数。右侧 Git 面板已移除暂存、提交、推送、PR 和工作树创建及其执行实现，不再以读取配置或接口存在推断这些操作可用。保留的差异、补丁和已有 worktree 查询固定使用 readOnly、networkAccess:false 和 --no-optional-locks，不修改服务端配置。项目空间的用户命令继续遵守服务端默认沙箱；该独立功能不作为 Git 写操作的替代入口。参照[官方命令接口](https://learn.chatgpt.com/docs/app-server)。
+新增功能时核对生成参数、空值与省略语义、响应字段、分页、服务端通知和失败状态。接口方法数量由生成清单校验；此页的产品分组应随功能变更更新。

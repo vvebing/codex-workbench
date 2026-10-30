@@ -134,7 +134,7 @@ components:
 
 Codex Workbench uses a neutral graphite and white interface with forest green for actions and meaningful states. Content, lists, and dividers establish hierarchy across sessions, settings, files, and conversation tools.
 
-This document records the implemented system. It describes the current source rather than a separately approved brand identity; configurable typography and themes remain part of the interface.
+The design system supports configurable typography, light and dark themes, and responsive working layouts.
 
 **Key Characteristics:**
 
@@ -162,7 +162,7 @@ Danger, warning, and success each have a text/icon color and a soft fill. Preser
 
 The default interface uses the platform sans stack with Chinese fallbacks; code uses the platform monospace stack. The frontmatter records reused roles, not a marketing display scale. Settings allow default, system, or serif interface fonts and default, Menlo, or Courier code fonts.
 
-Interface size defaults to (14px), code to (13px). Interface roles multiply their base size by `--font-scale`, calculated as the chosen interface size divided by 14. Code size is independent. The root size stays (14px) so rem-based geometry does not grow with text preferences. Saved sizes are validated between (8px) and (40px), including migrated fractional values.
+Interface size defaults to (14px), code to (13px). Interface roles multiply their base size by `--font-scale`, calculated as the chosen interface size divided by 14. Code size is independent. The root size stays (14px) so rem-based geometry does not grow with text preferences. Saved sizes are validated between (8px) and (40px), including fractional values.
 
 Body copy uses the body role; buttons and labels use control; supporting information uses caption and meta. Settings section headings use body size with semibold weight. Dialog titles use title-sm, with settings titles at base size (16px before scaling). Markdown prose uses its own larger, more open role, with heading sizes of (25px), (21px), and (18px), semibold and line-height (1.4). Code line-height is (1.65), help (1.6), and settings descriptions (1.7).
 
@@ -222,6 +222,8 @@ Settings sections separate with a top divider and (24px) top padding; lists use 
 - **Don't** hardcode white text on primary actions; use the on-action token.
 - **Don't** add decorative heroes, gradients, or repeated cards to working screens.
 - **Don't** hide row actions from keyboard focus or touch users.
-- **Don't** treat the start-page heading or smaller legacy text sizes as a reusable display system.
+- **Don't** use page-specific text sizes in place of shared typography roles.
 
-Not canonized: the start-page title and the smallest legacy utility sizes are implementation details, not a new display typography standard. No source defect is legitimized by this document; behavioral verification remains the parent task's responsibility.
+## Implementation reference
+
+Use `src/theme.css` for shared tokens, `src/components/ui.tsx` for common controls, and feature styles for local layout rules. Validate changes with both themes, font preferences, keyboard navigation, and narrow viewports. See [development](docs/development.md) for checks and [product scope](PRODUCT.md) for workflows.

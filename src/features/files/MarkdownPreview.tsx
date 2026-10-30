@@ -1,9 +1,10 @@
 import { t, useLocale } from "../../lib/i18n";
-import type { ComponentPropsWithoutRef } from "react";
+import { useMemo, type ComponentPropsWithoutRef } from "react";
 import type { ExtraProps } from "react-markdown";
 import { ScrollArea } from "../../components/ui";
 import { Markdown } from "../conversation/Markdown";
 import { FileLinkProvider } from "./FileLinkContext";
+import { splitFrontmatter } from "./markdown-frontmatter";
 
 function PreviewImage({
   src,
@@ -44,6 +45,7 @@ export function MarkdownPreview({
 
   const separator = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   const cwd = separator === 0 ? "/" : path.slice(0, separator + 1);
+  const { body, rows } = useMemo(() => splitFrontmatter(text), [text]);
   return (
     <ScrollArea
       className="file-markdown-preview"
@@ -55,7 +57,25 @@ export function MarkdownPreview({
         aria-label={t("Markdown 预览")}
       >
         <FileLinkProvider cwd={cwd} threadId={threadId}>
-          <Markdown text={text} imageComponent={PreviewImage} />
+          {rows.length > 0 && (
+            <div className="markdown-content mb-4">
+              <ScrollArea scrollChaining orientation="both">
+                <table aria-label="YAML frontmatter">
+                  <tbody>
+                    {rows.map(({ key, value }) => (
+                      <tr key={key}>
+                        <th scope="row">{key}</th>
+                        <td className="whitespace-pre-wrap break-words">
+                          {value}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </ScrollArea>
+            </div>
+          )}
+          <Markdown text={body} imageComponent={PreviewImage} />
         </FileLinkProvider>
       </section>
     </ScrollArea>

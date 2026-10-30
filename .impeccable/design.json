@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-29T08:24:54.168827+00:00",
+  "generatedAt": "2026-10-29T09:53:37.741513+00:00",
   "title": "Design System: Codex Workbench",
   "extensions": {
     "shadows": [
@@ -88,7 +88,575 @@
       "src/features/settings/typography.ts",
       "src/features/settings/conversation-layout.ts",
       "src/features/settings/SettingsDialog.tsx"
-    ]
+    ],
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Background",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15.0% 0.00000 0.00)",
+          "oklch(27.0% 0.00000 0.00)",
+          "oklch(39.0% 0.00000 0.00)",
+          "oklch(51.0% 0.00000 0.00)",
+          "oklch(63.0% 0.00000 0.00)",
+          "oklch(75.0% 0.00000 0.00)",
+          "oklch(87.0% 0.00000 0.00)",
+          "oklch(95.0% 0.00000 0.00)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "canonical": "#f6f6f5",
+        "tonalRamp": [
+          "oklch(15.0% 0.00050 106.42)",
+          "oklch(27.0% 0.00089 106.42)",
+          "oklch(39.0% 0.00129 106.42)",
+          "oklch(51.0% 0.00132 106.42)",
+          "oklch(63.0% 0.00132 106.42)",
+          "oklch(75.0% 0.00110 106.42)",
+          "oklch(87.0% 0.00057 106.42)",
+          "oklch(95.0% 0.00022 106.42)"
+        ]
+      },
+      "elevated": {
+        "role": "neutral",
+        "displayName": "Elevated",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15.0% 0.00000 0.00)",
+          "oklch(27.0% 0.00000 0.00)",
+          "oklch(39.0% 0.00000 0.00)",
+          "oklch(51.0% 0.00000 0.00)",
+          "oklch(63.0% 0.00000 0.00)",
+          "oklch(75.0% 0.00000 0.00)",
+          "oklch(87.0% 0.00000 0.00)",
+          "oklch(95.0% 0.00000 0.00)"
+        ]
+      },
+      "hover": {
+        "role": "neutral",
+        "displayName": "Hover",
+        "canonical": "#eeeeec",
+        "tonalRamp": [
+          "oklch(15.0% 0.00100 106.45)",
+          "oklch(27.0% 0.00180 106.45)",
+          "oklch(39.0% 0.00260 106.45)",
+          "oklch(51.0% 0.00266 106.45)",
+          "oklch(63.0% 0.00266 106.45)",
+          "oklch(75.0% 0.00222 106.45)",
+          "oklch(87.0% 0.00115 106.45)",
+          "oklch(95.0% 0.00044 106.45)"
+        ]
+      },
+      "selected": {
+        "role": "neutral",
+        "displayName": "Selected",
+        "canonical": "#e6e9e6",
+        "tonalRamp": [
+          "oklch(15.0% 0.00192 145.53)",
+          "oklch(27.0% 0.00346 145.53)",
+          "oklch(39.0% 0.00499 145.53)",
+          "oklch(51.0% 0.00512 145.53)",
+          "oklch(63.0% 0.00512 145.53)",
+          "oklch(75.0% 0.00427 145.53)",
+          "oklch(87.0% 0.00222 145.53)",
+          "oklch(95.0% 0.00085 145.53)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Foreground",
+        "canonical": "#252728",
+        "tonalRamp": [
+          "oklch(15.0% 0.00130 228.92)",
+          "oklch(27.0% 0.00233 228.92)",
+          "oklch(39.0% 0.00337 228.92)",
+          "oklch(51.0% 0.00346 228.92)",
+          "oklch(63.0% 0.00346 228.92)",
+          "oklch(75.0% 0.00288 228.92)",
+          "oklch(87.0% 0.00150 228.92)",
+          "oklch(95.0% 0.00058 228.92)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "canonical": "#626667",
+        "tonalRamp": [
+          "oklch(15.0% 0.00196 214.35)",
+          "oklch(27.0% 0.00354 214.35)",
+          "oklch(39.0% 0.00511 214.35)",
+          "oklch(51.0% 0.00524 214.35)",
+          "oklch(63.0% 0.00524 214.35)",
+          "oklch(75.0% 0.00436 214.35)",
+          "oklch(87.0% 0.00227 214.35)",
+          "oklch(95.0% 0.00087 214.35)"
+        ]
+      },
+      "subtle": {
+        "role": "neutral",
+        "displayName": "Subtle",
+        "canonical": "#65696a",
+        "tonalRamp": [
+          "oklch(15.0% 0.00195 214.34)",
+          "oklch(27.0% 0.00352 214.34)",
+          "oklch(39.0% 0.00508 214.34)",
+          "oklch(51.0% 0.00521 214.34)",
+          "oklch(63.0% 0.00521 214.34)",
+          "oklch(75.0% 0.00434 214.34)",
+          "oklch(87.0% 0.00226 214.34)",
+          "oklch(95.0% 0.00087 214.34)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "canonical": "#dedfdd",
+        "tonalRamp": [
+          "oklch(15.0% 0.00109 128.50)",
+          "oklch(27.0% 0.00195 128.50)",
+          "oklch(39.0% 0.00282 128.50)",
+          "oklch(51.0% 0.00289 128.50)",
+          "oklch(63.0% 0.00289 128.50)",
+          "oklch(75.0% 0.00241 128.50)",
+          "oklch(87.0% 0.00125 128.50)",
+          "oklch(95.0% 0.00048 128.50)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Accent",
+        "canonical": "#296346",
+        "tonalRamp": [
+          "oklch(15.0% 0.02919 159.13)",
+          "oklch(27.0% 0.05254 159.13)",
+          "oklch(39.0% 0.07589 159.13)",
+          "oklch(51.0% 0.07784 159.13)",
+          "oklch(63.0% 0.07784 159.13)",
+          "oklch(75.0% 0.06487 159.13)",
+          "oklch(87.0% 0.03373 159.13)",
+          "oklch(95.0% 0.01297 159.13)"
+        ]
+      },
+      "action": {
+        "role": "primary",
+        "displayName": "Action",
+        "canonical": "#296346",
+        "tonalRamp": [
+          "oklch(15.0% 0.02919 159.13)",
+          "oklch(27.0% 0.05254 159.13)",
+          "oklch(39.0% 0.07589 159.13)",
+          "oklch(51.0% 0.07784 159.13)",
+          "oklch(63.0% 0.07784 159.13)",
+          "oklch(75.0% 0.06487 159.13)",
+          "oklch(87.0% 0.03373 159.13)",
+          "oklch(95.0% 0.01297 159.13)"
+        ]
+      },
+      "on-action": {
+        "role": "primary",
+        "displayName": "On action",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15.0% 0.00000 0.00)",
+          "oklch(27.0% 0.00000 0.00)",
+          "oklch(39.0% 0.00000 0.00)",
+          "oklch(51.0% 0.00000 0.00)",
+          "oklch(63.0% 0.00000 0.00)",
+          "oklch(75.0% 0.00000 0.00)",
+          "oklch(87.0% 0.00000 0.00)",
+          "oklch(95.0% 0.00000 0.00)"
+        ]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Danger",
+        "canonical": "#a83f32",
+        "tonalRamp": [
+          "oklch(15.0% 0.05289 29.79)",
+          "oklch(27.0% 0.09521 29.79)",
+          "oklch(39.0% 0.13752 29.79)",
+          "oklch(51.0% 0.14105 29.79)",
+          "oklch(63.0% 0.14105 29.79)",
+          "oklch(75.0% 0.11754 29.79)",
+          "oklch(87.0% 0.06112 29.79)",
+          "oklch(95.0% 0.02351 29.79)"
+        ]
+      },
+      "danger-soft": {
+        "role": "semantic",
+        "displayName": "Danger soft",
+        "canonical": "#fbece9",
+        "tonalRamp": [
+          "oklch(15.0% 0.00631 31.08)",
+          "oklch(27.0% 0.01137 31.08)",
+          "oklch(39.0% 0.01642 31.08)",
+          "oklch(51.0% 0.01684 31.08)",
+          "oklch(63.0% 0.01684 31.08)",
+          "oklch(75.0% 0.01403 31.08)",
+          "oklch(87.0% 0.00730 31.08)",
+          "oklch(95.0% 0.00281 31.08)"
+        ]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Warning",
+        "canonical": "#916419",
+        "tonalRamp": [
+          "oklch(15.0% 0.03892 74.78)",
+          "oklch(27.0% 0.07005 74.78)",
+          "oklch(39.0% 0.10118 74.78)",
+          "oklch(51.0% 0.10378 74.78)",
+          "oklch(63.0% 0.10378 74.78)",
+          "oklch(75.0% 0.08648 74.78)",
+          "oklch(87.0% 0.04497 74.78)",
+          "oklch(95.0% 0.01730 74.78)"
+        ]
+      },
+      "warning-soft": {
+        "role": "semantic",
+        "displayName": "Warning soft",
+        "canonical": "#f5f1e6",
+        "tonalRamp": [
+          "oklch(15.0% 0.00570 90.24)",
+          "oklch(27.0% 0.01026 90.24)",
+          "oklch(39.0% 0.01482 90.24)",
+          "oklch(51.0% 0.01520 90.24)",
+          "oklch(63.0% 0.01520 90.24)",
+          "oklch(75.0% 0.01266 90.24)",
+          "oklch(87.0% 0.00658 90.24)",
+          "oklch(95.0% 0.00253 90.24)"
+        ]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Success",
+        "canonical": "#328050",
+        "tonalRamp": [
+          "oklch(15.0% 0.04036 153.57)",
+          "oklch(27.0% 0.07265 153.57)",
+          "oklch(39.0% 0.10494 153.57)",
+          "oklch(51.0% 0.10764 153.57)",
+          "oklch(63.0% 0.10764 153.57)",
+          "oklch(75.0% 0.08970 153.57)",
+          "oklch(87.0% 0.04664 153.57)",
+          "oklch(95.0% 0.01794 153.57)"
+        ]
+      },
+      "success-soft": {
+        "role": "semantic",
+        "displayName": "Success soft",
+        "canonical": "#eaf3e9",
+        "tonalRamp": [
+          "oklch(15.0% 0.00612 142.56)",
+          "oklch(27.0% 0.01101 142.56)",
+          "oklch(39.0% 0.01590 142.56)",
+          "oklch(51.0% 0.01631 142.56)",
+          "oklch(63.0% 0.01631 142.56)",
+          "oklch(75.0% 0.01359 142.56)",
+          "oklch(87.0% 0.00707 142.56)",
+          "oklch(95.0% 0.00272 142.56)"
+        ]
+      },
+      "dark-background": {
+        "role": "neutral",
+        "displayName": "Dark background",
+        "canonical": "#1b1d1e",
+        "tonalRamp": [
+          "oklch(15.0% 0.00135 228.96)",
+          "oklch(27.0% 0.00243 228.96)",
+          "oklch(39.0% 0.00351 228.96)",
+          "oklch(51.0% 0.00360 228.96)",
+          "oklch(63.0% 0.00360 228.96)",
+          "oklch(75.0% 0.00300 228.96)",
+          "oklch(87.0% 0.00156 228.96)",
+          "oklch(95.0% 0.00060 228.96)"
+        ]
+      },
+      "dark-surface": {
+        "role": "neutral",
+        "displayName": "Dark surface",
+        "canonical": "#222425",
+        "tonalRamp": [
+          "oklch(15.0% 0.00131 228.93)",
+          "oklch(27.0% 0.00236 228.93)",
+          "oklch(39.0% 0.00341 228.93)",
+          "oklch(51.0% 0.00350 228.93)",
+          "oklch(63.0% 0.00350 228.93)",
+          "oklch(75.0% 0.00291 228.93)",
+          "oklch(87.0% 0.00151 228.93)",
+          "oklch(95.0% 0.00058 228.93)"
+        ]
+      },
+      "dark-elevated": {
+        "role": "neutral",
+        "displayName": "Dark elevated",
+        "canonical": "#292c2d",
+        "tonalRamp": [
+          "oklch(15.0% 0.00175 219.63)",
+          "oklch(27.0% 0.00314 219.63)",
+          "oklch(39.0% 0.00454 219.63)",
+          "oklch(51.0% 0.00466 219.63)",
+          "oklch(63.0% 0.00466 219.63)",
+          "oklch(75.0% 0.00388 219.63)",
+          "oklch(87.0% 0.00202 219.63)",
+          "oklch(95.0% 0.00078 219.63)"
+        ]
+      },
+      "dark-hover": {
+        "role": "neutral",
+        "displayName": "Dark hover",
+        "canonical": "#333637",
+        "tonalRamp": [
+          "oklch(15.0% 0.00169 219.61)",
+          "oklch(27.0% 0.00305 219.61)",
+          "oklch(39.0% 0.00440 219.61)",
+          "oklch(51.0% 0.00452 219.61)",
+          "oklch(63.0% 0.00452 219.61)",
+          "oklch(75.0% 0.00376 219.61)",
+          "oklch(87.0% 0.00196 219.61)",
+          "oklch(95.0% 0.00075 219.61)"
+        ]
+      },
+      "dark-selected": {
+        "role": "neutral",
+        "displayName": "Dark selected",
+        "canonical": "#383e3a",
+        "tonalRamp": [
+          "oklch(15.0% 0.00395 156.65)",
+          "oklch(27.0% 0.00711 156.65)",
+          "oklch(39.0% 0.01027 156.65)",
+          "oklch(51.0% 0.01054 156.65)",
+          "oklch(63.0% 0.01054 156.65)",
+          "oklch(75.0% 0.00878 156.65)",
+          "oklch(87.0% 0.00457 156.65)",
+          "oklch(95.0% 0.00176 156.65)"
+        ]
+      },
+      "dark-foreground": {
+        "role": "neutral",
+        "displayName": "Dark foreground",
+        "canonical": "#e8e9e7",
+        "tonalRamp": [
+          "oklch(15.0% 0.00108 128.49)",
+          "oklch(27.0% 0.00194 128.49)",
+          "oklch(39.0% 0.00280 128.49)",
+          "oklch(51.0% 0.00287 128.49)",
+          "oklch(63.0% 0.00287 128.49)",
+          "oklch(75.0% 0.00239 128.49)",
+          "oklch(87.0% 0.00124 128.49)",
+          "oklch(95.0% 0.00048 128.49)"
+        ]
+      },
+      "dark-muted": {
+        "role": "neutral",
+        "displayName": "Dark muted",
+        "canonical": "#b1b5b4",
+        "tonalRamp": [
+          "oklch(15.0% 0.00176 179.69)",
+          "oklch(27.0% 0.00317 179.69)",
+          "oklch(39.0% 0.00459 179.69)",
+          "oklch(51.0% 0.00470 179.69)",
+          "oklch(63.0% 0.00470 179.69)",
+          "oklch(75.0% 0.00392 179.69)",
+          "oklch(87.0% 0.00204 179.69)",
+          "oklch(95.0% 0.00078 179.69)"
+        ]
+      },
+      "dark-subtle": {
+        "role": "neutral",
+        "displayName": "Dark subtle",
+        "canonical": "#a5aaa8",
+        "tonalRamp": [
+          "oklch(15.0% 0.00238 170.37)",
+          "oklch(27.0% 0.00428 170.37)",
+          "oklch(39.0% 0.00618 170.37)",
+          "oklch(51.0% 0.00633 170.37)",
+          "oklch(63.0% 0.00633 170.37)",
+          "oklch(75.0% 0.00528 170.37)",
+          "oklch(87.0% 0.00274 170.37)",
+          "oklch(95.0% 0.00106 170.37)"
+        ]
+      },
+      "dark-border": {
+        "role": "neutral",
+        "displayName": "Dark border",
+        "canonical": "#3c4040",
+        "tonalRamp": [
+          "oklch(15.0% 0.00202 196.92)",
+          "oklch(27.0% 0.00363 196.92)",
+          "oklch(39.0% 0.00524 196.92)",
+          "oklch(51.0% 0.00537 196.92)",
+          "oklch(63.0% 0.00537 196.92)",
+          "oklch(75.0% 0.00448 196.92)",
+          "oklch(87.0% 0.00233 196.92)",
+          "oklch(95.0% 0.00090 196.92)"
+        ]
+      },
+      "dark-accent": {
+        "role": "primary",
+        "displayName": "Dark accent",
+        "canonical": "#97c8a9",
+        "tonalRamp": [
+          "oklch(15.0% 0.02538 156.73)",
+          "oklch(27.0% 0.04568 156.73)",
+          "oklch(39.0% 0.06599 156.73)",
+          "oklch(51.0% 0.06768 156.73)",
+          "oklch(63.0% 0.06768 156.73)",
+          "oklch(75.0% 0.05640 156.73)",
+          "oklch(87.0% 0.02933 156.73)",
+          "oklch(95.0% 0.01128 156.73)"
+        ]
+      },
+      "dark-action": {
+        "role": "primary",
+        "displayName": "Dark action",
+        "canonical": "#97c8a9",
+        "tonalRamp": [
+          "oklch(15.0% 0.02538 156.73)",
+          "oklch(27.0% 0.04568 156.73)",
+          "oklch(39.0% 0.06599 156.73)",
+          "oklch(51.0% 0.06768 156.73)",
+          "oklch(63.0% 0.06768 156.73)",
+          "oklch(75.0% 0.05640 156.73)",
+          "oklch(87.0% 0.02933 156.73)",
+          "oklch(95.0% 0.01128 156.73)"
+        ]
+      },
+      "dark-on-action": {
+        "role": "primary",
+        "displayName": "Dark on action",
+        "canonical": "#17291f",
+        "tonalRamp": [
+          "oklch(15.0% 0.01144 159.04)",
+          "oklch(27.0% 0.02059 159.04)",
+          "oklch(39.0% 0.02975 159.04)",
+          "oklch(51.0% 0.03051 159.04)",
+          "oklch(63.0% 0.03051 159.04)",
+          "oklch(75.0% 0.02542 159.04)",
+          "oklch(87.0% 0.01322 159.04)",
+          "oklch(95.0% 0.00508 159.04)"
+        ]
+      },
+      "dark-danger": {
+        "role": "semantic",
+        "displayName": "Dark danger",
+        "canonical": "#f59f91",
+        "tonalRamp": [
+          "oklch(15.0% 0.03955 29.72)",
+          "oklch(27.0% 0.07118 29.72)",
+          "oklch(39.0% 0.10282 29.72)",
+          "oklch(51.0% 0.10545 29.72)",
+          "oklch(63.0% 0.10545 29.72)",
+          "oklch(75.0% 0.08788 29.72)",
+          "oklch(87.0% 0.04570 29.72)",
+          "oklch(95.0% 0.01758 29.72)"
+        ]
+      },
+      "dark-danger-soft": {
+        "role": "semantic",
+        "displayName": "Dark danger soft",
+        "canonical": "#432b28",
+        "tonalRamp": [
+          "oklch(15.0% 0.01367 27.19)",
+          "oklch(27.0% 0.02461 27.19)",
+          "oklch(39.0% 0.03555 27.19)",
+          "oklch(51.0% 0.03647 27.19)",
+          "oklch(63.0% 0.03647 27.19)",
+          "oklch(75.0% 0.03039 27.19)",
+          "oklch(87.0% 0.01580 27.19)",
+          "oklch(95.0% 0.00608 27.19)"
+        ]
+      },
+      "dark-warning": {
+        "role": "semantic",
+        "displayName": "Dark warning",
+        "canonical": "#dfbb76",
+        "tonalRamp": [
+          "oklch(15.0% 0.03627 82.84)",
+          "oklch(27.0% 0.06528 82.84)",
+          "oklch(39.0% 0.09429 82.84)",
+          "oklch(51.0% 0.09671 82.84)",
+          "oklch(63.0% 0.09671 82.84)",
+          "oklch(75.0% 0.08059 82.84)",
+          "oklch(87.0% 0.04191 82.84)",
+          "oklch(95.0% 0.01612 82.84)"
+        ]
+      },
+      "dark-warning-soft": {
+        "role": "semantic",
+        "displayName": "Dark warning soft",
+        "canonical": "#3a3324",
+        "tonalRamp": [
+          "oklch(15.0% 0.01008 85.80)",
+          "oklch(27.0% 0.01814 85.80)",
+          "oklch(39.0% 0.02620 85.80)",
+          "oklch(51.0% 0.02688 85.80)",
+          "oklch(63.0% 0.02688 85.80)",
+          "oklch(75.0% 0.02240 85.80)",
+          "oklch(87.0% 0.01165 85.80)",
+          "oklch(95.0% 0.00448 85.80)"
+        ]
+      },
+      "dark-success": {
+        "role": "semantic",
+        "displayName": "Dark success",
+        "canonical": "#91cba0",
+        "tonalRamp": [
+          "oklch(15.0% 0.03205 152.15)",
+          "oklch(27.0% 0.05768 152.15)",
+          "oklch(39.0% 0.08332 152.15)",
+          "oklch(51.0% 0.08546 152.15)",
+          "oklch(63.0% 0.08546 152.15)",
+          "oklch(75.0% 0.07121 152.15)",
+          "oklch(87.0% 0.03703 152.15)",
+          "oklch(95.0% 0.01424 152.15)"
+        ]
+      },
+      "dark-success-soft": {
+        "role": "semantic",
+        "displayName": "Dark success soft",
+        "canonical": "#263b2b",
+        "tonalRamp": [
+          "oklch(15.0% 0.01459 151.26)",
+          "oklch(27.0% 0.02626 151.26)",
+          "oklch(39.0% 0.03793 151.26)",
+          "oklch(51.0% 0.03890 151.26)",
+          "oklch(63.0% 0.03890 151.26)",
+          "oklch(75.0% 0.03242 151.26)",
+          "oklch(87.0% 0.01686 151.26)",
+          "oklch(95.0% 0.00648 151.26)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "Body"
+      },
+      "control": {
+        "displayName": "Control"
+      },
+      "caption": {
+        "displayName": "Caption"
+      },
+      "meta": {
+        "displayName": "Meta"
+      },
+      "title-sm": {
+        "displayName": "Title sm"
+      },
+      "prose": {
+        "displayName": "Prose"
+      },
+      "markdown-heading": {
+        "displayName": "Markdown heading"
+      },
+      "code": {
+        "displayName": "Code"
+      }
+    }
   },
   "components": [
     {
