@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const commands = [
   ["run", "patch:release-tools"],
-  ["audit", "--audit-level=low"],
+  ["audit", "--include=dev", "--audit-level=low"],
   ["run", "check"],
   ["run", "build"],
   ["run", "test:package"],

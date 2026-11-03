@@ -36,7 +36,11 @@ npm run patch:release-tools
 npm run check:release-tools
 ```
 
-补丁脚本使用锁定的 `undici` 和 `ip-address` 开发依赖别名，替换发布工具 npm 内捆绑的对应文件，逐文件核验 SHA-256 并同步审计元数据。普通 overrides 无法替换 tarball 内的捆绑代码。CI 和发布 job 都在审计前执行补丁；补丁不进入产品运行依赖。
+普通依赖通过 overrides 固定 `glob 14.0.3` 和 `minimatch 11.0.4`，修复 GHSA-3g3m-2fjr-6pw4 与 GHSA-g3hv-75wg-m249。发布工具内置 npm 自带依赖，普通 overrides 无法替换 tarball 内的捆绑代码。
+
+补丁脚本使用锁定的官方包来源，包括 `undici`、`ip-address` 别名及上述 override 包，替换内置副本和完整运行时依赖图。逐文件核验 SHA-256 后，同步实际消费者的依赖声明及锁文件，清除旧安装缓存。Commitizen 4.3.2 的 glob 默认导入另作兼容适配，保留原配置查找和提交向导。
+
+CI 和发布 job 在审计前执行并校验补丁，显式使用 `npm ci --include=dev` 和 `npm audit --include=dev --audit-level=low`，避免本机或环境中的 `omit=dev` 漏掉开发工具。补丁与 overrides 不进入产品运行依赖。
 
 更新发布工具时复核是否仍需要补丁，联动调整别名依赖、脚本和工作流。Monaco 的 DOMPurify override 同样需随编辑器依赖升级复核。不要通过忽略审计结果或强制降级来完成门禁。
 

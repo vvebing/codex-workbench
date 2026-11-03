@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - run: npm ci
+      - run: npm ci --include=dev
       - run: npm run patch:release-tools
       - run: npm run check:release-tools
       - run: npm audit --include=dev --audit-level=low
