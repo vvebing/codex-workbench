@@ -15,6 +15,8 @@ import type { ThreadGoalStatus } from "../../generated/v2/ThreadGoalStatus";
 import type { ReviewTarget } from "../../generated/v2/ReviewTarget";
 import { safeElicitationUrl } from "../approvals/validation";
 import { ThreadToolsStore } from "./thread-tools-store";
+import { ThreadInsights } from "./ThreadInsights";
+import { ThreadHooks } from "./ThreadHooks";
 import {
   attachmentLabel,
   goalParams,
@@ -199,13 +201,20 @@ export function ThreadTools({ thread }: { thread: Thread }) {
       )}
       {running && (
         <p className="text-xs text-muted">
-          {t("会话执行期间可查看工具，结束后可修改。")}
+          {t(
+            "会话执行期间可查看工具和导出诊断包；目标、审查和参考资料需在结束后修改。",
+          )}
         </p>
       )}
       {(state.error || formError) && (
         <ErrorNotice>{state.error || formError}</ErrorNotice>
       )}
       {state.message && <p role="status">{t(state.message)}</p>}
+      <ThreadInsights
+        key={JSON.stringify([connection.scope, thread.id])}
+        thread={thread}
+      />
+      <ThreadHooks thread={thread} />
       <details>
         <summary className="cursor-pointer font-semibold">
           {t("会话目标")}

@@ -2,6 +2,8 @@
 
 工作台的请求类型以 [`src/generated/`](../src/generated/ClientRequest.ts) 为准。[功能范围](app-server-coverage.md)说明产品入口，[接口逐项清单](app-server-interface-matrix.md)提供字段、响应类型和调用位置。类型声明和静态调用数量不等于目标环境的功能保证。
 
+当前快照由 Codex CLI **0.166.0** 的 `codex app-server generate-ts --out ./src/generated` 生成，未包含 `--experimental` 的额外方法与字段。握手声明 `experimentalApi` 与生成实验类型是两件事。
+
 ## 连接与请求
 
 [`RpcClient`](../src/lib/rpc.ts) 为每条连接执行一次 `initialize`，响应后发送 `initialized`，再开放业务请求。客户端声明 `experimentalApi: true`、`requestAttestation: false`；能力声明不改变服务端功能开关或账户权限。
@@ -20,6 +22,9 @@
 - `turn/steer` 指定 `expectedTurnId`，中断也指向明确轮次。
 - 回滚改变会话历史，不表示撤销磁盘文件修改。
 - 目标设置与清除显式传入 `origin: "user"`。
+- 条目生命周期时间为毫秒，轮次时间为秒；历史内联生命周期完整时直接恢复，旧服务端保留 `thread/items/list` 回退。缺失时间不能推断为零或覆盖已有完成状态。
+- 历史追加可开启独立的 `excludedThreadIds` 分页链；同链固定排除集合且最多 100 个合法线程 ID。元数据刷新不排除现有会话；旧服务端拒绝可选字段时只降级该参数，不将整个方法判定为不支持。
+- 审查仅使用 `delivery: "inline"`。未来独立审查应先创建线程，再在目标线程启动审查。
 
 写请求不会在断线或超时后自动重放。结果不确定时先读取服务端状态并交由用户核实。浏览器请求超时不表示服务端进程已停止；命令停止通过独立的终止请求执行。
 
@@ -40,6 +45,16 @@
 账户登录、MCP OAuth 和外部配置导入分别按标识关联通知，支持完成通知先于请求响应的时序。参考资料关联接口只记录名称和路径等元数据；实际附件上传由工作台的文件传输流程处理。
 
 通知按功能选择消费，不宣称所有字段均在界面展示。通知引用位置见生成清单。
+
+图片生成结果按 `fileId` / `result` 分支处理，优先使用 `savedPath`。文件 ID 不作为文件路径或下载 URL；生成来源路径和 SHA-256 只代表当次读取记录。旧记录缺少新字段时保持可读。
+
+`hooks/list({ threadId })` 仅查询已加载会话，不同时传 `cwds`，不因查看工具而取得 writer。`hook/started` 与 `hook/completed` 按线程隔离，并防止晚到的开始事件回退已完成状态。
+
+`account/usage/read({ threadId })` 的 `nativeUsageUsdMicros`、估算美元及积分独立展示，`null`/省略表示未知。生成类型的 bigint 在 JSON 中也可能表现为 number；客户端拒绝不安全整数的精确金额展示，避免错误舍入。账户变化使费用及其在途请求失效。
+
+`feedback/save` 是显式写入，路径属于 app-server 主机且必须尚未使用，日志按用户选择。超时或断线不自动重放；页面内按连接、作用域和线程保留待核实路径，下载与导出串行执行。网页通过 `fs/readFile` 取回 ZIP，沿用 8 MB 下载上限；整文件传输仍可能触及 bridge 消息上限。
+
+新增 `ThreadReadState` 通知与 `AccountSession` 类型尚未形成当前快照中的完整读写／切换接口，因此未提供跨客户端已读同步或多账户切换。`ApplicationStorageRequirements` 不是文件访问限制；`process/exited.outputDrainTimedOut` 不适用于现有 `command/exec` 流程。加密响应、音色和保留工具输出等底层类型变化不额外开放入口。
 
 ## 检查与验证
 

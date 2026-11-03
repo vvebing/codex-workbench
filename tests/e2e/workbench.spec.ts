@@ -5098,7 +5098,10 @@ test("initial operation history distinguishes completed thought and image from l
   const emptyLive = turn.locator(
     '[data-expandable="false"][data-status="inProgress"]',
   );
-  await expect(emptyLive).toHaveText("正在思考");
+  await expect(emptyLive.getByText("正在思考", { exact: true })).toBeVisible();
+  await expect(emptyLive.locator('small[title^="步骤已用时"]')).toHaveText(
+    /^已用时 \d+\.\d 秒$/,
+  );
   await expect(emptyLive.locator("summary")).toHaveCount(0);
   await expect(turn).not.toContainText("暂无内容");
   expect(

@@ -21,6 +21,7 @@ export const MOCK_WORKSPACES = [
   "/demo/api-service",
 ];
 export interface MockOptions {
+  unsupportedMethods?: string[];
   models?: import("../../src/generated/v2/Model.js").Model[];
   threadCount?: number;
   historicalTurnTimes?: boolean;
@@ -506,6 +507,9 @@ export function createMockServer(options: MockOptions = {}) {
           "thread/start",
           "turn/start",
           "turn/steer",
+          "account/usage/read",
+          "feedback/save",
+          "hooks/list",
         ].includes(method)
           ? { params: msg.params }
           : {}),
@@ -556,6 +560,88 @@ export function createMockServer(options: MockOptions = {}) {
       }
       if (!ready) return fail(id, "Call initialize then initialized first");
       try {
+        if (options.unsupportedMethods?.includes(method))
+          return send({
+            id,
+            error: { code: -32601, message: "Method not found" },
+          });
+        if (method === "account/usage/read")
+          return reply(
+            id,
+            {
+              summary: {
+                lifetimeTokens: null,
+                peakDailyTokens: null,
+                longestRunningTurnSec: null,
+                currentStreakDays: null,
+                longestStreakDays: null,
+              },
+              dailyUsageBuckets: null,
+              threadUsage: {
+                threadId: p.threadId,
+                nativeUsageUsdMicros: 123456,
+                estimatedUsageUsdMicros: null,
+                estimatedUsageCreditsMicros: 2500000,
+                groups: [
+                  {
+                    model: "mock-codex",
+                    reasoningEffort: "medium",
+                    speed: null,
+                    estimatedUsageCreditsMicros: 2500000,
+                    netNewInputTokens: 100,
+                    cachedInputTokens: 20,
+                    inputTokens: 120,
+                    outputTokens: 30,
+                    totalTokens: 150,
+                  },
+                ],
+              },
+            },
+            method,
+          );
+        if (method === "feedback/save") {
+          if (files.has(p.savePath) || fileBytes.has(p.savePath))
+            return fail(id, "EEXIST: File exists");
+          requireParent(p.savePath);
+          files.set(p.savePath, "Diagnostic ZIP fixture");
+          fileBytes.set(
+            p.savePath,
+            Buffer.from("PK\u0003\u0004diagnostic fixture").toString("base64"),
+          );
+          return reply(
+            id,
+            { savedPath: p.savePath, threadId: p.threadId, promptHash: null },
+            method,
+          );
+        }
+        if (method === "hooks/list")
+          return reply(
+            id,
+            {
+              data: [
+                {
+                  cwd: p.threadId
+                    ? get(p.threadId).cwd
+                    : (p.cwds?.[0] ?? MOCK_WORKSPACES[0]),
+                  warnings: [],
+                  errors: [],
+                  hooks: [
+                    {
+                      key: "demo-model-hook",
+                      eventName: "preModelRequest",
+                      handlerType: "command",
+                      command: "demo-hook",
+                      enabled: true,
+                      environmentId: "demo-execution-environment",
+                      sourcePath: "/demo/hooks.json",
+                      statusMessage: null,
+                    },
+                  ],
+                },
+              ],
+            },
+            method,
+          );
         if (method === "app/list")
           return reply(id, { data: [demoApp], nextCursor: null }, method);
         if (method === "app/installed") return reply(id, { apps: [] }, method);
@@ -963,6 +1049,7 @@ export function createMockServer(options: MockOptions = {}) {
           const list = threads.filter(
             (t) =>
               archived.has(t.id) === !!p.archived &&
+              !p.excludedThreadIds?.includes(t.id) &&
               (!cwd || cwd.includes(t.cwd)) &&
               (!p.searchTerm || t.name?.includes(p.searchTerm)) &&
               (p.sectionId === undefined ||

@@ -3,6 +3,7 @@ import type { Thread } from "../../generated/v2/Thread";
 import type { Turn } from "../../generated/v2/Turn";
 import type { ThreadItemEntry } from "../../generated/v2/ThreadItemEntry";
 import { operationKey } from "../../lib/state";
+import { validItemTime } from "../conversation/operation-timing";
 import { type CodexClient, type RpcCall } from "../../lib/rpc";
 
 export type HydratedThread = Thread & {
@@ -94,7 +95,12 @@ export async function readHistory(
         (item) =>
           !("status" in item) &&
           item.type !== "userMessage" &&
-          item.type !== "agentMessage",
+          item.type !== "agentMessage" &&
+          // Explicit null is an authoritative unfinished lifecycle; omission is older history.
+          !(
+            validItemTime(item.completedAtMs) ||
+            (validItemTime(item.startedAtMs) && item.completedAtMs === null)
+          ),
       );
     if (turn.itemsView === "full" && !needsLifecycle) continue;
     const items = await pages<ThreadItemEntry>(
@@ -112,11 +118,24 @@ export async function readHistory(
     );
     for (const entry of items) {
       itemLifecycles[operationKey(id, turn.id, entry.item.id)] = {
-        startedAtMs: entry.startedAtMs ?? null,
-        completedAtMs: entry.completedAtMs ?? null,
+        startedAtMs: entry.startedAtMs ?? entry.item.startedAtMs ?? null,
+        completedAtMs: entry.completedAtMs ?? entry.item.completedAtMs ?? null,
       };
     }
-    const entries = new Map(items.map((entry) => [entry.item.id, entry.item]));
+    const entries = new Map(
+      items.map((entry) => [
+        entry.item.id,
+        {
+          ...entry.item,
+          ...(entry.startedAtMs != null
+            ? { startedAtMs: entry.startedAtMs }
+            : {}),
+          ...(entry.completedAtMs != null
+            ? { completedAtMs: entry.completedAtMs }
+            : {}),
+        },
+      ]),
+    );
     turns[index] = {
       ...turn,
       items:
@@ -130,7 +149,7 @@ export async function readHistory(
                 )
                 .map((entry) => entry.item),
             ]
-          : items.map((entry) => entry.item),
+          : [...entries.values()],
       itemsView: "full",
     };
   }

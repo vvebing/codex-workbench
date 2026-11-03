@@ -1,5 +1,6 @@
 import { t, getLocale } from "../../lib/i18n";
 import type { PlanType } from "../../generated/PlanType";
+import type { Account } from "../../generated/v2/Account";
 
 const planLabels: Partial<Record<PlanType, string>> = {
   free: "Free",
@@ -41,4 +42,22 @@ export function accountTime(seconds: number | null): string {
   return Number.isNaN(date.getTime())
     ? t("暂未提供")
     : date.toLocaleString(getLocale());
+}
+
+/** Use explicit account variants so a new provider cannot inherit another provider's name. */
+export function accountDisplayLabel(
+  account: Account | null | undefined,
+): string {
+  switch (account?.type) {
+    case "chatgpt":
+      return account.email ?? "ChatGPT";
+    case "apiKey":
+      return "API key";
+    case "amazonBedrock":
+      return "Amazon Bedrock";
+    case "gcp":
+      return "Google Cloud";
+    default:
+      return account ? t("暂未提供") : t("未登录");
+  }
 }

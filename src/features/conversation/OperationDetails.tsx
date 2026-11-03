@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { getLocale, t } from "../../lib/i18n";
+import { t } from "../../lib/i18n";
 import { ConversationImage } from "../../components/ImagePreview";
 import { OpenCurrentFile } from "../files/FileLinkContext";
 import { useState } from "react";
@@ -11,6 +11,8 @@ import { LocalMessageImage } from "./MessageImage";
 import { executionStatusLabel } from "./model";
 import { AnimatedDisclosure } from "./AnimatedDisclosure";
 import { hasOperationContent } from "./operation";
+import { GeneratedImage } from "./GeneratedImage";
+import { generatedImageRecord } from "./image-generation";
 
 function StructuredResult({ value }: { value: unknown }) {
   useTranslation();
@@ -242,15 +244,7 @@ export function OperationDetails({
       output,
       item.type === "imageGeneration"
         ? t("返回数据\n{{value0}}", {
-            value0: JSON.stringify(
-              {
-                result: item.result,
-                savedPath: item.savedPath,
-                failure: item.failure,
-              },
-              null,
-              2,
-            ),
+            value0: JSON.stringify(generatedImageRecord(item), null, 2),
           })
         : null,
       structured != null
@@ -429,56 +423,7 @@ export function OperationDetails({
               <LocalMessageImage path={item.path} name={t("工具查看图片")} />
             </>
           ) : (
-            <>
-              {item.revisedPrompt && (
-                <ScrollArea scrollChaining className="max-h-40">
-                  <ToolText text={item.revisedPrompt} />
-                </ScrollArea>
-              )}
-              {item.failure ? (
-                <ErrorNotice>
-                  {t("图片生成额度已用尽（{{value0}}）", {
-                    value0: item.failure.limitId,
-                  })}
-                  {item.failure.resetsAt != null
-                    ? t("，重置时间：{{value0}}", {
-                        value0: new Date(
-                          item.failure.resetsAt * 1000,
-                        ).toLocaleString(getLocale()),
-                      })
-                    : ""}
-                </ErrorNotice>
-              ) : item.result || item.savedPath ? (
-                mediaUrl(item.result, "image") ? (
-                  <ConversationImage
-                    src={item.result}
-                    name={t("工具生成图片")}
-                  />
-                ) : /^[A-Za-z0-9+/=\r\n]+$/.test(item.result) &&
-                  item.result.length > 64 ? (
-                  <ConversationImage
-                    src={`data:image/png;base64,${item.result}`}
-                    name={t("工具生成图片")}
-                  />
-                ) : (
-                  <LocalMessageImage
-                    path={item.savedPath || item.result}
-                    name={t("工具生成图片")}
-                  />
-                )
-              ) : (
-                <p className="text-xs text-muted">
-                  {status === "failed"
-                    ? t("图片生成失败")
-                    : status === "inProgress" || status === "in_progress"
-                      ? t("正在生成图片")
-                      : t("未返回图片")}
-                </p>
-              )}
-              {item.savedPath && (
-                <p className="text-xs text-muted">{item.savedPath}</p>
-              )}
-            </>
+            <GeneratedImage item={item} status={status} />
           )}
         </section>
       ) : (

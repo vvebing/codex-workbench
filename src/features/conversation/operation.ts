@@ -1,6 +1,7 @@
 import { t } from "../../lib/i18n";
 import type { ThreadItem } from "../../generated/v2/ThreadItem";
 import type { TurnStatus } from "../../generated/v2/TurnStatus";
+import { hasGeneratedImageContent } from "./image-generation";
 
 /** Include rich results and input arguments, not only the plain-text preview. */
 export function hasOperationContent(
@@ -16,8 +17,7 @@ export function hasOperationContent(
     item.type === "mcpToolCall" ||
     item.type === "dynamicToolCall" ||
     (item.type === "fileChange" && item.changes.length > 0) ||
-    (item.type === "imageGeneration" &&
-      !!(item.result || item.savedPath || item.failure)) ||
+    (item.type === "imageGeneration" && hasGeneratedImageContent(item)) ||
     (item.type === "webSearch" && !!item.results?.length) ||
     (item.type === "functionCallOutput" &&
       Array.isArray(item.output) &&

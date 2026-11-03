@@ -323,14 +323,22 @@ export function AccountStatus({ connection }: { connection: ConnectionStore }) {
               ? "API Key"
               : account?.type === "amazonBedrock"
                 ? "Amazon Bedrock"
-                : state.accountDetails?.requiresOpenaiAuth === false
-                  ? t("当前提供方无需 OpenAI 登录")
-                  : t("暂未登录或尚未读取")}
+                : account?.type === "gcp"
+                  ? "Google Cloud"
+                  : state.accountDetails?.requiresOpenaiAuth === false
+                    ? t("当前提供方无需 OpenAI 登录")
+                    : t("暂未登录或尚未读取")}
         </dd>
         {chatgpt && (
           <>
             <dt className="text-muted">{t("套餐")}</dt>
             <dd>{planLabel(plan)}</dd>
+            {account.workspaceName && (
+              <>
+                <dt className="text-muted">{t("工作区")}</dt>
+                <dd className="break-words">{account.workspaceName}</dd>
+              </>
+            )}
           </>
         )}
       </dl>

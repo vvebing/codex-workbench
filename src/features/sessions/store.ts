@@ -22,6 +22,10 @@ import type { ConnectionStore } from "../connection/store";
 import { readHistory } from "./history";
 import { conversationExecuting } from "../conversation/activity";
 import { ROOT_THREAD_SOURCES } from "./list";
+import {
+  exclusionsRejected,
+  threadListExclusions,
+} from "./thread-list-exclusions";
 import { Polling } from "./polling";
 import { pruneHistoryCache } from "./history-cache";
 import { ThreadTitleCache } from "./title-cache";
@@ -105,6 +109,9 @@ export class SessionsStore extends Store<SessionsState> {
   private historyInitialized = false;
   private historyNeedsRestart = false;
   private historyCursors = new Set<string>();
+  private historyExclusions:
+    { ids: string[]; started: boolean } | null | undefined;
+  private exclusionsUnsupported = false;
   private hiddenServerIds = new Set<string>();
   private creatingDrafts = new Set<symbol>();
   private deferredStartedIds = new Set<string>();
@@ -461,6 +468,7 @@ export class SessionsStore extends Store<SessionsState> {
         this.projectReads.clear();
         this.projectListReads.clear();
         this.historyRevisions.clear();
+        this.exclusionsUnsupported = false;
         this.sectionRead++;
         this.creatingDrafts.clear();
         this.deferredStartedIds.clear();
@@ -501,6 +509,7 @@ export class SessionsStore extends Store<SessionsState> {
         this.historyInitialized = false;
         this.historyNeedsRestart = false;
         this.historyCursors.clear();
+        this.historyExclusions = undefined;
         this.creatingDrafts.clear();
         this.deferredStartedIds.clear();
         this.update(initialState());
@@ -783,7 +792,28 @@ export class SessionsStore extends Store<SessionsState> {
       this.current(epoch) && sectionGeneration === this.sectionGeneration;
     const initialize =
       !append && (!this.historyInitialized || this.historyNeedsRestart);
-    if (initialize) this.historyCursors.clear();
+    if (initialize) {
+      this.historyCursors.clear();
+      this.historyExclusions = undefined;
+    }
+    if (append && this.historyExclusions === undefined) {
+      const ids = threadListExclusions([
+        ...this.hiddenServerIds,
+        ...this.state.listIds,
+        ...Object.values(this.state.localDrafts).flatMap((draft) =>
+          draft.serverId ? [draft.serverId] : [],
+        ),
+      ]);
+      this.historyExclusions =
+        ids.length && !this.exclusionsUnsupported
+          ? { ids, started: false }
+          : null;
+    }
+    const exclusions = append ? this.historyExclusions : null;
+    // Exclusions must stay identical across a pagination chain. Begin the
+    // optimized traversal at the head, never alter the filters of an old cursor.
+    const originalCursor = cursor;
+    if (exclusions && !exclusions.started) cursor = null;
     const operation = async () => {
       for (let page = 0; page < 10; page++) {
         const beforeIds = new Set(this.state.listIds);
@@ -792,26 +822,46 @@ export class SessionsStore extends Store<SessionsState> {
         this.projectListReads.add(projects);
         let result: { data: Thread[]; nextCursor: string | null };
         try {
-          result = await this.connection.client.request<{
-            data: Thread[];
-            nextCursor: string | null;
-          }>("thread/list", {
-            sourceKinds: ROOT_THREAD_SOURCES,
-            ...(sectionFilter === "all"
-              ? {}
-              : {
-                  sectionId:
-                    sectionFilter === "unsectioned" ? null : sectionFilter,
-                }),
-            limit: 50,
-            sortKey: "updated_at",
-            sortDirection: "desc",
-            ...(cursor ? { cursor } : {}),
-          });
+          const requestPage = (excludedThreadIds?: string[]) =>
+            this.connection.client.request<{
+              data: Thread[];
+              nextCursor: string | null;
+            }>("thread/list", {
+              sourceKinds: ROOT_THREAD_SOURCES,
+              ...(sectionFilter === "all"
+                ? {}
+                : {
+                    sectionId:
+                      sectionFilter === "unsectioned" ? null : sectionFilter,
+                  }),
+              limit: 50,
+              sortKey: "updated_at",
+              sortDirection: "desc",
+              ...(cursor ? { cursor } : {}),
+              ...(excludedThreadIds ? { excludedThreadIds } : {}),
+            });
+          const excludedThreadIds =
+            exclusions && !this.exclusionsUnsupported
+              ? exclusions.ids
+              : undefined;
+          try {
+            result = await requestPage(excludedThreadIds);
+          } catch (error) {
+            if (!excludedThreadIds || !exclusionsRejected(error) || !current())
+              throw error;
+            // This optional filter can be absent on older servers. Retry the
+            // read once without it; normal method support remains independent.
+            this.exclusionsUnsupported = true;
+            this.historyExclusions = null;
+            cursor = exclusions?.started ? null : originalCursor;
+            if (exclusions?.started) this.historyCursors.clear();
+            result = await requestPage();
+          }
         } finally {
           this.projectListReads.delete(projects);
         }
         if (!current() || sectionFilter !== this.state.sectionFilter) return;
+        if (exclusions) exclusions.started = true;
         result.data = result.data.map((thread) =>
           projects.has(thread.id)
             ? { ...thread, projectId: projects.get(thread.id)! }
@@ -1656,6 +1706,7 @@ export class SessionsStore extends Store<SessionsState> {
     this.historyInitialized = false;
     this.historyNeedsRestart = false;
     this.historyCursors.clear();
+    this.historyExclusions = undefined;
     this.update({
       ...this.state,
       sectionFilter,

@@ -116,13 +116,96 @@ describe("authoritative item lifecycle hydration", () => {
       false,
       metadata(),
     );
-    expect(partial.turns[0].items).toEqual([image]);
+    expect(partial.turns[0].items).toEqual([
+      { ...image, startedAtMs: 0, completedAtMs: 0 },
+    ]);
     expect(
       mergeThread(emptyState(), partial).completedItems[
         operationKey("thread", "turn", "image")
       ],
     ).toBe(true);
   });
+  it("uses inline lifecycle records without an extra request and keeps unfinished items running", async () => {
+    const current = turn();
+    current.items = current.items.map((item, index) => ({
+      ...item,
+      startedAtMs: 1000,
+      completedAtMs: index < 2 ? 2000 : null,
+    }));
+    const request = vi
+      .fn()
+      .mockResolvedValue({ data: [current], nextCursor: null });
+    const hydrated = await readHistory(
+      { request } as unknown as CodexClient,
+      "thread",
+      undefined,
+      () => true,
+      false,
+      metadata(),
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+    const state = mergeThread(emptyState(), hydrated);
+    expect(
+      state.completedItems[operationKey("thread", "turn", "finished")],
+    ).toBe(true);
+    expect(state.startedItems[operationKey("thread", "turn", "live")]).toBe(
+      true,
+    );
+    expect(
+      state.completedItems[operationKey("thread", "turn", "live")],
+    ).toBeUndefined();
+  });
+
+  it("keeps the item history fallback when inline timing is missing or ambiguous", async () => {
+    for (const timing of [
+      { startedAtMs: 1000 },
+      { startedAtMs: null, completedAtMs: null },
+    ]) {
+      const current = turn();
+      current.items = current.items.map((item) => ({ ...item, ...timing }));
+      const request = vi
+        .fn()
+        .mockResolvedValueOnce({ data: [current], nextCursor: null })
+        .mockResolvedValueOnce({ data: [], nextCursor: null });
+      await readHistory(
+        { request } as unknown as CodexClient,
+        "thread",
+        undefined,
+        () => true,
+        false,
+        metadata(),
+      );
+      expect(request.mock.calls.map(([method]) => method)).toEqual([
+        "thread/turns/list",
+        "thread/items/list",
+      ]);
+    }
+  });
+
+  it("preserves recorded millisecond times through stale history snapshots", () => {
+    const current = {
+      ...metadata(),
+      turns: [
+        {
+          ...turn(),
+          items: [{ ...image, startedAtMs: 1000, completedAtMs: 1250 }],
+        },
+      ],
+    };
+    const state = mergeThread(emptyState(), current);
+    const merged = mergeThread(state, {
+      ...metadata(),
+      turns: [{ ...turn(), items: [image] }],
+    });
+    expect(merged.threads.thread.turns[0].items[0]).toMatchObject({
+      startedAtMs: 1000,
+      completedAtMs: 1250,
+    });
+    expect(merged.completedItems[operationKey("thread", "turn", "image")]).toBe(
+      true,
+    );
+  });
+
   it("null and missing history times do not revoke live terminal markers", () => {
     const key = operationKey("thread", "turn", "finished");
     const state = { ...emptyState(), completedItems: { [key]: true } };

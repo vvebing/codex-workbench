@@ -3,6 +3,7 @@ import { ConnectionStore } from "../../src/features/connection/store";
 import { SessionsStore } from "../../src/features/sessions/store";
 import { placeholderThread } from "../../src/lib/state";
 import type { Thread } from "../../src/generated/v2/Thread";
+import { RpcError, type RpcNotification } from "../../src/lib/rpc";
 
 type Page = { data: Thread[]; nextCursor: string | null };
 const page = (ids: string[], nextCursor: string | null): Page => ({
@@ -37,7 +38,13 @@ function fixture() {
     changed();
   };
   connect();
-  return { sessions, request, connect, disconnect };
+  const notify = (event: RpcNotification) => {
+    const client = connection.client as unknown as {
+      notifications: Set<(event: RpcNotification) => void>;
+    };
+    client.notifications.forEach((listener) => listener(event));
+  };
+  return { sessions, request, connect, disconnect, notify, connection };
 }
 afterEach(() => {
   vi.useRealTimers();
@@ -295,3 +302,179 @@ it.each(["", "   ", 5])(
     });
   },
 );
+
+const uuid = (index: number) =>
+  `019a1a10-0000-7000-8000-${String(index).padStart(12, "0")}`;
+
+it("starts a separate exclusion traversal and freezes its filters despite new or hidden rows", async () => {
+  const f = fixture();
+  const firstExcluded = deferred<Page>();
+  f.request
+    .mockResolvedValueOnce(page([uuid(1), uuid(2)], "plain-cursor"))
+    .mockReturnValueOnce(firstExcluded.promise)
+    .mockResolvedValueOnce(page([uuid(4)], null));
+  await f.sessions.refresh();
+  f.notify({ method: "thread/archived", params: { threadId: uuid(2) } });
+  const loading = f.sessions.loadAll();
+  await vi.advanceTimersByTimeAsync(0);
+  const initial = f.request.mock.calls[0]![1];
+  const optimized = f.request.mock.calls[1]![1];
+  expect(initial).not.toHaveProperty("excludedThreadIds");
+  expect(optimized).not.toHaveProperty("cursor");
+  expect(optimized).toMatchObject({
+    excludedThreadIds: expect.arrayContaining([uuid(1), uuid(2)]),
+  });
+  f.notify({
+    method: "thread/started",
+    params: { thread: placeholderThread(uuid(5)) },
+  });
+  firstExcluded.resolve(page([uuid(3)], "excluded-cursor"));
+  await loading;
+  expect(f.request.mock.calls[2]![1]).toMatchObject({
+    cursor: "excluded-cursor",
+    excludedThreadIds: (optimized as { excludedThreadIds: string[] })
+      .excludedThreadIds,
+  });
+  expect(
+    (f.request.mock.calls[2]![1] as { excludedThreadIds: string[] })
+      .excludedThreadIds,
+  ).not.toContain(uuid(3));
+  expect(
+    (f.request.mock.calls[2]![1] as { excludedThreadIds: string[] })
+      .excludedThreadIds,
+  ).not.toContain(uuid(5));
+  expect(f.sessions.getSnapshot().listIds).toEqual([
+    uuid(5),
+    uuid(1),
+    uuid(3),
+    uuid(4),
+  ]);
+});
+
+it("refreshes and discovers head metadata without changing an optimized continuation", async () => {
+  const f = fixture();
+  f.request
+    .mockResolvedValueOnce(page([uuid(1)], "plain-cursor"))
+    .mockResolvedValueOnce(page([uuid(2)], "excluded-cursor"))
+    .mockResolvedValueOnce(page([uuid(1)], "head-refresh-cursor"))
+    .mockResolvedValueOnce(page([uuid(3)], null));
+  await f.sessions.refresh();
+  await f.sessions.loadMore();
+  await f.sessions.refresh();
+  expect(f.request.mock.calls[2]![1]).not.toHaveProperty("excludedThreadIds");
+  expect(f.sessions.getSnapshot().nextCursor).toBe("excluded-cursor");
+  await f.sessions.loadMore();
+  expect(f.request.mock.calls[3]![1]).toMatchObject({
+    cursor: "excluded-cursor",
+    excludedThreadIds: [uuid(1)],
+  });
+  f.request.mockResolvedValueOnce(page([uuid(1)], "discovery-cursor"));
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(f.request.mock.calls[4]![1]).not.toHaveProperty("excludedThreadIds");
+  expect(f.sessions.getSnapshot().nextCursor).toBeNull();
+});
+
+it.each([100, 101])(
+  "respects the exclusion cap with %i known threads",
+  async (count) => {
+    const f = fixture();
+    const ids = Array.from({ length: count }, (_, index) => uuid(index + 1));
+    f.request
+      .mockResolvedValueOnce(page(ids, "plain-cursor"))
+      .mockResolvedValueOnce(page([uuid(200)], null));
+    await f.sessions.refresh();
+    await f.sessions.loadMore();
+    const params = f.request.mock.calls[1]![1];
+    if (count === 100) {
+      expect(params).not.toHaveProperty("cursor");
+      expect(params).toMatchObject({ excludedThreadIds: ids });
+    } else {
+      expect(params).not.toHaveProperty("excludedThreadIds");
+      expect(params).toMatchObject({ cursor: "plain-cursor" });
+    }
+  },
+);
+
+it.each([
+  new RpcError("unknown field excludedThreadIds", -32602),
+  new RpcError("Unsupported excluded_thread_ids parameter", -32600),
+])(
+  "falls back once for an older server without disabling thread/list (%s)",
+  async (error) => {
+    const f = fixture();
+    f.connection.client.capabilities.record("thread/list");
+    f.request
+      .mockResolvedValueOnce(page([uuid(1)], "plain-cursor"))
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce(page([uuid(2)], "legacy-next"))
+      .mockResolvedValueOnce(page([uuid(3)], null));
+    await f.sessions.refresh();
+    await f.sessions.loadAll();
+    expect(f.request.mock.calls[1]![1]).toMatchObject({
+      excludedThreadIds: [uuid(1)],
+    });
+    expect(f.request.mock.calls[2]![1]).toMatchObject({
+      cursor: "plain-cursor",
+    });
+    expect(f.request.mock.calls[2]![1]).not.toHaveProperty("excludedThreadIds");
+    expect(f.request.mock.calls[3]![1]).toMatchObject({
+      cursor: "legacy-next",
+    });
+    expect(f.request.mock.calls[3]![1]).not.toHaveProperty("excludedThreadIds");
+    expect(
+      f.connection.client.capabilities.getSnapshot()["thread/list"]?.state,
+    ).toBe("supported");
+    expect(f.sessions.getSnapshot()).toMatchObject({
+      listIds: [uuid(1), uuid(2), uuid(3)],
+      historyComplete: true,
+      historyError: null,
+    });
+  },
+);
+
+it("preserves an unstarted exclusion chain on a transient failure instead of silently retrying it", async () => {
+  const f = fixture();
+  f.request
+    .mockResolvedValueOnce(page([uuid(1)], "plain-cursor"))
+    .mockRejectedValueOnce(new Error("Temporary connection failure"));
+  await f.sessions.refresh();
+  await expect(f.sessions.loadMore()).rejects.toThrow(
+    "Temporary connection failure",
+  );
+  expect(f.request).toHaveBeenCalledTimes(2);
+  f.notify({
+    method: "thread/started",
+    params: { thread: placeholderThread(uuid(2)) },
+  });
+  f.request.mockResolvedValueOnce(page([uuid(3)], null));
+  await f.sessions.loadMore();
+  expect(f.request.mock.calls[2]![1]).toMatchObject({
+    excludedThreadIds: [uuid(1)],
+  });
+  expect(f.request.mock.calls[2]![1]).not.toHaveProperty("cursor");
+});
+
+it("keeps unknown-method failures visible without trying an optional-filter fallback", async () => {
+  const f = fixture();
+  f.request
+    .mockResolvedValueOnce(page([uuid(1)], "plain-cursor"))
+    .mockRejectedValueOnce(new RpcError("Unknown method thread/list", -32601));
+  await f.sessions.refresh();
+  await expect(f.sessions.loadMore()).rejects.toThrow(
+    "Unknown method thread/list",
+  );
+  expect(f.request).toHaveBeenCalledTimes(2);
+});
+
+it("does not mistake an expired optimized cursor for an unsupported exclusion filter", async () => {
+  const f = fixture();
+  f.request
+    .mockResolvedValueOnce(page([uuid(1)], "plain-cursor"))
+    .mockResolvedValueOnce(page([uuid(2)], "optimized-cursor"))
+    .mockRejectedValueOnce(new RpcError("Cursor is expired", -32602));
+  await f.sessions.refresh();
+  await f.sessions.loadMore();
+  await expect(f.sessions.loadMore()).rejects.toThrow("Cursor is expired");
+  expect(f.request).toHaveBeenCalledTimes(3);
+  expect(f.sessions.getSnapshot().nextCursor).toBeNull();
+});

@@ -5,6 +5,7 @@ import type { Turn } from "../generated/v2/Turn";
 import type { ThreadItem } from "../generated/v2/ThreadItem";
 import type { ThreadTokenUsage } from "../generated/v2/ThreadTokenUsage";
 import type { RpcNotification } from "./rpc";
+import { validItemTime } from "../features/conversation/operation-timing";
 
 export type ConversationState = {
   threads: Record<string, Thread>;
@@ -13,7 +14,7 @@ export type ConversationState = {
   diffs: Record<string, Record<string, string>>;
   fileOutputs: Record<string, Record<string, string>>;
   completedItems: Record<string, boolean>;
-  /** Items with observed live starts or streaming activity, never inferred from snapshots. */
+  /** Items with observed starts, streaming activity or recorded protocol start times. */
   startedItems: Record<string, boolean>;
   /** Recent MCP progress messages, isolated by thread, turn, and item. */
   toolProgress: Record<string, string[]>;
@@ -156,6 +157,11 @@ function mergeItems(
             : item.status,
       };
     } else result[index] = item;
+    // Older or stale snapshots cannot erase known recorded lifecycle times.
+    if (validItemTime(old.startedAtMs) && item.startedAtMs == null)
+      result[index] = { ...result[index], startedAtMs: old.startedAtMs };
+    if (validItemTime(old.completedAtMs) && item.completedAtMs == null)
+      result[index] = { ...result[index], completedAtMs: old.completedAtMs };
   }
   return result;
 }
@@ -219,6 +225,12 @@ export function mergeThread(
     if (timing.startedAtMs != null) startedItems[key] = true;
     if (timing.completedAtMs != null) completedItems[key] = true;
   }
+  for (const turn of thread.turns ?? [])
+    for (const item of turn.items) {
+      const key = operationKey(thread.id, turn.id, item.id);
+      if (validItemTime(item.startedAtMs)) startedItems[key] = true;
+      if (validItemTime(item.completedAtMs)) completedItems[key] = true;
+    }
   const old = state.threads[thread.id];
   const turns = mergeTurns(
     old?.turns ?? [],
@@ -497,7 +509,16 @@ export function reduceNotification(
       const { threadId, turnId, item } = event.params;
       return updateItem(state, threadId, turnId, item.id, (old) =>
         event.method === "item/completed" || !old
-          ? item
+          ? {
+              ...item,
+              ...(item.startedAtMs == null && validItemTime(old?.startedAtMs)
+                ? { startedAtMs: old.startedAtMs }
+                : {}),
+              ...(item.completedAtMs == null &&
+              validItemTime(old?.completedAtMs)
+                ? { completedAtMs: old.completedAtMs }
+                : {}),
+            }
           : mergeItems([old], [item])[0],
       );
     }

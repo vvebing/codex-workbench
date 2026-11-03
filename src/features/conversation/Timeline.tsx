@@ -66,6 +66,8 @@ import {
   type ExecutionSegment,
 } from "./execution-presentation";
 import { OperationDetails } from "./OperationDetails";
+import { OperationTiming } from "./OperationTiming";
+import { errorRecovery } from "../../lib/error-recovery";
 import {
   operationStatus,
   hasOperationContent,
@@ -326,6 +328,7 @@ const ToolItem = memo(function ToolItem({
           <Brain size={14} className="shrink-0" />
         )}
         <span>{t("正在思考")}</span>
+        <OperationTiming item={item} status={status} />
       </div>
     );
   }
@@ -358,6 +361,7 @@ const ToolItem = memo(function ToolItem({
         <span className="min-w-0 truncate" title={title}>
           {title}
         </span>
+        <OperationTiming item={item} status={status} />
       </div>
     );
   }
@@ -407,11 +411,7 @@ const ToolItem = memo(function ToolItem({
                 {item.exitCode}
               </small>
             )}
-          {"durationMs" in item && item.durationMs !== null && (
-            <small className="shrink-0 whitespace-nowrap text-meta text-muted">
-              {(item.durationMs / 1000).toFixed(1)} {t("秒")}
-            </small>
-          )}
+          <OperationTiming item={item} status={status} />
           {status &&
             !["completed", "inProgress", "failed"].includes(status) && (
               <small className="shrink-0 whitespace-nowrap text-meta">
@@ -1620,7 +1620,12 @@ function TimelineContent({
                         }
                       </TurnContent>
                       {turn.error && (
-                        <ErrorNotice>{turn.error.message}</ErrorNotice>
+                        <ErrorNotice>
+                          {turn.error.message}
+                          {errorRecovery(turn.error) && (
+                            <p className="mt-2">{errorRecovery(turn.error)}</p>
+                          )}
+                        </ErrorNotice>
                       )}
                       {!local && (
                         <TurnResults

@@ -1,5 +1,6 @@
 import { t, useLocale } from "../../lib/i18n";
 import { CapabilityPanel, useCapabilities } from "./CapabilityPanel";
+import { TelemetryRequirements } from "./TelemetryRequirements";
 import type { RpcMethod } from "../../lib/rpc";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useStore } from "../../components/hooks";
@@ -272,6 +273,9 @@ export function EnvironmentTools({
                   {state.requirements.data.requirements.modelProvider ??
                     t("未限定")}
                 </p>
+                <TelemetryRequirements
+                  value={state.requirements.data.requirements.otel}
+                />
               </>
             )}
           </div>

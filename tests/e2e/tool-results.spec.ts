@@ -67,6 +67,27 @@ const crossTypeItems: ThreadItem[] = [
     revisedPrompt: null,
     result: "",
     savedPath: "/demo/reference.png",
+    generationId: null,
+    failure: null,
+  },
+  {
+    type: "imageGeneration",
+    id: "file-id-image-generated",
+    status: "completed",
+    revisedPrompt: null,
+    fileId: "file-generated-result",
+    generationId: "generation-demo",
+    inputImages: [{ path: "/demo/input.png", sha256: "a".repeat(64) }],
+    failure: null,
+  },
+  {
+    type: "imageGeneration",
+    id: "file-id-image-saved",
+    status: "completed",
+    revisedPrompt: null,
+    fileId: "file-saved-result",
+    savedPath: "/demo/reference.png",
+    generationId: null,
     failure: null,
   },
   {
@@ -142,6 +163,7 @@ const crossTypeItems: ThreadItem[] = [
     status: "failed",
     revisedPrompt: null,
     result: "",
+    generationId: null,
     failure: {
       type: "usageLimitExceeded",
       limitId: "image-limit",
@@ -591,6 +613,51 @@ for (const width of [1440, 390]) {
   });
 }
 
+for (const width of [1440, 390]) {
+  test(`generated file IDs preserve provenance without reading current input files at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/?env=local&session=mock-thread-010");
+    const row = page.locator('[data-reading-id="file-id-image-generated"]');
+    const viewport = page.locator(
+      '[data-slot="conversation-timeline"] > [data-radix-scroll-area-viewport]',
+    );
+    await viewport.hover();
+    await page.mouse.wheel(0, -300);
+    await expect(page.getByRole("button", { name: /回到底部/ })).toBeVisible();
+    await row.locator(":scope > summary").click();
+    await expect(row).toContainText("图片已生成，暂无法预览。");
+    await expect(row.locator("img")).toHaveCount(0);
+    await row.getByText("图片生成记录", { exact: true }).click();
+    await expect(row).toContainText("file-generated-result");
+    await expect(row).toContainText("generation-demo");
+    await expect(row).toContainText("/demo/input.png");
+    await expect(row).toContainText("a".repeat(64));
+    await expect(row).toContainText("当前文件可能已变化");
+    await row.getByRole("button", { name: "复制输出", exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as unknown as { copiedToolOutput: string })
+              .copiedToolOutput,
+        ),
+      )
+      .toContain('"generationId": "generation-demo"');
+    const readPaths = server.requestLog
+      .filter((request) => request.method === "fs/readFile")
+      .map((request) => (request.params as { path: string }).path);
+    expect(readPaths).not.toContain("file-generated-result");
+    expect(readPaths).not.toContain("/demo/input.png");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - innerWidth,
+      ),
+    ).toBeLessThanOrEqual(1);
+  });
+}
+
 test("local image results, empty tool states and oversized raw output remain usable", async ({
   page,
 }) => {
@@ -605,6 +672,7 @@ test("local image results, empty tool states and oversized raw output remain usa
   for (const [id, name] of [
     ["local-image-view", "工具查看图片"],
     ["local-image-generated", "工具生成图片"],
+    ["file-id-image-saved", "工具生成图片"],
   ]) {
     const row = await open(id);
     const image = row.getByRole("img", { name, exact: true });

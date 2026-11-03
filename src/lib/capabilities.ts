@@ -1,5 +1,6 @@
 import { t } from "./i18n";
 import { Store } from "./store";
+import { modelProviderError } from "./error-recovery";
 import type { RpcMethod } from "./rpc";
 
 export type CapabilityState =
@@ -73,6 +74,7 @@ export class CapabilityStore extends Store<
       }
     }
     const kind = typeof info === "string" ? info.toLowerCase() : "";
+    const provider = modelProviderError(candidate?.data);
     if (error !== undefined) {
       if (code === -32601) state = "unsupported";
       else if (code === 401 || http === 401 || kind === "unauthorized")
@@ -80,12 +82,21 @@ export class CapabilityStore extends Store<
       else if (
         code === 403 ||
         http === 403 ||
-        ["sandboxerror", "cyberpolicy", "misalignmentpolicyviolation"].includes(
-          kind,
-        )
+        provider?.type === "modelProviderPolicyConflict" ||
+        [
+          "sandboxerror",
+          "cyberpolicy",
+          "misalignmentpolicyviolation",
+          "policycapacityunavailable",
+        ].includes(kind)
       )
         state = "policy";
-      else if (code === -32602) state = "invalid-request";
+      else if (
+        code === -32602 ||
+        provider?.type === "modelProviderMismatch" ||
+        provider?.type === "modelProviderNotConfigured"
+      )
+        state = "invalid-request";
       else state = "temporary";
     }
     this.update({

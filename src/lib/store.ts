@@ -1,3 +1,5 @@
+import { errorMessageWithRecovery } from "./error-recovery";
+
 export class Store<T> {
   private listeners = new Set<() => void>();
   private publicationPending = false;
@@ -52,5 +54,5 @@ export class Store<T> {
   }
 }
 export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return errorMessageWithRecovery(error);
 }

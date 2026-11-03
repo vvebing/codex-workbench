@@ -1,4 +1,5 @@
 import { t } from "../../lib/i18n";
+import { accountDisplayLabel } from "./account-presentation";
 import {
   CodexClient,
   RpcError,
@@ -220,13 +221,7 @@ export class ConnectionStore extends Store<ConnectionState> {
         this.update({
           ...this.state,
           accountDetails: details,
-          account: !account
-            ? t("未登录")
-            : account.type === "chatgpt"
-              ? (account.email ?? "ChatGPT")
-              : account.type === "apiKey"
-                ? "API key"
-                : "Amazon Bedrock",
+          account: accountDisplayLabel(account),
         });
       }
     } catch {
