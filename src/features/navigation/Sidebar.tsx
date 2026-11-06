@@ -256,6 +256,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             key: `more:${project.key}`,
             project,
             expanded,
+            stickyBottom: expanded,
             remaining: sorted.length - PROJECT_PREVIEW_SIZE,
             height: 44,
             navigable: true,

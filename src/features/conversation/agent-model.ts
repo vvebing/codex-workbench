@@ -104,19 +104,19 @@ export function resolveAgentStatus(
   return fallback;
 }
 
-export function agentStatusCounts(
+export function groupAgentTasks(
   agents: AgentTaskModel[],
   knownThreads: Readonly<Record<string, Thread>>,
   waitingIds: ReadonlySet<string>,
 ) {
-  const counts = {
-    running: 0,
-    completed: 0,
-    waiting: 0,
-    failed: 0,
-    interrupted: 0,
-    preparing: 0,
-    unknown: 0,
+  const groups = {
+    waiting: [] as AgentTaskModel[],
+    running: [] as AgentTaskModel[],
+    preparing: [] as AgentTaskModel[],
+    failed: [] as AgentTaskModel[],
+    interrupted: [] as AgentTaskModel[],
+    completed: [] as AgentTaskModel[],
+    unknown: [] as AgentTaskModel[],
   };
   for (const agent of agents) {
     const status = resolveAgentStatus(
@@ -124,16 +124,34 @@ export function agentStatusCounts(
       knownThreads[agent.id],
       waitingIds.has(agent.id),
     );
-    if (status === "running") counts.running++;
-    else if (status === "completed") counts.completed++;
-    else if (status === "waiting") counts.waiting++;
-    else if (status === "errored" || status === "notFound") counts.failed++;
-    else if (status === "interrupted" || status === "shutdown")
-      counts.interrupted++;
-    else if (status === "pendingInit") counts.preparing++;
-    else counts.unknown++;
+    const group =
+      status === "errored" || status === "notFound"
+        ? "failed"
+        : status === "shutdown" || status === "interrupted"
+          ? "interrupted"
+          : status === "pendingInit"
+            ? "preparing"
+            : status;
+    groups[group].push(agent);
   }
-  return counts;
+  return groups;
+}
+
+export function agentStatusCounts(
+  agents: AgentTaskModel[],
+  knownThreads: Readonly<Record<string, Thread>>,
+  waitingIds: ReadonlySet<string>,
+) {
+  const groups = groupAgentTasks(agents, knownThreads, waitingIds);
+  return {
+    running: groups.running.length,
+    completed: groups.completed.length,
+    waiting: groups.waiting.length,
+    failed: groups.failed.length,
+    interrupted: groups.interrupted.length,
+    preparing: groups.preparing.length,
+    unknown: groups.unknown.length,
+  };
 }
 
 export function latestAgentActivity(thread: Thread): string {

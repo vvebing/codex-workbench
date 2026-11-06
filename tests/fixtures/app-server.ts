@@ -1960,6 +1960,36 @@ export function createMockServer(options: MockOptions = {}) {
                 aggregatedOutput: "保留历史错误原因",
               });
             }
+            if (text.includes("agent-groups")) {
+              const statuses = [
+                "running",
+                "completed",
+                "interrupted",
+                "shutdown",
+                "pendingInit",
+                "errored",
+                "notFound",
+                "unknown",
+              ] as const;
+              for (const status of statuses) {
+                const id = `group-${status}`;
+                completeItem({
+                  type: "collabAgentToolCall",
+                  id: randomUUID(),
+                  tool: "spawnAgent",
+                  status: "completed",
+                  senderThreadId: t.id,
+                  receiverThreadIds: [id],
+                  prompt: `检查 ${status}`,
+                  model: null,
+                  reasoningEffort: null,
+                  agentsStates:
+                    status === "unknown"
+                      ? {}
+                      : { [id]: { status, message: null } },
+                });
+              }
+            }
             if (
               [
                 "agent-detail",

@@ -52,6 +52,8 @@ export async function readHistory(
     return thread;
   }
 
+  // A single turn can exceed the bridge frame limit. Fetch metadata first,
+  // then hydrate its items in smaller pages, including windowed history reads.
   const anchor = incremental ? cached?.turns.at(-1)?.id : undefined;
   let nextCursor: string | null = null;
   const turns = window
@@ -63,7 +65,7 @@ export async function readHistory(
           threadId: id,
           limit: 30,
           sortDirection: "desc",
-          itemsView: "full",
+          itemsView: "notLoaded",
           cursor: window.cursor,
         });
         check();
@@ -80,7 +82,7 @@ export async function readHistory(
             threadId: id,
             limit: incremental ? 50 : 100,
             sortDirection: incremental ? "desc" : "asc",
-            itemsView: "full",
+            itemsView: "notLoaded",
           },
         ],
         check,
@@ -110,7 +112,7 @@ export async function readHistory(
         {
           threadId: id,
           turnId: turn.id,
-          limit: 100,
+          limit: 20,
           sortDirection: "asc",
         },
       ],

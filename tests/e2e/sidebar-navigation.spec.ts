@@ -658,6 +658,11 @@ test("reaches the next project without traversing a long history and reveals old
   await more.click();
   await expect(rows(page)).toHaveCount(40);
   await expect(more).toHaveText("收起为 5 条");
+  const collapseBounds = (await more.boundingBox())!;
+  expect(collapseBounds.y).toBeGreaterThan(bounds.y);
+  expect(collapseBounds.y + collapseBounds.height).toBeLessThanOrEqual(
+    bounds.y + bounds.height,
+  );
   await viewport.evaluate((element) => {
     element.scrollTop = 500;
   });
@@ -702,6 +707,13 @@ for (const threadCount of [90, 1000]) {
         differences.push(
           heading.getBoundingClientRect().top -
             element.getBoundingClientRect().top,
+        );
+        const footer = element.querySelector(
+          '[data-slot="project-history-toggle"][aria-expanded="true"]',
+        )!;
+        differences.push(
+          footer.parentElement!.getBoundingClientRect().bottom -
+            element.getBoundingClientRect().bottom,
         );
         await new Promise<void>((resolve) =>
           requestAnimationFrame(() => resolve()),

@@ -124,6 +124,20 @@ export function NavigationList<T extends NavigationListRow>({
     virtual,
     sticky?.index,
   );
+  // Give each footer its project's full bounds so native sticky positioning
+  // tracks scrolling without waiting for a React render.
+  const bottomGroups = new Map<number, { top: number; height: number }>();
+  let projectStart = 0;
+  rows.forEach((row, index) => {
+    if (row.sticky) projectStart = layout.offsets[index] + row.height;
+    if (!row.stickyBottom) return;
+    bottomGroups.set(index, {
+      top: projectStart,
+      height: layout.offsets[index] + row.height - projectStart,
+    });
+    if (!rendered.includes(index)) rendered.push(index);
+  });
+  rendered.sort((a, b) => a - b);
   const renderedKeys = new Set(
     rendered
       .filter((index) => rows[index].navigable)
@@ -360,6 +374,7 @@ export function NavigationList<T extends NavigationListRow>({
       >
         {rendered.map((index) => {
           const row = rows[index];
+          const bottomGroup = bottomGroups.get(index);
           const pinned =
             sticky?.index === index && sticky.top > layout.offsets[index];
           return (
@@ -369,12 +384,16 @@ export function NavigationList<T extends NavigationListRow>({
               data-navigation-project-group={row.sticky || undefined}
               style={{
                 position: "absolute",
-                top: layout.offsets[index],
-                zIndex: row.sticky ? 1 : undefined,
+                top: bottomGroup?.top ?? layout.offsets[index],
+                zIndex: row.sticky || row.stickyBottom ? 1 : undefined,
                 left: 0,
                 right: 0,
-                height: row.sticky ? projectHeights.get(index) : row.height,
-                pointerEvents: row.sticky ? "none" : undefined,
+                height:
+                  bottomGroup?.height ??
+                  (row.sticky ? projectHeights.get(index) : row.height),
+                display: bottomGroup ? "flex" : undefined,
+                alignItems: bottomGroup ? "flex-end" : undefined,
+                pointerEvents: row.sticky || bottomGroup ? "none" : undefined,
               }}
               onFocus={() => {
                 setFocusedKey(row.key);
@@ -385,6 +404,13 @@ export function NavigationList<T extends NavigationListRow>({
                 <div
                   className="navigation-project-heading sticky top-0"
                   data-sticky-project={pinned || undefined}
+                  style={{ height: row.height, pointerEvents: "auto" }}
+                >
+                  {render(row, effectiveFocus === row.key)}
+                </div>
+              ) : bottomGroup ? (
+                <div
+                  className="sticky bottom-0 w-full bg-surface"
                   style={{ height: row.height, pointerEvents: "auto" }}
                 >
                   {render(row, effectiveFocus === row.key)}

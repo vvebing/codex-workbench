@@ -403,7 +403,7 @@ it("incrementally reads only recent turns when a viewing paginated thread change
     threadId: "paginated",
     limit: 50,
     sortDirection: "desc",
-    itemsView: "full",
+    itemsView: "notLoaded",
     cursor: null,
   });
   expect(

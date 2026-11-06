@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-29T09:53:37.741513+00:00",
+  "generatedAt": "2026-11-05T01:24:13.385Z",
   "title": "Design System: Codex Workbench",
   "extensions": {
     "shadows": [
@@ -717,7 +717,7 @@
   ],
   "narrative": {
     "northStar": "Focused workbench",
-    "overview": "Codex Workbench uses a neutral graphite and white interface with forest green for actions and meaningful states. Content, lists, and dividers establish hierarchy across sessions, settings, files, and conversation tools.\n\nThis document records the implemented system. It describes the current source rather than a separately approved brand identity; configurable typography and themes remain part of the interface.",
+    "overview": "Codex Workbench uses a neutral graphite and white interface with forest green for actions and meaningful states. Content, lists, and dividers establish hierarchy across sessions, settings, files, and conversation tools.\n\nThe design system supports configurable typography, light and dark themes, and responsive working layouts.",
     "keyCharacteristics": [
       "Compact controls with clear text hierarchy.",
       "Flat working surfaces, divided lists, and restrained overlays.",
@@ -750,7 +750,7 @@
       "Don't hardcode white text on primary actions; use the on-action token.",
       "Don't add decorative heroes, gradients, or repeated cards to working screens.",
       "Don't hide row actions from keyboard focus or touch users.",
-      "Don't treat the start-page heading or smaller legacy text sizes as a reusable display system."
+      "Don't use page-specific text sizes in place of shared typography roles."
     ]
   }
 }

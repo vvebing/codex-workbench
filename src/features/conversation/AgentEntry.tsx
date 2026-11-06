@@ -2,13 +2,7 @@ import { useTranslation } from "react-i18next";
 import { t } from "../../lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { Popover } from "radix-ui";
-import {
-  Bot,
-  ChevronRight,
-  LoaderCircle,
-  CheckCircle,
-  CircleAlert,
-} from "lucide-react";
+import { Bot, ChevronRight } from "lucide-react";
 import type { Thread } from "../../generated/v2/Thread";
 import { useRuntime } from "../../lib/runtime-context";
 import { useStore } from "../../components/hooks";
@@ -17,6 +11,7 @@ import {
   directAgentTasks,
   resolveAgentStatus,
   agentStatusCounts,
+  groupAgentTasks,
   latestAgentActivity,
   type AgentTaskModel,
 } from "./agent-model";
@@ -100,6 +95,19 @@ export function AgentEntry({
   );
   const counts = agentStatusCounts(agents, known, waitingIds);
   const pendingCount = counts.waiting;
+  const grouped = groupAgentTasks(agents, known, waitingIds);
+  const groupLabels = {
+    waiting: t("待处理"),
+    running: t("运行中"),
+    preparing: t("准备中"),
+    failed: t("失败"),
+    interrupted: t("已中断"),
+    completed: t("已完成"),
+    unknown: t("状态待确认"),
+  };
+  const groups = (Object.keys(grouped) as (keyof typeof grouped)[])
+    .filter((key) => grouped[key].length > 0)
+    .map((key) => ({ key, label: groupLabels[key], agents: grouped[key] }));
   const summaryLabel = t(
     "查看子代理，共 {{value0}} 个{{value1}}{{value2}}{{value3}}{{value4}}{{value5}}{{value6}}{{value7}}",
     {
@@ -165,7 +173,7 @@ export function AgentEntry({
   return (
     <div
       data-slot="composer-agents"
-      className="inline-flex min-w-0 items-center"
+      className="inline-flex min-w-0 max-w-full items-center"
     >
       <Popover.Root
         open={open}
@@ -181,7 +189,7 @@ export function AgentEntry({
             data-slot="agent-entry"
             aria-label={summaryLabel}
             title={summaryLabel}
-            className="flex max-[550px]:min-h-10 items-center gap-1.5 rounded px-2 py-1 text-xs text-muted hover:bg-hover hover:text-foreground"
+            className="flex max-w-full flex-wrap max-[550px]:min-h-10 items-center gap-x-2 gap-y-1 rounded px-2 py-1 text-xs text-muted hover:bg-hover hover:text-foreground"
             onMouseEnter={() => {
               cancelClose();
               setOpen(true);
@@ -215,71 +223,16 @@ export function AgentEntry({
             }}
           >
             <Bot size={14} />
-            {counts.running > 0 && (
-              <span className="hidden text-fine @min-[650px]:inline">
-                {counts.running} {t("运行中")}
+            {groups.map((group) => (
+              <span
+                key={group.key}
+                data-agent-status={group.key}
+                className={`inline-flex items-center gap-1 whitespace-nowrap text-fine ${group.key === "failed" ? "text-danger" : group.key === "waiting" ? "text-accent" : "text-muted"}`}
+              >
+                <span className="tabular-nums">{group.agents.length}</span>{" "}
+                <span>{group.label}</span>
               </span>
-            )}
-            {counts.completed > 0 && (
-              <span className="hidden text-fine @min-[650px]:inline">
-                {counts.completed} {t("已完成")}
-              </span>
-            )}
-            {counts.preparing > 0 && (
-              <span className="hidden text-fine @min-[650px]:inline">
-                {counts.preparing} {t("准备中")}
-              </span>
-            )}
-            {counts.failed > 0 && (
-              <span className="hidden text-fine text-danger @min-[650px]:inline">
-                {counts.failed} {t("失败")}
-              </span>
-            )}
-            {counts.interrupted > 0 && (
-              <span className="hidden text-fine @min-[650px]:inline">
-                {counts.interrupted} {t("已中断")}
-              </span>
-            )}
-            {counts.unknown > 0 && (
-              <span className="hidden text-fine @min-[650px]:inline">
-                {counts.unknown} {t("状态待确认")}
-              </span>
-            )}
-            <span
-              className="flex items-center gap-1 text-fine @min-[650px]:hidden"
-              aria-hidden="true"
-            >
-              {counts.running > 0 && (
-                <>
-                  <LoaderCircle size={10} />
-                  <span>{counts.running}</span>
-                </>
-              )}
-              {counts.completed > 0 && (
-                <>
-                  <CheckCircle size={10} />
-                  <span>{counts.completed}</span>
-                </>
-              )}
-              {(counts.failed > 0 ||
-                counts.unknown > 0 ||
-                counts.interrupted > 0) && (
-                <>
-                  <CircleAlert
-                    size={10}
-                    className={counts.failed ? "text-danger" : ""}
-                  />
-                  <span>
-                    {counts.failed + counts.unknown + counts.interrupted}
-                  </span>
-                </>
-              )}
-            </span>
-            {pendingCount > 0 && (
-              <span className="text-fine text-accent">
-                {pendingCount} {t("待处理")}
-              </span>
-            )}
+            ))}
           </button>
         </Popover.Trigger>
         <Popover.Portal>
@@ -341,19 +294,35 @@ export function AgentEntry({
               className="max-h-72"
               viewportProps={{ className: "pl-1 pr-3 pb-1" }}
             >
-              {agents.map((agent) => (
-                <AgentRow
-                  key={agent.id}
-                  agent={agent}
-                  thread={known[agent.id]}
-                  waiting={waitingIds.has(agent.id)}
-                  onSelect={() => {
-                    cancelClose();
-                    selecting.current = true;
-                    close();
-                    onSelect(agent.id);
-                  }}
-                />
+              {groups.map((group) => (
+                <section
+                  key={group.key}
+                  data-slot="agent-status-group"
+                  data-agent-status={group.key}
+                  aria-label={group.label}
+                  className="py-1 [&+section]:mt-2 [&+section]:border-t [&+section]:border-border [&+section]:pt-3"
+                >
+                  <h3
+                    className={`flex items-center justify-between px-3 pb-1 text-meta font-medium ${group.key === "failed" ? "text-danger" : group.key === "waiting" ? "text-accent" : "text-muted"}`}
+                  >
+                    {group.label}
+                    <span className="tabular-nums">{group.agents.length}</span>
+                  </h3>
+                  {group.agents.map((agent) => (
+                    <AgentRow
+                      key={agent.id}
+                      agent={agent}
+                      thread={known[agent.id]}
+                      waiting={waitingIds.has(agent.id)}
+                      onSelect={() => {
+                        cancelClose();
+                        selecting.current = true;
+                        close();
+                        onSelect(agent.id);
+                      }}
+                    />
+                  ))}
+                </section>
               ))}
             </ScrollArea>
           </Popover.Content>

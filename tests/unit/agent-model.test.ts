@@ -3,6 +3,7 @@ import {
   directAgentTasks,
   resolveAgentStatus,
   agentStatusCounts,
+  groupAgentTasks,
   latestAgentActivity,
 } from "../../src/features/conversation/agent-model";
 import { placeholderThread } from "../../src/lib/state";
@@ -251,4 +252,51 @@ it("counts known states consistently and never treats unknown as completed", () 
     "unknown",
   );
   expect(resolveAgentStatus("completed", undefined, true)).toBe("waiting");
+});
+
+it("groups each agent exactly once using live status and pending requests", () => {
+  const statuses = [
+    "completed",
+    "interrupted",
+    "running",
+    "shutdown",
+    "pendingInit",
+    "errored",
+    "notFound",
+    "unknown",
+    "completed",
+  ] as const;
+  const agents = statuses.map((status, index) => ({
+    id: String(index),
+    status,
+    prompt: null,
+    message: null,
+  }));
+  const groups = groupAgentTasks(
+    agents,
+    {
+      "8": {
+        ...placeholderThread("8"),
+        status: { type: "active", activeFlags: [] },
+      },
+    },
+    new Set(["2"]),
+  );
+  expect(
+    Object.fromEntries(
+      Object.entries(groups).map(([key, values]) => [
+        key,
+        values.map((agent) => agent.id),
+      ]),
+    ),
+  ).toEqual({
+    waiting: ["2"],
+    running: ["8"],
+    preparing: ["4"],
+    failed: ["5", "6"],
+    interrupted: ["1", "3"],
+    completed: ["0"],
+    unknown: ["7"],
+  });
+  expect(Object.values(groups).flat()).toHaveLength(agents.length);
 });

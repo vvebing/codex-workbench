@@ -4283,11 +4283,36 @@ test("operation turn folding keeps final summaries and restores inline progress"
     name: "展开执行过程",
     exact: true,
   });
-  const promptBox = await prompt.boundingBox();
-  const toggleBox = await toggle.boundingBox();
-  const summaryBox = await summary.boundingBox();
-  expect(toggleBox!.y).toBeGreaterThanOrEqual(promptBox!.y + promptBox!.height);
-  expect(toggleBox!.y + toggleBox!.height).toBeLessThanOrEqual(summaryBox!.y);
+  const layoutElements = {
+    prompt: await prompt.elementHandle(),
+    toggle: await toggle.elementHandle(),
+    summary: await summary.elementHandle(),
+  };
+  await expect
+    .poll(() =>
+      page.evaluate(({ prompt, toggle, summary }) => {
+        if (!prompt || !toggle || !summary) return false;
+        const settled = [prompt, toggle, summary].every((element) => {
+          const motion = element.closest(
+            '[data-slot="conversation-process-motion"], [data-slot="conversation-message-motion"]',
+          );
+          return (
+            !motion || motion.getAnimations({ subtree: true }).length === 0
+          );
+        });
+        // Scroll anchoring and completion motion can move the turn between
+        // protocol calls. Compare all three rectangles in the same layout frame.
+        const promptBox = prompt.getBoundingClientRect();
+        const toggleBox = toggle.getBoundingClientRect();
+        const summaryBox = summary.getBoundingClientRect();
+        return (
+          settled &&
+          toggleBox.top >= promptBox.bottom &&
+          toggleBox.bottom <= summaryBox.top
+        );
+      }, layoutElements),
+    )
+    .toBe(true);
   await turn.getByRole("button", { name: "展开执行过程", exact: true }).click();
   await expect(commentary).toBeVisible();
   await expect(summary).toBeVisible();
@@ -5890,4 +5915,64 @@ test("composer mac line shortcuts and modified arrows bypass file completions", 
   await editor.press("Meta+ArrowRight");
   await page.keyboard.insertText(" END");
   await expect(editor).toHaveText("START before @src END");
+});
+
+test("agent status groups separate pending running and terminal agents across viewport sizes", async ({
+  page,
+}) => {
+  await openFirst(page);
+  await send(page, "agent-confirmation agent-groups");
+  await completed(page);
+  const entry = page.locator("[data-slot=agent-entry]");
+  const labels = [
+    "待处理",
+    "运行中",
+    "准备中",
+    "失败",
+    "已中断",
+    "已完成",
+    "状态待确认",
+  ];
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    for (const label of labels)
+      await expect(entry.getByText(label, { exact: true })).toBeVisible();
+    await entry.click();
+    const list = page.locator("[data-slot=agent-list]");
+    const groups = list.locator("[data-slot=agent-status-group]");
+    await expect(groups).toHaveCount(7);
+    await expect(groups.getByRole("heading")).toHaveText([
+      "待处理1",
+      "运行中1",
+      "准备中1",
+      "失败2",
+      "已中断2",
+      "已完成1",
+      "状态待确认1",
+    ]);
+    await expect(list.locator("[data-slot=agent-list-item]")).toHaveCount(9);
+    await expect(
+      groups
+        .filter({ has: page.getByRole("heading", { name: /^失败/ }) })
+        .locator("[data-slot=agent-list-item]"),
+    ).toHaveCount(2);
+    await list.press("Home");
+    await expect(groups.first().locator("button")).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(groups.nth(1).locator("button")).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(groups.last().locator("button")).toBeFocused();
+    await page.keyboard.press("Home");
+    await page.screenshot({ path: `test-results/agent-groups-${width}.png` });
+    if (width === 390) {
+      await page.emulateMedia({ colorScheme: "dark" });
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+      await page.screenshot({
+        path: "test-results/agent-groups-dark.png",
+        animations: "disabled",
+      });
+    }
+    await page.keyboard.press("Escape");
+    await expect(entry).toBeFocused();
+  }
 });

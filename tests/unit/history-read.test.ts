@@ -60,6 +60,62 @@ describe("metadata-first history reads", () => {
       expect(result.turns[0].items).toEqual([item]);
     },
   );
+  it.each([false, true])(
+    "hydrates a large turn through item pages (window=%s)",
+    async (windowed) => {
+      const metadata = {
+        ...placeholderThread("thread"),
+        historyMode: "paginated" as const,
+      };
+      const items = Array.from({ length: 583 }, (_, index) => ({
+        item: {
+          type: "agentMessage",
+          id: String(index),
+          text: "x".repeat(44000),
+          phase: null,
+        },
+        turnId: turn.id,
+        startedAtMs: index,
+        completedAtMs: index + 1,
+      }));
+      const request = vi.fn(async (method, params) => {
+        if (method === "thread/turns/list") {
+          expect(params.itemsView).toBe("notLoaded");
+          return {
+            data: [{ ...turn, itemsView: "notLoaded" }],
+            nextCursor: null,
+          };
+        }
+        expect(method).toBe("thread/items/list");
+        expect(params.limit).toBe(20);
+        const offset = Number(params.cursor ?? 0);
+        const data = items.slice(offset, offset + params.limit);
+        return {
+          data,
+          nextCursor:
+            offset + data.length < items.length
+              ? String(offset + data.length)
+              : null,
+        };
+      });
+      const next = vi.fn();
+      const result = await readHistory(
+        { request } as unknown as CodexClient,
+        "thread",
+        undefined,
+        () => true,
+        false,
+        metadata,
+        windowed ? { cursor: null, next } : undefined,
+      );
+      expect(result.turns[0].items).toHaveLength(583);
+      expect(result.turns[0].items[582].id).toBe("582");
+      expect(result.turns[0].itemsView).toBe("full");
+      expect(Object.keys(result.itemLifecycles ?? {})).toHaveLength(583);
+      expect(request).toHaveBeenCalledTimes(31);
+      if (windowed) expect(next).toHaveBeenCalledWith(null);
+    },
+  );
   it("uses full hydration only after confirming legacy metadata", async () => {
     const metadata = placeholderThread("thread");
     const request = vi

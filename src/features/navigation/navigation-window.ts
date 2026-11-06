@@ -3,6 +3,7 @@ export interface NavigationListRow {
   height: number;
   navigable: boolean;
   sticky?: boolean;
+  stickyBottom?: boolean;
 }
 export interface NavigationLayout {
   offsets: number[];
