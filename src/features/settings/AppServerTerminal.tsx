@@ -1,3 +1,4 @@
+import { DEMO_MODE } from "../../lib/demo-mode";
 import { t, useLocale } from "../../lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import type { AppServerOutput } from "../../../server/app-server";
@@ -32,7 +33,7 @@ export function AppServerTerminal() {
   const [follow, setFollow] = useState(true);
   const output = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (import.meta.env.DEV) return;
+    if (DEMO_MODE || import.meta.env.DEV) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
@@ -71,7 +72,13 @@ export function AppServerTerminal() {
         "显示当前网页服务启动的 Codex 进程的标准输出与标准错误，保留最近 128 KiB。原始输出也会继续显示在 npm start 所在的终端。",
       )}
     >
-      {import.meta.env.DEV ? (
+      {DEMO_MODE ? (
+        <p className="text-xs text-muted">
+          {t(
+            "演示模式不启动本机服务或读取终端输出。请在本机安装工作台后使用。",
+          )}
+        </p>
+      ) : import.meta.env.DEV ? (
         <p className="text-sm text-muted">
           {t("开发模式不启动 app-server，请在手动启动它的终端查看输出。")}
         </p>

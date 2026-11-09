@@ -43,7 +43,11 @@
     "prepare": "node scripts/install-hooks.mjs",
     "hooks:install": "node scripts/install-hooks.mjs",
     "ci": "node scripts/ci.mjs",
-    "ci:e2e": "node scripts/ci.mjs --e2e"
+    "ci:e2e": "node scripts/ci.mjs --e2e",
+    "dev:demo": "vite --config vite.demo.config.ts --mode demo",
+    "build:demo": "vite build --config vite.demo.config.ts --mode demo",
+    "preview:demo": "vite preview --config vite.demo.config.ts --mode demo",
+    "test:demo": "npm run build:demo && playwright test --config playwright.demo.config.ts"
   },
   "dependencies": {
     "i18next": "^26.5.11",

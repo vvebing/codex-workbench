@@ -1,3 +1,4 @@
+import { DEMO_MODE } from "../../lib/demo-mode";
 import { t, useLocale } from "../../lib/i18n";
 import { useEffect, useState } from "react";
 import { useStore } from "../../components/hooks";
@@ -12,7 +13,7 @@ function CheckOnConnect({ environment }: { environment: Environment }) {
 
   const { status, epoch } = useStore(environment.runtime.connection);
   useEffect(() => {
-    if (status === "connected") void releaseCheck.check();
+    if (!DEMO_MODE && status === "connected") void releaseCheck.check();
   }, [status, epoch]);
   return null;
 }

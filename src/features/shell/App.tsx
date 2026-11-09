@@ -1,3 +1,5 @@
+import { DEMO_MODE } from "../../lib/demo-mode";
+import { DemoBanner } from "../../demo/DemoBanner";
 import { t, useLocale } from "../../lib/i18n";
 import {
   projectPanelKey,
@@ -848,18 +850,24 @@ function AppView() {
       >
         {t("跳转到对话")}
       </a>
-      <div data-slot="app-shell" className="h-dvh overflow-hidden">
-        {narrow ? (
-          main
-        ) : (
-          <ShellPanels
-            width={viewportWidth}
-            navigation={sidebar ? navigation : undefined}
-            details={details && !detailsDrawer ? detailView : undefined}
-          >
-            {main}
-          </ShellPanels>
-        )}
+      <div
+        data-slot="app-shell"
+        className="flex h-dvh flex-col overflow-hidden"
+      >
+        {DEMO_MODE && <DemoBanner />}
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {narrow ? (
+            main
+          ) : (
+            <ShellPanels
+              width={viewportWidth}
+              navigation={sidebar ? navigation : undefined}
+              details={details && !detailsDrawer ? detailView : undefined}
+            >
+              {main}
+            </ShellPanels>
+          )}
+        </div>
       </div>
       {agentId && (
         <LazyFeature>

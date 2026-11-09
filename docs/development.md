@@ -84,3 +84,7 @@ npm run check:protocol
 按变更选择能验证行为的最小测试集；完整门禁使用 `npm run ci`，再运行 `npm run ci:e2e`。CI 的浏览器测试按用例分为三个 shard，每个 runner 使用一个 worker，容器镜像版本来自锁文件中的 Playwright 版本。
 
 协议替身与非推理烟测不验证真实模型推理、执行审批、文件修改、远端认证或 SSH 稳定性。相关变更需在隔离项目中进行人工验收，并明确记录实际范围。测试截图、trace、日志留在忽略的产物目录，公开问题仅使用脱敏或合成数据。
+
+## GitHub Pages 演示模式
+
+`npm run dev:demo` 使用真实工作台 UI 和浏览器内模拟协议；`npm run build:demo` 生成静态产物，`npm run test:demo` 验证仓库子路径下的构建产物。实现与发布步骤见 [GitHub Pages 演示](github-pages.md)。

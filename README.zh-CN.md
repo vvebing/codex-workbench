@@ -112,4 +112,4 @@ E2E_PRODUCTION=1 npm run test:e2e
 
 ## 在线演示
 
-[交互演示](https://vvebing.github.io/codex-workbench/)使用虚构项目与会话，支持搜索、消息和代码差异预览。[部署说明](docs/github-pages.md)。
+[交互演示](https://vvebing.github.io/codex-workbench/)复用真实工作台 UI，通过浏览器内的模拟协议展示虚构项目、会话、消息、文件编辑与代码差异，不连接本机服务或调用模型。[部署说明](docs/github-pages.md)。

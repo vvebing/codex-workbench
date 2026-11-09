@@ -1,3 +1,4 @@
+import { DEMO_MODE } from "../../lib/demo-mode";
 import { t, useLocale } from "../../lib/i18n";
 import { useStore } from "../../components/hooks";
 import { releaseCheck } from "../connection/release-check";
@@ -14,13 +15,13 @@ export function AppServerVersion({ version }: { version: string | null }) {
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm">
-          {t("App-server：")}
+          {DEMO_MODE ? t("演示模式不检查本机服务更新。") : t("App-server：")}
           {version ?? t("版本未知")}
         </span>
         <Button
           type="button"
           size="sm"
-          disabled={status === "loading"}
+          disabled={DEMO_MODE || status === "loading"}
           onClick={() => void releaseCheck.check(true)}
         >
           {status === "loading" ? t("正在检查…") : t("检查更新")}

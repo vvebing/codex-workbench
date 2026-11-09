@@ -1,3 +1,5 @@
+import { DEMO_MODE } from "./demo-mode";
+import { createDemoSocket } from "../demo/transport";
 import { t } from "./i18n";
 import { QuestionDismissalsStore } from "../features/conversation/question-dismissals";
 import { ConnectionStore, sameEndpoint } from "../features/connection/store";
@@ -13,7 +15,9 @@ export function createRuntime(
   draftScope?: string,
   initialEndpoint?: string,
 ) {
-  const connection = new ConnectionStore(options);
+  const connection = new ConnectionStore(
+    DEMO_MODE ? { ...options, webSocketFactory: createDemoSocket } : options,
+  );
   const files = new FileWorkspaceStore(connection, draftScope, initialEndpoint);
   const requests: RequestsStore = new RequestsStore(
     connection,

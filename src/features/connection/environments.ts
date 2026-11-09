@@ -1,3 +1,5 @@
+import { DEMO_MODE } from "../../lib/demo-mode";
+import { DEMO_ENDPOINT } from "../../demo/data";
 import { t } from "../../lib/i18n";
 import { sameEnvironmentSessions } from "./environment-summary";
 import { createRuntime } from "../../lib/runtime";
@@ -26,6 +28,16 @@ const local: EnvironmentProfile = {
   url: "ws://127.0.0.1:4501",
 };
 function savedProfiles(): EnvironmentProfile[] {
+  if (DEMO_MODE)
+    return [
+      {
+        id: "local",
+        name: t("演示环境 · 模拟数据"),
+        kind: "local",
+        url: DEMO_ENDPOINT,
+        autoConnect: true,
+      },
+    ];
   try {
     const value: unknown = JSON.parse(
       localStorage.getItem("codex-environments") || "null",
@@ -246,6 +258,7 @@ export class EnvironmentsStore extends Store<{
     );
   }
   private persist() {
+    if (DEMO_MODE) return;
     try {
       localStorage.setItem(
         "codex-environments",

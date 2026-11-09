@@ -114,4 +114,4 @@ Install Chromium with `npx playwright install chromium` before the first browser
 
 ## Interactive demo
 
-The [GitHub Pages demo](https://vvebing.github.io/codex-workbench/) uses fictional projects and sessions, with search, simulated messages, and code diffs. See [deployment instructions](docs/github-pages.md).
+The [GitHub Pages demo](https://vvebing.github.io/codex-workbench/) reuses the real workbench UI with a browser-only simulated transport for fictional projects, sessions, messages, file editing, and code diffs. It does not connect to a local service or call a model. See [deployment instructions](docs/github-pages.md).
