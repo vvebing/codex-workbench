@@ -22,6 +22,7 @@ export interface LocalMessage {
   error?: string;
   questionTaskId?: string;
   questionItemId?: string;
+  restoredAnswer?: boolean;
   baseline: Set<string>;
 }
 function signature(input: UserInput[]): string {
@@ -74,7 +75,7 @@ export class LocalMessagesStore extends Store<LocalMessage[]> {
   >();
   presentationItem(item: import("../../generated/v2/ThreadItem").ThreadItem) {
     if (item.type !== "userMessage") return item;
-    const clientId = this.identity(item.id);
+    const clientId = this.identities.get(item.id) ?? item.clientId ?? item.id;
     if (clientId === item.clientId) return item;
     const cached = this.presentationItems.get(item);
     if (cached?.type === "userMessage" && cached.clientId === clientId)
@@ -101,24 +102,30 @@ export class LocalMessagesStore extends Store<LocalMessage[]> {
     input: UserInput[],
     draft?: Draft,
     id: string = crypto.randomUUID(),
-    question?: { taskId: string; itemId: string },
+    question?: { taskId: string; itemId: string; restored?: boolean },
   ): string {
     const thread = this.sessions.getSnapshot().threads[this.target(threadId)];
     const activeTurn = thread?.turns.findLast(
       (turn) => turn.status === "inProgress",
     );
+    const questionTurn = question?.restored
+      ? thread?.turns.find((turn) =>
+          turn.items.some((item) => item.id === question.itemId),
+        )
+      : undefined;
     this.update([
       ...this.state,
       {
         id,
         threadId,
-        turnId: activeTurn?.id,
-        startsTurn: !activeTurn,
+        turnId: question?.restored ? questionTurn?.id : activeTurn?.id,
+        startsTurn: question?.restored ? false : !activeTurn,
         baselineTurns: new Set(thread?.turns.map((turn) => turn.id) ?? []),
         input,
         draft: draft ? structuredClone(draft) : undefined,
         questionTaskId: question?.taskId,
         questionItemId: question?.itemId,
+        restoredAnswer: question?.restored,
         status: question
           ? "queued"
           : this.sessions.getSnapshot().localDrafts[threadId] &&
@@ -158,6 +165,7 @@ export class LocalMessagesStore extends Store<LocalMessage[]> {
         this.add(threadId, task.input, task.draft, id, {
           taskId: task.id,
           itemId: task.question.itemId,
+          restored: !queue.items.some((queued) => queued.id === task.id),
         });
       }
     }
@@ -232,8 +240,18 @@ export class LocalMessagesStore extends Store<LocalMessage[]> {
         const pending = local.filter((message) => message.turnId === turn.id);
         const items = [
           ...pending.filter((message) => message.startsTurn).map(item),
-          ...turn.items,
-          ...pending.filter((message) => !message.startsTurn).map(item),
+          ...turn.items.flatMap((entry) => [
+            entry,
+            ...pending
+              .filter(
+                (message) =>
+                  message.restoredAnswer && message.questionItemId === entry.id,
+              )
+              .map(item),
+          ]),
+          ...pending
+            .filter((message) => !message.startsTurn && !message.restoredAnswer)
+            .map(item),
         ];
         const initiating = items.findIndex(
           (entry) =>
@@ -246,8 +264,9 @@ export class LocalMessagesStore extends Store<LocalMessage[]> {
       ...local
         .filter(
           (message) =>
-            !message.turnId ||
-            !thread.turns.some((turn) => turn.id === message.turnId),
+            !message.restoredAnswer &&
+            (!message.turnId ||
+              !thread.turns.some((turn) => turn.id === message.turnId)),
         )
         .map((message): Turn => ({
           id: message.id,
@@ -269,6 +288,17 @@ export class LocalMessagesStore extends Store<LocalMessage[]> {
       .map((local) => {
         const target = this.target(local.threadId);
         let next = local;
+        // Restored answers belong to their question, never the turn active at reload.
+        // Keep an unanchored record out of the timeline until its history is loaded.
+        if (local.restoredAnswer) {
+          const turn = this.sessions
+            .getSnapshot()
+            .threads[target]?.turns.find((turn) =>
+              turn.items.some((item) => item.id === local.questionItemId),
+            );
+          if (local.turnId !== turn?.id || local.startsTurn)
+            next = { ...next, turnId: turn?.id, startsTurn: false };
+        }
         if (local.status === "creating" && target !== local.threadId) {
           next = { ...next, status: "sending" };
         }
@@ -303,17 +333,40 @@ export class LocalMessagesStore extends Store<LocalMessage[]> {
       .filter((local) => {
         const target = this.target(local.threadId);
         const thread = this.sessions.getSnapshot().threads[target];
-        const match = thread?.turns
-          .flatMap((turn) => turn.items)
-          .find(
-            (item) =>
-              item.type === "userMessage" &&
-              !local.baseline.has(item.id) &&
-              !used.has(`${target}:${item.id}`) &&
-              (item.clientId === local.id ||
-                (item.clientId == null &&
-                  signature(item.content) === signature(local.input))),
-          );
+        const questionTurn = local.questionItemId
+          ? thread?.turns.find((turn) =>
+              turn.items.some((item) => item.id === local.questionItemId),
+            )
+          : undefined;
+        const questionTurnIndex = questionTurn
+          ? thread!.turns.indexOf(questionTurn)
+          : -1;
+        const match = thread?.turns.flatMap((turn, turnIndex) =>
+          turn.items.filter((item, itemIndex) => {
+            if (item.type !== "userMessage" || used.has(`${target}:${item.id}`))
+              return false;
+            const identityMatch = item.clientId === local.id;
+            const afterQuestion =
+              questionTurnIndex >= 0 &&
+              (turnIndex > questionTurnIndex ||
+                (turnIndex === questionTurnIndex &&
+                  itemIndex >
+                    questionTurn!.items.findIndex(
+                      (entry) => entry.id === local.questionItemId,
+                    )));
+            const contentMatch =
+              item.clientId == null &&
+              signature(item.content) === signature(local.input) &&
+              (!local.questionItemId || afterQuestion);
+            // Ordinary sends must not consume an older identical prompt. A restored
+            // answer may already be in history, including legacy echoes without IDs.
+            return (
+              (identityMatch || contentMatch) &&
+              (!local.baseline.has(item.id) ||
+                (!!local.questionItemId && (identityMatch || afterQuestion)))
+            );
+          }),
+        )[0];
         if (!match) return true;
         used.add(`${target}:${match.id}`);
         this.remember(target, match.id, local.id);

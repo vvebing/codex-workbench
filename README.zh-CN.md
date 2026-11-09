@@ -109,3 +109,7 @@ E2E_PRODUCTION=1 npm run test:e2e
 ## 许可证
 
 [MIT](LICENSE)
+
+## 在线演示
+
+[交互演示](https://vvebing.github.io/codex-workbench/)使用虚构项目与会话，支持搜索、消息和代码差异预览。[部署说明](docs/github-pages.md)。

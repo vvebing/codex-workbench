@@ -111,3 +111,7 @@ Install Chromium with `npx playwright install chromium` before the first browser
 ## License
 
 [MIT](LICENSE)
+
+## Interactive demo
+
+The [GitHub Pages demo](https://vvebing.github.io/codex-workbench/) uses fictional projects and sessions, with search, simulated messages, and code diffs. See [deployment instructions](docs/github-pages.md).
