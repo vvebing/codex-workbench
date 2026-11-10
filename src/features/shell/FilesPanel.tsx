@@ -26,10 +26,13 @@ import {
   MoreHorizontal,
   Upload,
   LocateFixed,
+  TerminalSquare,
 } from "lucide-react";
 import { ContextMenu } from "radix-ui";
-import { useStore } from "../../components/hooks";
+import { useStore, useNarrow } from "../../components/hooks";
 import { useRuntime } from "../../lib/runtime-context";
+import { environments } from "../connection/environments";
+import { terminalsFor } from "../terminal/store";
 import type { Thread } from "../../generated/v2/Thread";
 import {
   workspaceDirectories,
@@ -80,6 +83,17 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
   void i18nLocale;
 
   const { connection, drafts, files } = useRuntime();
+  const narrow = useNarrow();
+  const environmentId = environments.active().id;
+  const openTerminal = (relative = "") => {
+    if (narrow || connection.getSnapshot().status !== "connected") return;
+    const terminals = terminalsFor(connection, environmentId);
+    terminals.reveal(thread.cwd);
+    void terminals.create(
+      thread.cwd,
+      relative ? workspacePath(thread.cwd, relative) : thread.cwd,
+    );
+  };
   const fileState = useStore(files);
   const fileRevision = useSyncExternalStore(
     files.subscribe,
@@ -753,6 +767,16 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
           )}
         </div>
         <IconButton
+          label={t("在此目录新建终端")}
+          title={t("在此目录新建终端：{{value0}}", {
+            value0: creationDirectory || t("项目根目录"),
+          })}
+          disabled={narrow}
+          onClick={() => openTerminal(creationDirectory)}
+        >
+          <TerminalSquare size={14} />
+        </IconButton>
+        <IconButton
           label={t("上传文件")}
           title={t("上传到：{{value0}}（每个文件最多 8 MB）", {
             value0: creationDirectory || t("项目根目录"),
@@ -910,6 +934,14 @@ function ConnectedFiles({ thread }: { thread: Thread }) {
                 {menuEntry.file && (
                   <ContextMenu.Item onSelect={() => void open(menuEntry.path)}>
                     {t("打开文件")}
+                  </ContextMenu.Item>
+                )}
+                {menuEntry.directory && (
+                  <ContextMenu.Item
+                    disabled={narrow}
+                    onSelect={() => openTerminal(menuEntry.path)}
+                  >
+                    {t("在此目录新建终端")}
                   </ContextMenu.Item>
                 )}
                 {menuEntry.directory && (

@@ -38,12 +38,16 @@ export interface MockOptions {
   initialActiveOperations?: boolean;
   initialOperationItems?: ThreadItem[];
   mermaidAnswer?: string;
+  initialAnswer?: string;
   subagentSessions?: boolean;
   gitStatus?: string | ((cwd: string) => string);
   gitStatusExitCode?: number;
   initialGitFiles?: [string, string][];
   gitWriteError?: string;
   sandboxMode?: ConfigReadResponse["config"]["sandbox_mode"];
+  /** Deterministic PTY protocol fixture; never starts a real process. */
+  terminal?: boolean;
+  terminalActivity?: boolean;
   initiallyArchived?: number;
   sameNamedWorkspaces?: boolean;
   streamIntervalMs?: number;
@@ -231,6 +235,12 @@ export function createMockServer(options: MockOptions = {}) {
   const threads = Array.from({ length: options.threadCount ?? 90 }, (_, i) =>
     makeThread(i),
   );
+  if (options.initialAnswer !== undefined) {
+    for (const thread of threads)
+      for (const turn of thread.turns)
+        for (const item of turn.items)
+          if (item.type === "agentMessage") item.text = options.initialAnswer;
+  }
   if (options.diagnosticTitlePreviews) {
     const previews = [
       "回答问题：\n旧 websocket-server 的镜像 tag 是什么？\nv1.49.8",
@@ -423,6 +433,17 @@ export function createMockServer(options: MockOptions = {}) {
   wss.on("connection", (socket) => {
     let initialized = false,
       ready = false;
+    const terminals = new Map<
+      string,
+      {
+        requestId: string | number;
+        cwd: string;
+        input: string;
+        token: string;
+        busy: boolean;
+        background: boolean;
+      }
+    >();
     const pending = new Map<
       string,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Exercise runtime JSON-RPC envelopes including advertised protocol extensions.
@@ -447,6 +468,23 @@ export function createMockServer(options: MockOptions = {}) {
       );
     const fail = (id: string | number, message: string) =>
       send({ id, error: { code: -32602, message } });
+    const terminalOutput = (processId: string, text: string) =>
+      notify("command/exec/outputDelta", {
+        processId,
+        stream: "stdout",
+        deltaBase64: Buffer.from(text).toString("base64"),
+        capReached: false,
+      });
+    const finishTerminal = (processId: string, exitCode: number) => {
+      const terminal = terminals.get(processId);
+      if (!terminal) return;
+      terminals.delete(processId);
+      reply(
+        terminal.requestId,
+        { exitCode, stdout: "", stderr: "" },
+        "command/exec",
+      );
+    };
     const get = (id: string) => {
       const thread = threads.find((t) => t.id === id);
       if (!thread) throw Error("Unknown thread");
@@ -531,9 +569,11 @@ export function createMockServer(options: MockOptions = {}) {
           ? { searchTerm: msg.params.searchTerm }
           : {}),
         ...(method === "config/read" ? { cwd: msg.params?.cwd } : {}),
-        ...(method === "command/exec"
+        ...(method.startsWith("command/exec")
           ? {
-              ...(msg.params?.streamStdoutStderr ? { params: msg.params } : {}),
+              ...(msg.params?.streamStdoutStderr || method !== "command/exec"
+                ? { params: msg.params }
+                : {}),
               cwd: msg.params?.cwd,
               command: msg.params?.command,
               sandboxPolicy: msg.params?.sandboxPolicy,
@@ -565,6 +605,98 @@ export function createMockServer(options: MockOptions = {}) {
             id,
             error: { code: -32601, message: "Method not found" },
           });
+        if (options.terminal && method === "command/exec" && p.tty) {
+          terminals.set(p.processId, {
+            requestId: id,
+            cwd: p.cwd,
+            input: "",
+            token: p.env?.CODEX_WORKBENCH_TERMINAL_TOKEN ?? "",
+            busy: false,
+            background: false,
+          });
+          const token = terminals.get(p.processId)!.token;
+          const marker =
+            token && options.terminalActivity !== false
+              ? `\x1b]777;codex-workbench;${token};idle\x07`
+              : "";
+          terminalOutput(
+            p.processId,
+            `Workbench fixture terminal\r\n${marker}\x1b[32m${p.cwd}\x1b[0m $ `,
+          );
+          return;
+        }
+        if (options.terminal && method.startsWith("command/exec/")) {
+          const terminal = terminals.get(p.processId);
+          if (!terminal) return fail(id, "Unknown fixture terminal");
+          if (method === "command/exec/resize") return reply(id, {}, method);
+          if (method === "command/exec/terminate") {
+            finishTerminal(p.processId, 130);
+            return reply(id, {}, method);
+          }
+          if (method === "command/exec/write") {
+            const marker = (kind: "idle" | "background" | "input") =>
+              terminal.token && options.terminalActivity !== false
+                ? `\x1b]777;codex-workbench;${terminal.token};${kind}\x07`
+                : "";
+            const input = Buffer.from(p.deltaBase64 ?? "", "base64").toString(
+              "utf8",
+            );
+            for (const character of input) {
+              if (character === "\x03") {
+                terminal.input = "";
+                terminal.busy = false;
+                terminalOutput(
+                  p.processId,
+                  `^C\r\n${marker(terminal.background ? "background" : "idle")}\x1b[32m${terminal.cwd}\x1b[0m $ `,
+                );
+              } else if (character === "\r" || character === "\n") {
+                const command = terminal.input.trim();
+                terminal.input = "";
+                terminalOutput(p.processId, "\r\n");
+                if (command === "exit") {
+                  finishTerminal(p.processId, 0);
+                  break;
+                }
+                if (command === "sleep 30") {
+                  terminal.busy = true;
+                  terminalOutput(p.processId, "fixture process running\r\n");
+                  continue;
+                }
+                if (command === "sleep 30 &") terminal.background = true;
+                if (command === "wait") terminal.background = false;
+                if (command.startsWith("cd "))
+                  terminal.cwd = posix.resolve(terminal.cwd, command.slice(3));
+                const output = command.startsWith("cd ")
+                  ? ""
+                  : command === "pwd"
+                    ? terminal.cwd
+                    : command === "git status"
+                      ? "On branch fixture/terminal"
+                      : command === "git branch"
+                        ? "* fixture/terminal"
+                        : command === "touch readonly-probe"
+                          ? "touch: readonly-probe: Read-only file system"
+                          : command.startsWith("echo ")
+                            ? command.slice(5)
+                            : command
+                              ? `fixture: ${command}`
+                              : "";
+                terminalOutput(
+                  p.processId,
+                  `${output ? output + "\r\n" : ""}${marker(terminal.background ? "background" : "idle")}\x1b[32m${terminal.cwd}\x1b[0m $ `,
+                );
+              } else if (character === "\x7f") {
+                terminal.input = terminal.input.slice(0, -1);
+                terminalOutput(p.processId, "\b \b");
+              } else {
+                terminal.input += character;
+                terminalOutput(p.processId, character);
+              }
+            }
+            if (p.closeStdin) finishTerminal(p.processId, 0);
+            return reply(id, {}, method);
+          }
+        }
         if (method === "account/usage/read")
           return reply(
             id,

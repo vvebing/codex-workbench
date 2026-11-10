@@ -8,7 +8,7 @@ web
 
 ## Product Purpose
 
-Codex Workbench is a local-first, bilingual browser workspace for Codex sessions, queued messages, approvals, project files, and development environments. Tasks run through Codex app-server in the selected environment.
+Codex Workbench is a local-first, bilingual browser workspace for Codex sessions, queued messages, approvals, project files, project terminals, and development environments. Tasks run through Codex app-server in the selected environment.
 
 ## Users
 
@@ -20,6 +20,7 @@ Developers who work with local repositories and remote development machines, man
 - Create a session, supply file and skill references, and queue follow-up messages.
 - Follow execution, answer questions, handle approvals, and inspect subagent activity.
 - Read and edit project files, compare Git changes, and review task results.
+- Run project commands, inspect repositories in read-only interactive terminals, and add selected output to a conversation draft.
 - Search, favorite, fork, archive, and export sessions.
 
 ## Capabilities and Constraints
@@ -29,6 +30,8 @@ Developers who work with local repositories and remote development machines, man
 - English and Simplified Chinese are available, with light, dark, and system themes.
 - Browser preferences control typography, layout, environment settings, and local recovery data.
 - File access and task execution follow the permissions of the connected environment.
+- Project terminals run in the selected connected environment with read-only file access and networking disabled. The first desktop opening prepares a shell when the project has no terminal records; later openings preserve existing records without restarting processes. Mobile terminal access is output-only.
+- Terminals stay with their project across conversations and require explicit input before running commands from code blocks. Test, build, and development project commands remain separate and follow the connected environment's permissions.
 - Keyboard navigation, responsive layouts, and visible connection and delivery states are part of the working interface.
 
 ## Brand Commitments

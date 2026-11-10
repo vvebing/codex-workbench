@@ -85,6 +85,7 @@ export class SessionsStore extends Store<SessionsState> {
     return pending;
   }
   private historyRevisions = new Map<string, number>();
+  private pendingRevertedHistory = new Set<string>();
   // Display eligibility survives writer activation and reconnect revalidation.
   private displayableHistory = new Set<string>();
   private historyTouched = new Map<string, number>();
@@ -293,6 +294,10 @@ export class SessionsStore extends Store<SessionsState> {
     };
   }
   private async syncViewedThread(id: string, epoch: number): Promise<void> {
+    if (this.pendingRevertedHistory.has(id)) {
+      await this.syncReverted(id);
+      return;
+    }
     const project = this.trackProjectRead(id);
     try {
       const before = this.state.threads[id];
@@ -503,6 +508,7 @@ export class SessionsStore extends Store<SessionsState> {
         this.projectListReads.clear();
         this.completedNotifications.clear();
         this.historySynced.clear();
+        this.pendingRevertedHistory.clear();
         this.displayableHistory.clear();
         this.historyTouched.clear();
         this.hiddenServerIds.clear();
@@ -1533,18 +1539,15 @@ export class SessionsStore extends Store<SessionsState> {
     const revision = (this.historyRevisions.get(id) ?? 0) + 1;
     this.historyRevisions.set(id, revision);
     this.historySynced.delete(id);
-    this.displayableHistory.delete(id);
+    // The initiating action owns the confirmed prefix and its history refresh.
+    // Still invalidate older reads so they cannot resurrect the removed suffix.
+    if (this.locks.has(`revert:${id}`)) return;
     const old = this.state.threads[id];
     if (!old || !this.visibleServerId(id)) return;
-    const cleared = removeThread(this.state, id);
-    this.update({
-      ...cleared,
-      threads: { ...cleared.threads, [id]: { ...old, turns: [] } },
-      selectedId: this.state.selectedId,
-      listIds: this.state.listIds,
-      threadAccess: this.state.threadAccess,
-      threadSettings: this.state.threadSettings,
-    });
+    this.pendingRevertedHistory.add(id);
+    const historyPages = { ...this.state.historyPages };
+    delete historyPages[id];
+    this.update({ ...this.state, historyPages });
     try {
       const thread = await this.readHistory(id, epoch);
       if (
@@ -1553,11 +1556,25 @@ export class SessionsStore extends Store<SessionsState> {
         !this.visibleServerId(id)
       )
         return;
-      const merged = this.mergeRead(thread, this.state.threads[id]);
+      const merged = this.mergeRead(thread, old);
       if (merged) {
+        // Replace history atomically: keep the current view until the replacement
+        // is ready, then discard stale turns and derived results in one update.
+        const cleared = removeThread(this.state, id);
+        this.pendingRevertedHistory.delete(id);
         this.recordHistory(thread);
         this.update({
-          ...merged,
+          ...cleared,
+          ...mergeThread(cleared, {
+            ...merged.threads[id],
+            turns: thread.turns,
+          }),
+          selectedId: this.state.selectedId,
+          listIds: this.state.listIds,
+          archivedIds: this.state.archivedIds,
+          threadAccess: this.state.threadAccess,
+          threadSettings: this.state.threadSettings,
+          draftOrigins: this.state.draftOrigins,
           historySyncError: null,
           historyPages: {
             ...this.state.historyPages,

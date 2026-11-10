@@ -16,6 +16,10 @@ import {
 } from "../../components/ui";
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { projectsFor, normalizeProjectDirectory } from "../projects/store";
+import { ProjectTaskOutput } from "../projects/ProjectTaskOutput";
+import { terminalsFor } from "../terminal/store";
+import { insertReference } from "../conversation/insert-reference";
+import { TerminalCommandProvider } from "../conversation/TerminalCommandContext";
 import { LazyFeature } from "../../components/LazyFeature";
 import { ShellPanels } from "./ShellPanels";
 import { useViewportWidth } from "./sidebar-layout";
@@ -30,6 +34,7 @@ import {
   Check,
   FileSearch,
   Search,
+  TerminalSquare,
 } from "lucide-react";
 import { RuntimeContext, useRuntime } from "../../lib/runtime-context";
 import { environments } from "../connection/environments";
@@ -42,6 +47,7 @@ import {
 import { ConnectionNotices } from "../connection/AccountStatus";
 import {
   useStore,
+  useStoreSelector,
   useNarrow,
   useVisualViewport,
   titleOf,
@@ -87,6 +93,11 @@ const AgentDrawer = lazy(() =>
 const Timeline = lazy(() =>
   import("../conversation/Timeline").then((module) => ({
     default: module.Timeline,
+  })),
+);
+const TerminalPanel = lazy(() =>
+  import("../terminal/TerminalPanel").then((module) => ({
+    default: module.TerminalPanel,
   })),
 );
 import type { ProjectTab } from "../conversation/Details";
@@ -242,6 +253,37 @@ function AppView() {
   const thread = sessions.selectedId
     ? sessions.threads[sessions.selectedId]
     : undefined;
+  const projectCwd = normalizeProjectDirectory(thread?.cwd ?? "");
+  const terminals = useMemo(
+    () => terminalsFor(runtime.connection, environment.id),
+    [runtime.connection, environment.id],
+  );
+  const terminalVisible = useStoreSelector(terminals, (state) => state.visible);
+  const projectCommands = useMemo(
+    () => projectsFor(runtime.connection, environment.id),
+    [runtime.connection, environment.id],
+  );
+  const taskRevision = useStoreSelector(
+    projectCommands,
+    (state) => state.runs.findLast((run) => run.cwd === projectCwd)?.id ?? "",
+  );
+  const toggleTerminal = useCallback(() => {
+    if (!projectCwd) return;
+    const snapshot = terminals.getSnapshot();
+    if (snapshot.visible) {
+      terminals.hide();
+      return;
+    }
+    terminals.reveal(projectCwd);
+    // Only an explicit desktop open creates the first shell. Existing records
+    // (including disconnected/unknown ones) are never restarted automatically.
+    if (
+      !narrow &&
+      runtime.connection.getSnapshot().status === "connected" &&
+      !snapshot.sessions.some((entry) => entry.cwd === projectCwd)
+    )
+      void terminals.create(projectCwd);
+  }, [terminals, projectCwd, narrow, runtime.connection]);
   const navigationKey = navigationEnvironmentKey(environment);
   useEffect(() => {
     if (sessions.selectedId)
@@ -408,6 +450,18 @@ function AppView() {
   useEffect(() => {
     function key(e: KeyboardEvent) {
       if (e.isComposing || e.defaultPrevented) return;
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        !e.altKey &&
+        !e.shiftKey &&
+        (e.code === "Backquote" || e.key === "`") &&
+        projectCwd &&
+        !document.querySelector('[data-slot="modal"][data-state="open"]')
+      ) {
+        e.preventDefault();
+        toggleTerminal();
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && !e.altKey && thread?.cwd) {
         if (!e.shiftKey && e.key.toLowerCase() === "p") {
           e.preventDefault();
@@ -438,7 +492,14 @@ function AppView() {
     }
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [canCreate, newChat, thread?.cwd, openContentSearch]);
+  }, [
+    canCreate,
+    newChat,
+    thread?.cwd,
+    projectCwd,
+    openContentSearch,
+    toggleTerminal,
+  ]);
   async function create(e: React.FormEvent) {
     e.preventDefault();
     if (createLock.current) return;
@@ -588,6 +649,15 @@ function AppView() {
             >
               <Search size={18} />
             </IconButton>
+            <IconButton
+              data-slot="terminal-toggle"
+              label={terminalVisible ? t("收起终端") : t("打开终端")}
+              title={t("切换终端 (⌘/Ctrl+`)")}
+              aria-expanded={terminalVisible}
+              onClick={toggleTerminal}
+            >
+              <TerminalSquare size={18} />
+            </IconButton>
           </>
         )}
         <BranchChanges
@@ -685,30 +755,58 @@ function AppView() {
         ) : thread ? (
           <>
             <LazyFeature>
-              <Timeline
-                cacheScope={JSON.stringify([environment.id, connection.scope])}
-                hasOlder={Boolean(sessions.historyPages[thread.id]?.cursor)}
-                loadingOlder={sessions.historyPages[thread.id]?.loading}
-                onLoadOlder={() => {
-                  void runtime.sessions.loadOlder(thread.id);
-                }}
-                loading={sessions.openingId === thread.id}
-                onRollback={
-                  connected && !sessions.archivedIds[thread.id]
-                    ? (turnId, messageId) =>
-                        runtime.revert(thread.id, turnId, messageId)
+              <TerminalCommandProvider
+                onFill={
+                  connected && !narrow && projectCwd
+                    ? (command) => {
+                        const current = runtime.connection.getSnapshot();
+                        if (
+                          environments.active().id !== environment.id ||
+                          current.status !== "connected" ||
+                          current.epoch !== connection.epoch ||
+                          current.scope !== connection.scope ||
+                          runtime.sessions.getSnapshot().selectedId !==
+                            thread.id ||
+                          normalizeProjectDirectory(
+                            runtime.sessions.getSnapshot().threads[thread.id]
+                              ?.cwd ?? "",
+                          ) !== projectCwd
+                        )
+                          return false;
+                        terminals.fill(projectCwd, command);
+                        return true;
+                      }
                     : undefined
                 }
-                key={`timeline:${environment.id}:${runtime.submissions.messages.threadIdentity(thread.id)}`}
-                completedItems={sessions.completedItems}
-                startedItems={sessions.startedItems}
-                toolProgress={sessions.toolProgress}
-                fileOutputs={sessions.fileOutputs[thread.id]}
-                onInspectAgent={inspectAgent}
-                turnDiffs={sessions.diffs[thread.id]}
-                finishedTurns={sessions.finishedTurns[thread.id]}
-                thread={thread}
-              />
+              >
+                <Timeline
+                  cacheScope={JSON.stringify([
+                    environment.id,
+                    connection.scope,
+                  ])}
+                  hasOlder={Boolean(sessions.historyPages[thread.id]?.cursor)}
+                  loadingOlder={sessions.historyPages[thread.id]?.loading}
+                  onLoadOlder={() => {
+                    void runtime.sessions.loadOlder(thread.id);
+                  }}
+                  loading={sessions.openingId === thread.id}
+                  onRollback={
+                    connected && !sessions.archivedIds[thread.id]
+                      ? (turnId, messageId) =>
+                          runtime.revert(thread.id, turnId, messageId)
+                      : undefined
+                  }
+                  key={`timeline:${environment.id}:${runtime.submissions.messages.threadIdentity(thread.id)}`}
+                  completedItems={sessions.completedItems}
+                  startedItems={sessions.startedItems}
+                  toolProgress={sessions.toolProgress}
+                  fileOutputs={sessions.fileOutputs[thread.id]}
+                  onInspectAgent={inspectAgent}
+                  turnDiffs={sessions.diffs[thread.id]}
+                  finishedTurns={sessions.finishedTurns[thread.id]}
+                  thread={thread}
+                />
+              </TerminalCommandProvider>
             </LazyFeature>
             {sessions.archivedIds[thread.id] ? (
               <div
@@ -820,6 +918,55 @@ function AppView() {
           </ScrollArea>
         )}
       </ConversationWorkspace>
+      {projectCwd && terminalVisible && (
+        <LazyFeature>
+          <TerminalPanel
+            key={`${environment.id}:${connection.scope}:${projectCwd}`}
+            environmentId={environment.id}
+            environmentName={environment.name}
+            cwd={projectCwd}
+            threadId={thread?.id}
+            taskRevision={taskRevision}
+            taskContent={
+              <ProjectTaskOutput
+                store={projectCommands}
+                connected={connected}
+                cwd={projectCwd}
+                readOnly={narrow}
+              />
+            }
+            onAddToConversation={
+              thread && !sessions.archivedIds[thread.id]
+                ? (text, terminal) => {
+                    if (terminal.cwd !== projectCwd || !text.trim()) return;
+                    const fence = "`".repeat(
+                      Array.from(text.matchAll(/`+/g)).reduce(
+                        (length, match) =>
+                          Math.max(length, match[0].length + 1),
+                        3,
+                      ),
+                    );
+                    insertReference(
+                      runtime.drafts,
+                      thread.id,
+                      t("终端输出"),
+                      [
+                        t("执行环境：{{value0}}", { value0: environment.name }),
+                        t("项目目录：{{value0}}", { value0: terminal.cwd }),
+                        t("启动目录：{{value0}}", {
+                          value0: terminal.initialCwd,
+                        }),
+                        fence,
+                        text,
+                        fence,
+                      ].join("\n"),
+                    );
+                  }
+                : undefined
+            }
+          />
+        </LazyFeature>
+      )}
     </main>
   );
   return (

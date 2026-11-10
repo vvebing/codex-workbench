@@ -87,9 +87,13 @@ export function makeThread(
       makeTurn(
         t("请{{value0}}，并说明验证方法。", { value0: title }),
         t(
-          "## {{value0}}\n\n这是使用真实工作台 UI 展示的虚构会话。你可以切换项目、查看文件、搜索会话，或发送消息体验预设回复。\n\n- 组件、编辑器和交互沿用正式工作台。\n- 文件与代码差异来自浏览器内的模拟服务。\n- 不调用模型，不执行终端命令，不访问本机文件。\n\n右侧「文件」面板可打开 README.md 和 src/ProjectList.tsx；「Git」面板可查看模拟代码变更。",
+          "## {{value0}}\n\n这是使用真实工作台 UI 展示的虚构会话。你可以切换项目、查看文件、搜索会话，或发送消息体验预设回复。\n\n- 组件、编辑器和交互沿用正式工作台。\n- 文件与代码差异来自浏览器内的模拟服务。\n- 不调用模型，不执行真实终端命令，不访问本机文件。\n\n右侧「文件」面板可打开 README.md 和 src/ProjectList.tsx；「Git」面板可查看模拟代码变更。",
           { value0: title },
-        ),
+        ) +
+          "\n\n" +
+          t(
+            "点击顶部终端图标可体验只读命令模拟，输入 help 查看示例；全部输出来自演示文件。",
+          ),
       ),
     ],
   };
@@ -132,6 +136,16 @@ export function demoFiles() {
         ),
       ],
       [`${cwd}/src/ProjectList.tsx`, MODIFIED],
+      [
+        `${cwd}/docs/${t("示例 说明.md")}`,
+        t(
+          "# 演示说明\n\n这是带中文和空格路径的示例文件。\n只读终端可以查看、搜索这些内容；文件只存在于浏览器内。\n",
+        ),
+      ],
+      [
+        `${cwd}/logs/app.log`,
+        "[demo] Loaded example files.\n[demo] Read-only terminal ready.\n",
+      ],
       [
         `${cwd}/src/theme.css`,
         ":root {\n  --accent: #296346;\n  --surface: #f6f6f5;\n}\n",

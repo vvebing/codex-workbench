@@ -4,6 +4,7 @@ import tailwind from "@tailwindcss/vite";
 
 // Intentionally separate from vite.config.ts: no Node bridge or local server plugins.
 export default defineConfig({
+  optimizeDeps: { include: ["@xterm/xterm", "@xterm/addon-fit"] },
   base: "./",
   plugins: [
     react(),

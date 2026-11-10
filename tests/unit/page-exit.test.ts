@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { createRuntime } from "../../src/lib/runtime";
 import { hasTransientData, protectPageExit } from "../../src/lib/page-exit";
+import { terminalsFor } from "../../src/features/terminal/store";
 
 it("protects a hidden file draft and releases the listener after discarding it", async () => {
   const runtime = createRuntime();
@@ -126,5 +127,50 @@ it("protects failed delivery content after the editor has been cleared", async (
   expect(hasTransientData([runtime])).toBe(false);
   expect(target.removeEventListener).toHaveBeenCalled();
   dispose();
+  vi.restoreAllMocks();
+});
+
+it("protects a live terminal created after the exit guard and releases it after exit", async () => {
+  const runtime = createRuntime();
+  vi.spyOn(runtime.connection, "getSnapshot").mockReturnValue({
+    ...runtime.connection.getSnapshot(),
+    status: "connected",
+    url: "ws://terminal-exit-fixture",
+  });
+  let finish!: (value: {
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+  }) => void;
+  const pending = new Promise<{
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+  }>((resolve) => {
+    finish = resolve;
+  });
+  vi.spyOn(runtime.connection.client, "request").mockImplementation(
+    async (...[method]) =>
+      method === "command/exec" ? pending : ({} as never),
+  );
+  const target = { addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  const dispose = protectPageExit(
+    () => [runtime],
+    () => () => {},
+    target,
+  );
+  expect(target.addEventListener).not.toHaveBeenCalled();
+  const terminals = terminalsFor(runtime.connection, "terminal-exit-fixture");
+  const running = terminals.create("/project");
+  expect(hasTransientData([runtime])).toBe(true);
+  expect(target.addEventListener).toHaveBeenCalledOnce();
+  terminals.hide();
+  expect(hasTransientData([runtime])).toBe(true);
+  finish({ exitCode: 0, stdout: "", stderr: "" });
+  await running;
+  expect(hasTransientData([runtime])).toBe(false);
+  expect(target.removeEventListener).toHaveBeenCalledOnce();
+  dispose();
+  terminals.dispose();
   vi.restoreAllMocks();
 });

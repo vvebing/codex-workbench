@@ -1,13 +1,11 @@
 import { t, useLocale } from "../../lib/i18n";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useRuntime } from "../../lib/runtime-context";
+import { useNarrow } from "../../components/hooks";
+import { environments } from "../connection/environments";
+import { terminalsFor } from "../terminal/store";
 import type { ProjectTaskConfig, ProjectsStore } from "./store";
-import {
-  Button,
-  ErrorNotice,
-  Modal,
-  ScrollArea,
-  SelectField,
-} from "../../components/ui";
+import { Button, ErrorNotice, Modal, SelectField } from "../../components/ui";
 import {
   settingsInputClass,
   SettingsField,
@@ -36,18 +34,19 @@ export default function ProjectWorkspace({
   const i18nLocale = useLocale();
   void i18nLocale;
 
+  const { connection } = useRuntime();
+  const narrow = useNarrow();
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [switchOpen, setSwitchOpen] = useState(false);
   const [directory, setDirectory] = useState("");
-  const [stdin, setStdin] = useState("");
   const cwd = currentCwd ? normalizeProjectDirectory(currentCwd) : "";
   const savedProject = state.projects.find((item) => item.cwd === cwd);
   const project = cwd ? (savedProject ?? emptyProject(cwd)) : null;
   const active = (status: string) =>
     ["running", "stopping", "unknown"].includes(status);
   const busy = state.runs.some((run) => active(run.status));
-  const visibleRuns = state.runs.filter(
-    (run) => run.cwd === cwd || active(run.status),
+  const otherActiveRun = state.runs.find(
+    (run) => run.cwd !== cwd && active(run.status),
   );
   const preview = project && previewAddress(project.previewUrl);
   return (
@@ -86,6 +85,14 @@ export default function ProjectWorkspace({
               "命令仅在点击运行后于当前会话目录执行，通过服务端 /bin/sh 运行。",
             )}
           </p>
+          {otherActiveRun && (
+            <p role="status" className="text-xs text-warning">
+              {t(
+                "当前环境另有命令正在运行或待核实：{{value0}}。返回该项目后，可在终端面板查看输出并处理。",
+                { value0: otherActiveRun.cwd },
+              )}
+            </p>
+          )}
           {(["test", "build", "dev"] as const).map((kind) => (
             <div
               className="flex items-end gap-2 max-[550px]:flex-col max-[550px]:items-stretch"
@@ -109,8 +116,15 @@ export default function ProjectWorkspace({
                 />
               </label>
               <Button
-                disabled={!connected || busy || !project.commands[kind].trim()}
-                onClick={() => void store.run(kind, cwd)}
+                disabled={
+                  narrow || !connected || busy || !project.commands[kind].trim()
+                }
+                onClick={() => {
+                  terminalsFor(connection, environments.active().id).reveal(
+                    cwd,
+                  );
+                  void store.run(kind, cwd);
+                }}
               >
                 {t("运行 {{kind}}", { kind })}
               </Button>
@@ -143,85 +157,6 @@ export default function ProjectWorkspace({
           )}
         </>
       )}
-      {visibleRuns.length > 0 && (
-        <p className="text-xs text-muted">
-          {t(
-            "断线或请求超时表示状态未知。开发命令最长运行 24 小时，其他命令最长 10 分钟；其他项目的活动命令也可在此停止或核实。",
-          )}
-        </p>
-      )}
-      {visibleRuns.map((run) => (
-        <article
-          key={run.id}
-          className="space-y-3 rounded-lg border border-border bg-elevated p-3"
-          aria-label={t("命令运行记录")}
-        >
-          <p>
-            {run.cwd !== cwd && (
-              <strong className="block">{t("其他项目运行")}</strong>
-            )}
-            <code>{run.cwd}</code> · <code>{run.command}</code>
-            <span className="block text-xs text-muted">
-              {t("进程：")}
-              {run.id}
-            </span>
-          </p>
-          <p>
-            {t("状态：")}
-            {
-              {
-                running: t("进行中"),
-                stopping: t("等待停止确认"),
-                exited: t("已退出"),
-                unknown: t("状态未知"),
-                unsupported: t("版本不支持"),
-              }[run.status]
-            }
-            {run.exitCode !== undefined &&
-              t(" · 退出码 {{value0}}", { value0: run.exitCode })}
-          </p>
-          {run.error && <ErrorNotice>{run.error}</ErrorNotice>}
-          {run.status === "unknown" && (
-            <Button onClick={() => store.acknowledgeUnknown(run.id)}>
-              {t("已在外部核实进程，解除运行锁")}
-            </Button>
-          )}
-          {run.truncated && <p>{t("输出已截断，仅保留最近内容。")}</p>}
-          <ScrollArea className="max-h-80 rounded-lg border border-border bg-surface">
-            <pre
-              className="p-3 font-mono text-code leading-code whitespace-pre-wrap [overflow-wrap:anywhere]"
-              aria-label={t("命令输出")}
-            >
-              {run.output || t("暂无输出")}
-            </pre>
-          </ScrollArea>
-          <Button
-            disabled={!connected || run.status !== "running"}
-            onClick={() => void store.stop(run.id)}
-          >
-            {t("停止")}
-          </Button>
-          {run.status === "running" && (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void store.write(run.id, `${stdin}\n`);
-                setStdin("");
-              }}
-            >
-              <input
-                className={settingsInputClass}
-                aria-label={t("命令标准输入")}
-                value={stdin}
-                onChange={(event) => setStdin(event.target.value)}
-              />
-              <Button type="submit" disabled={!connected}>
-                {t("发送输入")}
-              </Button>
-            </form>
-          )}
-        </article>
-      ))}
       <section
         aria-label={t("当前会话")}
         className="space-y-3 border-t border-border pt-3"

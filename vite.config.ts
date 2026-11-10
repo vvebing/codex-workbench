@@ -6,6 +6,7 @@ import { attachBridge } from "./server/bridge";
 import { SECURITY_HEADERS } from "./server/security-headers";
 import { serveCodexRelease } from "./server/codex-release";
 export default defineConfig({
+  optimizeDeps: { include: ["@xterm/xterm", "@xterm/addon-fit"] },
   plugins: [
     react(),
     tailwind(),

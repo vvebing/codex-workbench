@@ -19,7 +19,9 @@ import remarkGfm from "remark-gfm";
 import type { ExtraProps } from "react-markdown";
 import { MermaidDiagram } from "./MermaidDiagram";
 import rehypeHighlight from "rehype-highlight";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, TerminalSquare } from "lucide-react";
+import { useTerminalCommand } from "./TerminalCommandContext";
+import { terminalCodeCommand } from "./terminal-code-action";
 const ImageLinkContext = createContext(false);
 function MarkdownAnchor(props: ComponentPropsWithoutRef<"a"> & ExtraProps) {
   useTranslation();
@@ -48,6 +50,16 @@ const MarkdownContext = createContext({
   text: "",
   streaming: false,
 });
+function codeText(node: {
+  type: string;
+  value?: unknown;
+  children?: readonly unknown[];
+}): string {
+  if (node.type === "text" && typeof node.value === "string") return node.value;
+  return (node.children ?? [])
+    .map((child) => codeText(child as Parameters<typeof codeText>[0]))
+    .join("");
+}
 function CodeBlock({
   children,
   node,
@@ -55,10 +67,28 @@ function CodeBlock({
 }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
   useTranslation();
   const { text, streaming } = useContext(MarkdownContext);
+  const fillTerminal = useTerminalCommand();
   const [message, setMessage] = useState("");
+  const [filled, setFilled] = useState(false);
   const code = node?.children.find(
     (child) => child.type === "element" && child.tagName === "code",
   );
+  const classes =
+    code?.type === "element" && Array.isArray(code.properties.className)
+      ? code.properties.className
+      : [];
+  const language = classes.find(
+    (value) => typeof value === "string" && value.startsWith("language-"),
+  );
+  const source = code?.type === "element" ? codeText(code) : "";
+  const command =
+    code?.type === "element"
+      ? terminalCodeCommand(
+          source,
+          typeof language === "string" ? language.slice(9) : undefined,
+          streaming,
+        )
+      : null;
   if (
     code?.type === "element" &&
     Array.isArray(code.properties.className) &&
@@ -84,31 +114,53 @@ function CodeBlock({
   }
   return (
     <div className="group/code relative my-4 rounded-lg border border-border bg-surface first:mt-0 last:mb-0">
-      <Button
-        size="sm"
-        variant="quiet"
-        className="absolute z-10 top-1.5 right-2 min-w-8 gap-1 bg-elevated px-1 text-meta opacity-0 [@media(hover:none)]:opacity-100 [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10 focus:opacity-100 group-hover/code:opacity-100 group-focus-within/code:opacity-100"
-        aria-label={t("复制代码")}
-        onClick={async (event) => {
-          const code =
-            event.currentTarget.parentElement?.querySelector("pre")
-              ?.textContent ?? "";
-          try {
-            await navigator.clipboard.writeText(code);
-            setMessage("已复制");
-          } catch {
-            setMessage("复制失败");
-          }
-          window.setTimeout(() => setMessage(""), 2000);
-        }}
-      >
-        {message === "已复制" ? <Check size={14} /> : <Copy size={14} />}
-        <span aria-live="polite" className="empty:hidden">
-          {message ? t(message) : ""}
-        </span>
-      </Button>
+      <div className="absolute z-10 top-1.5 right-2 flex items-center gap-1 rounded-md bg-elevated opacity-0 [@media(hover:none)]:opacity-100 group-hover/code:opacity-100 group-focus-within/code:opacity-100">
+        {fillTerminal && command && (
+          <Button
+            size="sm"
+            variant="quiet"
+            data-slot="terminal-code-action"
+            className="gap-1 px-2 text-meta"
+            aria-label={t("填入终端")}
+            title={t("填入项目终端，按 Enter 后执行")}
+            onClick={() => {
+              if (!fillTerminal(command)) return;
+              setFilled(true);
+              window.setTimeout(() => setFilled(false), 2000);
+            }}
+          >
+            <TerminalSquare size={14} />
+            <span aria-live="polite">
+              {filled ? t("已填入终端") : t("填入终端")}
+            </span>
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="quiet"
+          className="min-w-8 gap-1 px-1 text-meta [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10"
+          aria-label={t("复制代码")}
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(source);
+              setMessage("已复制");
+            } catch {
+              setMessage("复制失败");
+            }
+            window.setTimeout(() => setMessage(""), 2000);
+          }}
+        >
+          {message === "已复制" ? <Check size={14} /> : <Copy size={14} />}
+          <span aria-live="polite" className="empty:hidden">
+            {message ? t(message) : ""}
+          </span>
+        </Button>
+      </div>
       <ScrollArea scrollChaining orientation="both">
-        <pre {...props} className="m-0 p-4 pr-14 text-code leading-code">
+        <pre
+          {...props}
+          className={`m-0 p-4 text-code leading-code ${fillTerminal && command ? "pr-40" : "pr-14"}`}
+        >
           {children}
         </pre>
       </ScrollArea>

@@ -1,4 +1,8 @@
 import type { createRuntime } from "./runtime";
+import {
+  hasLiveTerminals,
+  subscribeTerminalActivity,
+} from "../features/terminal/store";
 
 type Runtime = ReturnType<typeof createRuntime>;
 
@@ -6,6 +10,7 @@ export function hasTransientData(runtimes: Runtime[]): boolean {
   return runtimes.some(
     (runtime) =>
       runtime.drafts.hasContent() ||
+      hasLiveTerminals(runtime.connection) ||
       runtime.files?.hasDirty() ||
       runtime.submissions.messages
         .getSnapshot()
@@ -50,8 +55,9 @@ export function protectPageExit(
     }
     unsubscribeStores.forEach((unsubscribe) => unsubscribe());
     previous = runtimes;
-    unsubscribeStores = runtimes.flatMap((runtime) =>
-      [
+    unsubscribeStores = runtimes.flatMap((runtime) => [
+      subscribeTerminalActivity(runtime.connection, update),
+      ...[
         runtime.drafts,
         runtime.submissions,
         runtime.submissions.messages,
@@ -60,7 +66,7 @@ export function protectPageExit(
       ]
         .filter(Boolean)
         .map((store) => store.subscribe(update)),
-    );
+    ]);
     update();
   };
   const unsubscribeEnvironments = subscribeEnvironments(observe);

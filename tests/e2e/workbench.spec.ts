@@ -2463,20 +2463,20 @@ test("local app-server setup exposes output without browser process controls", a
   await expect(dialog.getByLabel("App-server 地址")).toBeVisible();
   await dialog.getByRole("tab", { name: "终端输出", exact: true }).click();
   await expect(
-    dialog.getByRole("heading", { name: "本机 app-server 终端输出" }),
+    dialog.getByRole("heading", { name: "本机 app-server 服务日志" }),
   ).toBeVisible();
   await expect(
     dialog.getByRole("button", { name: /启动本机服务|停止本机服务/ }),
   ).toHaveCount(0);
   if (process.env.E2E_PRODUCTION) {
     await expect(dialog.getByText("输出不可用", { exact: true })).toBeVisible();
-    await expect(dialog.getByLabel("app-server 终端输出")).toContainText(
+    await expect(dialog.getByLabel("app-server 服务日志")).toContainText(
       "此网页服务未管理本机 app-server",
     );
     await expect(dialog.getByLabel("跟随最新输出")).toBeChecked();
   } else {
     await expect(dialog).toContainText("开发模式不启动 app-server");
-    await expect(dialog.getByLabel("app-server 终端输出")).toHaveCount(0);
+    await expect(dialog.getByLabel("app-server 服务日志")).toHaveCount(0);
   }
 });
 

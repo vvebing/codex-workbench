@@ -119,6 +119,51 @@ test("delete removes known descendants and blocks pending history resurrection",
   expect(f.sessions.getSnapshot().selectedId).toBeNull();
 });
 
+test("external revert keeps the visible history until its replacement is ready", async () => {
+  const f = fixture();
+  const old = { ...thread("a"), turns: [turn("keep"), turn("remove")] };
+  f.request.mockResolvedValue({ thread: old });
+  await f.sessions.open("a");
+  const pending = deferred<{ thread: Thread }>();
+  f.request.mockReturnValueOnce(pending.promise);
+  const snapshots: string[][] = [];
+  const unsubscribe = f.sessions.subscribe(() => {
+    snapshots.push(f.sessions.getSnapshot().threads.a.turns.map((t) => t.id));
+  });
+  f.notify({ method: "thread/reverted", params: { threadId: "a" } });
+  expect(f.sessions.getSnapshot().threads.a.turns).toEqual(old.turns);
+  pending.resolve({ thread: { ...old, turns: [turn("keep")] } });
+  await vi.waitFor(() =>
+    expect(f.sessions.getSnapshot().threads.a.turns.map((t) => t.id)).toEqual([
+      "keep",
+    ]),
+  );
+  expect(snapshots).not.toContainEqual([]);
+  expect(f.sessions.getSnapshot().selectedId).toBe("a");
+  unsubscribe();
+});
+
+test("external revert preserves visible history if refresh fails", async () => {
+  const f = fixture();
+  const old = { ...thread("a"), turns: [turn("keep"), turn("remove")] };
+  f.request.mockResolvedValue({ thread: old });
+  await f.sessions.open("a");
+  f.request.mockRejectedValueOnce(new Error("history offline"));
+  f.notify({ method: "thread/reverted", params: { threadId: "a" } });
+  await vi.waitFor(() =>
+    expect(f.sessions.getSnapshot().historySyncError).toContain(
+      "history offline",
+    ),
+  );
+  expect(f.sessions.getSnapshot().threads.a.turns).toEqual(old.turns);
+  f.request.mockResolvedValue({ thread: { ...old, turns: [turn("keep")] } });
+  await f.sessions.restoreSelected();
+  expect(f.sessions.getSnapshot().threads.a.turns.map((t) => t.id)).toEqual([
+    "keep",
+  ]);
+  expect(f.sessions.getSnapshot().historySyncError).toBeNull();
+});
+
 test("external revert replaces history, retries older reads and settings update metadata", async () => {
   const f = fixture();
   const old = { ...thread("a"), turns: [turn("keep"), turn("remove")] };
@@ -211,9 +256,18 @@ test("revert retains earlier turn results and removes the reverted suffix", asyn
     });
   }
   f.request
-    .mockResolvedValueOnce({ thread: { ...source, turns: [] } })
+    .mockImplementationOnce(async () => {
+      f.notify({ method: "thread/reverted", params: { threadId: "source" } });
+      expect(f.sessions.getSnapshot().threads.source.turns).toEqual(
+        source.turns,
+      );
+      return { thread: { ...source, turns: [] } };
+    })
     .mockRejectedValueOnce(new Error("history offline"));
   await f.sessions.revert("source", "b");
+  expect(
+    f.sessions.getSnapshot().threads.source.turns.map((t) => t.id),
+  ).toEqual(["a"]);
   expect(f.sessions.getSnapshot().diffs.source).toEqual({ a: "+a" });
   expect(f.sessions.getSnapshot().plans.source).toEqual({
     a: [{ step: "a", status: "completed" }],

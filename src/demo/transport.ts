@@ -14,6 +14,7 @@ import {
   makeTurn,
   now,
 } from "./data";
+import { DemoTerminalSessions } from "./terminal";
 
 type Params = Record<string, unknown>;
 const asString = (value: unknown) => (typeof value === "string" ? value : "");
@@ -68,6 +69,7 @@ export class DemoService {
   private archived = new Set<string>();
   private sockets = new Set<DemoSocket>();
   private watches = new Map<DemoSocket, Map<string, string>>();
+  private terminals = new Map<DemoSocket, DemoTerminalSessions>();
   private active = new Map<
     string,
     { turn: Turn; timer: ReturnType<typeof setTimeout>; socket: DemoSocket }
@@ -78,6 +80,8 @@ export class DemoService {
   detach(socket: DemoSocket) {
     this.sockets.delete(socket);
     this.watches.delete(socket);
+    this.terminals.get(socket)?.detach();
+    this.terminals.delete(socket);
     for (const [id, run] of this.active) {
       if (run.socket !== socket) continue;
       clearTimeout(run.timer);
@@ -129,6 +133,8 @@ export class DemoService {
     return result;
   }
   private fileChanged(path: string) {
+    for (const terminals of this.terminals.values())
+      terminals.fileChanged(path);
     for (const [socket, watches] of this.watches)
       for (const [watchId, root] of watches)
         if (path === root || path.startsWith(root + "/"))
@@ -136,6 +142,19 @@ export class DemoService {
             method: "fs/changed",
             params: { watchId, changedPaths: [path] },
           });
+  }
+  private terminal(socket: DemoSocket) {
+    let terminals = this.terminals.get(socket);
+    if (!terminals) {
+      terminals = new DemoTerminalSessions(
+        this.files,
+        DEMO_PROJECTS,
+        (path) => this.versions.get(path)?.text,
+        (notification) => socket.deliver(notification),
+      );
+      this.terminals.set(socket, terminals);
+    }
+    return terminals;
   }
   private git(p: Params, socket: DemoSocket) {
     const command = Array.isArray(p.command) ? p.command.map(asString) : [];
@@ -566,7 +585,13 @@ export class DemoService {
         };
       }
       case "command/exec":
-        return this.git(p, socket);
+        return p.tty ? this.terminal(socket).spawn(p) : this.git(p, socket);
+      case "command/exec/write":
+        return this.terminal(socket).write(p);
+      case "command/exec/resize":
+        return this.terminal(socket).resize(p);
+      case "command/exec/terminate":
+        return this.terminal(socket).terminate(p);
       default:
         throw new DemoError(
           t(
@@ -618,23 +643,29 @@ export class DemoSocket implements SocketLike {
     }
     if (message.id === undefined || typeof message.method !== "string") return;
     try {
-      this.deliver({
-        id: message.id,
-        result: this.service.handle(
-          message.method,
-          record(message.params),
-          this,
-        ),
-      });
+      const result = this.service.handle(
+        message.method,
+        record(message.params),
+        this,
+      );
+      if (result instanceof Promise) {
+        void result.then(
+          (value) => this.deliver({ id: message.id, result: value }),
+          (error: unknown) => this.error(message.id, error),
+        );
+      } else this.deliver({ id: message.id, result });
     } catch (error) {
-      this.deliver({
-        id: message.id,
-        error: {
-          code: error instanceof DemoError ? error.code : -32000,
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
+      this.error(message.id, error);
     }
+  }
+  private error(id: unknown, error: unknown) {
+    this.deliver({
+      id,
+      error: {
+        code: error instanceof DemoError ? error.code : -32000,
+        message: error instanceof Error ? error.message : String(error),
+      },
+    });
   }
   close() {
     if (this.readyState === 3) return;

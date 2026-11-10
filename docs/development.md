@@ -13,6 +13,7 @@
 | `src/features/conversation/`                      | 时间线、Markdown、子代理观察与导出              |
 | `src/features/requests/`、`approvals/`            | 服务端请求状态与审批界面                        |
 | `src/features/files/`                             | 文件工作区、编辑器、恢复草稿与文件链接          |
+| `src/features/terminal/`                          | 只读项目终端、PTY 输入输出、启动适配与进程状态  |
 | `src/features/navigation/`、`settings/`、`shell/` | 导航、设置、布局与 Git 工作区                   |
 | `src/components/`                                 | 共享控件与界面 hooks                            |
 | `src/lib/`                                        | RPC、状态归并、runtime 与共享基础能力           |
@@ -47,6 +48,8 @@
 
 异步状态修改需验证连接 epoch、选择 generation 或操作身份。读取历史不提前获取 writer，发送时确认写入能力。断线后的变更结果不确定时，不自动重复请求。对历史与事件归并的修改应覆盖乱序、重复事件和旧快照场景。
 
+项目终端的 `command/exec` 必须显式提交 `sandboxPolicy: { type: "readOnly", networkAccess: false }`；不继承环境宽权限，也不在失败后降级。首次桌面打开仅在已连接环境的当前项目无任何终端记录时准备 shell，后续展开和恢复旧记录不重新执行。POSIX `/bin/sh` 启动适配保留 PATH 中已有的 Git，仅对 Apple `/usr/bin/git` shim 寻找实际 Git 二进制，并设置 `GIT_OPTIONAL_LOCKS=0`；不隐藏真实命令错误。测试、构建和开发项目命令仍沿用环境权限，保持独立执行路径。
+
 修改调用或通知处理后运行：
 
 ```sh
@@ -68,14 +71,15 @@ npm run check:protocol
 
 ## 测试策略
 
-| 层级         | 命令                                | 覆盖范围                                             |
-| ------------ | ----------------------------------- | ---------------------------------------------------- |
-| 单元         | `npm run test:unit`                 | Vitest 状态、模型、解析与功能逻辑                    |
-| 集成         | `npm run test:integration`          | Node test runner、HTTP、bridge、WebSocket 与仓库工具 |
-| 浏览器       | `npm run test:e2e`                  | Playwright 开发模式交互                              |
-| 生产浏览器   | `E2E_PRODUCTION=1 npm run test:e2e` | 编译服务与客户端、生产分包                           |
-| 真实协议烟测 | `npm run test:app-server`           | 真实 CLI 的非推理协议流程                            |
-| 安装包       | `npm run test:package`              | 临时安装 tarball 后验证 CLI、HTTP 与退出             |
+| 层级         | 命令                                | 覆盖范围                                                         |
+| ------------ | ----------------------------------- | ---------------------------------------------------------------- |
+| 单元         | `npm run test:unit`                 | Vitest 状态、模型、解析与功能逻辑                                |
+| 集成         | `npm run test:integration`          | Node test runner、HTTP、bridge、WebSocket 与仓库工具             |
+| 浏览器       | `npm run test:e2e`                  | Playwright 开发模式交互                                          |
+| 生产浏览器   | `E2E_PRODUCTION=1 npm run test:e2e` | 编译服务与客户端、生产分包                                       |
+| 真实协议烟测 | `npm run test:app-server`           | 真实 CLI 的非推理协议流程                                        |
+| 终端烟测     | `npm run test:terminal`             | 真实只读 PTY、目录与文本操作、管道、日志跟踪、Git 查询、写入拒绝 |
+| 安装包       | `npm run test:package`              | 临时安装 tarball 后验证 CLI、HTTP 与退出                         |
 
 `npm test` 运行单元和集成测试。`npm run check` 还包含仓库、发布工具、发布语义、类型、协议矩阵、lint 和格式检查。
 
@@ -84,6 +88,8 @@ npm run check:protocol
 按变更选择能验证行为的最小测试集；完整门禁使用 `npm run ci`，再运行 `npm run ci:e2e`。CI 的浏览器测试按用例分为三个 shard，每个 runner 使用一个 worker，容器镜像版本来自锁文件中的 Playwright 版本。
 
 协议替身与非推理烟测不验证真实模型推理、执行审批、文件修改、远端认证或 SSH 稳定性。相关变更需在隔离项目中进行人工验收，并明确记录实际范围。测试截图、trace、日志留在忽略的产物目录，公开问题仅使用脱敏或合成数据。
+
+终端烟测启动独立 app-server，在 `output/terminal-smoke/` 下新建隔离仓库，以固定只读、禁用网络策略验证 PTY 与尺寸同步。它覆盖目录浏览与切换、中文及空格路径、`find`、`head/tail/grep/wc` 与管道、基础环境查询，以及 `tail -f` 后中断并继续查询；检测到 `rg` 时额外验证搜索。它还检查 Git 只读查询、Git／文件写入被拒绝，以及 Apple Git shim 的 `confstr`／`xcrun` 缓存噪音。该检查不代表系统或工具没有其他警告。烟测不调用模型、不恢复已有聊天、不修改用户配置；不验证未安装的额外工具、联网安装、SSH、其他平台或用户环境的受管权限。
 
 ## GitHub Pages 演示模式
 

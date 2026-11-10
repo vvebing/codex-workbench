@@ -67,7 +67,7 @@ export function AppServerTerminal() {
   }, [snapshot?.output, follow]);
   return (
     <SettingsSection
-      title={t("本机 app-server 终端输出")}
+      title={t("本机 app-server 服务日志")}
       description={t(
         "显示当前网页服务启动的 Codex 进程的标准输出与标准错误，保留最近 128 KiB。原始输出也会继续显示在 npm start 所在的终端。",
       )}
@@ -106,7 +106,7 @@ export function AppServerTerminal() {
           <ScrollArea
             viewportRef={output}
             viewportProps={{
-              "aria-label": t("app-server 终端输出"),
+              "aria-label": t("app-server 服务日志"),
               tabIndex: 0,
               className: "p-3",
             }}

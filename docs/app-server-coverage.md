@@ -1,10 +1,10 @@
 # app-server 功能范围
 
-本项目通过 Codex app-server 执行任务。协议类型来自 [`src/generated/`](../src/generated/ClientRequest.ts)，业务接入以实际请求调用为准。仓库协议包含 **109 个客户端方法、10 个服务端请求和 87 个通知**，业务代码调用其中 **69 个客户端方法**。
+本项目通过 Codex app-server 执行任务。协议类型来自 [`src/generated/`](../src/generated/ClientRequest.ts)，业务接入以实际请求调用为准。仓库协议包含 **109 个客户端方法、10 个服务端请求和 87 个通知**，业务代码调用其中 **70 个客户端方法**。
 
 [接口逐项清单](app-server-interface-matrix.md)列出字段、响应类型与源码位置；[协议约定](protocol.md)说明握手、写入、审批和验证边界。静态引用只说明代码接入，不保证目标账户、策略或服务器提供对应能力。
 
-## 已接入：69 个
+## 已接入：70 个
 
 | 产品功能                 | 请求方法                                                                                                                                                                                                                                | 入口与边界                                                                                                                                                                                                  |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -17,7 +17,7 @@
 | 会话目标（3）            | `thread/goal/get`、`thread/goal/set`、`thread/goal/clear`                                                                                                                                                                               | 会话工具中的目标、状态与可选 Token 预算；保存可能继续执行。                                                                                                                                                 |
 | 参考资料关联（4）        | `thread/attachment/add`、`thread/attachment/list`、`thread/attachment/remove`、`thread/attachmentOwner/list`                                                                                                                            | 名称、URL／路径与会话的关联记录、所属会话分页。不是上传或文件内容注入。                                                                                                                                     |
 | 项目文件与补全（10）     | `fs/readDirectory`、`fs/readFile`、`fs/watch`、`fs/unwatch`、`fuzzyFileSearch`、`fs/writeFile`、`fs/createDirectory`、`fs/getMetadata`、`fs/remove`、`fs/copy`                                                                          | 目录树、搜索、Monaco 独立编辑工作区、会话文件链接定位、引用、保存冲突检查、新建、复制与确认删除；手机只读。                                                                                                 |
-| Git 与项目命令（3）      | `command/exec`、`command/exec/write`、`command/exec/terminate`                                                                                                                                                                          | Git 只读查询、补丁导出和已有 worktree 选择；项目命令流式日志、标准输入与停止。Git 操作仅提供读取与补丁导出。                                                                                                |
+| Git、项目命令与终端（4） | `command/exec`、`command/exec/write`、`command/exec/terminate`、`command/exec/resize`                                                                                                                                                   | Git 面板只读查询、补丁导出和已有 worktree 选择；项目命令流式日志、标准输入与停止，沿用环境权限；多标签交互式 PTY 与尺寸同步，终端固定只读且禁用网络，失败不降级。                                           |
 | MCP 管理（3）            | `mcpServerStatus/list`、`mcpServer/oauth/login`、`config/mcpServer/reload`                                                                                                                                                              | 状态分页、显式 OAuth 授权、重新加载磁盘配置；展示启动与登录通知。                                                                                                                                           |
 | 配置诊断与有限编辑（3）  | `config/read`、`configRequirements/read`、`config/value/write`                                                                                                                                                                          | 只展示选定诊断字段；只允许修改默认模型与审批策略，有用户配置版本时使用版本校验。不提供任意配置／凭据编辑器。                                                                                                |
 | 技能与 Hooks（4）        | `skills/list`、`skills/config/write`、`skills/extraRoots/set`、`hooks/list`                                                                                                                                                             | 技能错误、启停、进程级额外目录；Hooks 支持目录与已加载会话的只读查询、来源环境和打开期间的执行事件。监听技能变更。                                                                                          |
@@ -27,11 +27,11 @@
 
 核算：2 + 7 + 13 + 5 + 4 + 1 + 3 + 4 + 10 + 3 + 3 + 3 + 4 + 3 + 3 + 1 = **69**。请求均可在 `src/features/` 和 [`src/lib/rpc.ts`](../src/lib/rpc.ts) 中定位。
 
-## 未提供的接口：40 个
+## 未提供的接口：39 个
 
 | 范围                          | 请求方法                                                                                                                                                                                                                                                                                                                | 产品边界                                                                                                                 |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 独立 Shell 与交互终端（2）    | `thread/shellCommand`、`command/exec/resize`                                                                                                                                                                                                                                                                            | 项目命令已有输入、输出及停止；完整终端还需要终端仿真与尺寸管理，目前不提供。                                             |
+| 会话 Shell（1）               | `thread/shellCommand`                                                                                                                                                                                                                                                                                                   | 交互式项目终端通过独立 command/exec PTY 执行，不向会话直接注入 shellCommand。                                            |
 | 插件与市场（15）              | `marketplace/add`、`marketplace/remove`、`marketplace/upgrade`、`plugin/list`、`plugin/installed`、`plugin/reconcile`、`plugin/read`、`plugin/skill/read`、`plugin/install`、`plugin/uninstall`、`plugin/share/save`、`plugin/share/updateTargets`、`plugin/share/list`、`plugin/share/checkout`、`plugin/share/delete` | 涉及安装来源、权限、依赖、共享对象和磁盘变更，需要单独产品流程；当前展示技能、MCP 与应用即可。                           |
 | MCP 通用资源／工具控制台（2） | `mcpServer/resource/read`、`mcpServer/tool/call`                                                                                                                                                                                                                                                                        | 手工构造任意工具输入与资源读取需要专门表单及权限流程；当前由模型在正常任务中调用。                                       |
 | 特殊账户与提供方（4）         | `account/gatewayOAuth/read`、`account/gatewayOAuth/login`、`account/gatewayOAuth/cancel`、`modelProvider/capabilities/read`                                                                                                                                                                                             | 专用网关登录与提供方能力诊断不是当前三种账户登录方式的必要补充。                                                         |
@@ -50,7 +50,7 @@
 
 保存前核对磁盘基线，新建和复制前检查目标；这些检查与写入之间不是原子操作。协议未提供 compare-and-swap、排他创建或原子移动，因此并发写入仍需用户核对。
 
-Git 面板通过 `command/exec` 执行固定参数的只读查询，禁用网络访问与可选索引锁。支持状态分组、文件差异、补丁导出及已有 worktree 选择。暂存、提交、推送、PR 和 worktree 创建不属于工作台功能。
+Git 面板通过 `command/exec` 执行固定参数的只读查询，禁用网络访问与可选索引锁。支持状态分组、文件差异、补丁导出及已有 worktree 选择。Git 面板不提供暂存、提交、推送、PR 和 worktree 创建按钮；项目终端也固定为只读、禁用网络，可手动查询 Git 状态与历史，仓库写入操作需使用外部终端或其他 Git 工具。
 
 仓库状态与轮次变更分别展示：仓库状态包括人工及其他会话的修改；轮次变更按 `threadId + turnId` 隔离，优先采用该轮汇总 diff。文件操作累计行数不表示最终净变更。
 
@@ -58,7 +58,7 @@ Git 面板通过 `command/exec` 执行固定参数的只读查询，禁用网络
 
 交互界面处理命令审批、文件审批、同步问题、权限审批与 MCP elicitation。其他服务端请求返回未知方法错误，不自动同意。审批选项遵循服务端声明，权限批准限定在申请范围内。
 
-通知用于驱动轮次、条目、目标、账户、Hooks 与环境工具状态。`thread/readState/changed` 尚未接入，保留本地完成提醒语义。逐项清单中的处理位置是代码引用，不代表所有通知字段均被消费。未提供实时音视频、完整终端、插件市场安装或通用 MCP 调试控制台。
+通知用于驱动轮次、条目、目标、账户、Hooks 与环境工具状态。`thread/readState/changed` 尚未接入，保留本地完成提醒语义。逐项清单中的处理位置是代码引用，不代表所有通知字段均被消费。项目终端支持 PTY 仿真与尺寸管理；未提供终端跨刷新续接、实时音视频、插件市场安装或通用 MCP 调试控制台。
 
 ## 维护清单
 

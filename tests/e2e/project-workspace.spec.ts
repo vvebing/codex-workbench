@@ -100,8 +100,11 @@ test("workspace follows each session cwd and only explicitly runs its current co
     cwd: "/demo/design-system",
     command: ["/bin/sh", "-lc", "printf design-fixture"],
   });
-  await expect(panel.getByText(/状态未知/).first()).toBeVisible();
-  await expect(panel.getByText(/退出码 0/)).toHaveCount(0);
+  const run = page.getByRole("article", { name: "命令运行记录", exact: true });
+  await expect(run).toBeVisible();
+  await expect(run).toContainText("printf design-fixture");
+  await expect(run.getByRole("status")).toHaveText("状态未知");
+  await expect(run.getByText(/退出码 0/)).toHaveCount(0);
 
   await selectThread(page, "工作区导航与搜索 · 1");
   await expect(
