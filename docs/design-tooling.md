@@ -1,18 +1,8 @@
 # 设计工具
 
-项目使用 [Impeccable](https://github.com/pbakaus/impeccable) 辅助界面设计与质量检查，入口为 [SKILL.md](../.agents/skills/impeccable/SKILL.md)。产品目标见 [PRODUCT.md](../PRODUCT.md)，设计令牌与组件规则见 [DESIGN.md](../DESIGN.md)。
+项目使用 [Impeccable](https://github.com/pbakaus/impeccable) 辅助界面设计与质量检查，技能入口为 `~/.codex/skills/impeccable/SKILL.md`。产品目标见 [PRODUCT.md](../PRODUCT.md)，设计令牌与组件规则见 [DESIGN.md](../DESIGN.md)。
 
-## 工具来源
-
-| 项目         | 值                                         |
-| ------------ | ------------------------------------------ |
-| 上游         | `pbakaus/impeccable`                       |
-| 固定提交     | `5e745ace7e151feb2a93d360d0281fe39448b857` |
-| 技能目录     | `.agents/skills/impeccable/`               |
-| 引擎版本要求 | `0.1.18`，见 `scripts/VERSION`             |
-| 授权与声明   | 技能目录内的 `LICENSE`、`NOTICE.md`        |
-
-技能文件保留在项目中。引擎由其 launcher 查找或下载，不要求使用特定开发者的主目录或全局配置。
+工具安装与更新见 [官方说明](https://impeccable.style/docs/)。skill 安装在用户目录，项目保留 PRODUCT.md、DESIGN.md 和必要的设计约束。
 
 ## 使用流程
 
@@ -30,7 +20,7 @@ $impeccable polish 设置面板
 在项目根目录获取上下文：
 
 ```sh
-.agents/skills/impeccable/scripts/impeccable context
+npx impeccable context
 ```
 
 可通过 `--target` 指定组件文件。launcher 的引擎选择、下载和环境配置以技能内说明为准。

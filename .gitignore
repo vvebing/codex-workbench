@@ -10,4 +10,3 @@ coverage/
 !.env.example
 .DS_Store
 output/
-.impeccable/review/

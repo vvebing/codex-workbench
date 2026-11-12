@@ -85,7 +85,7 @@ test("usage stays on demand, distinguishes unknown prices and renders session Ho
     .getByText("会话用量与费用", { exact: true })
     .evaluate((element) => element.scrollIntoView({ block: "start" }));
   await page.screenshot({
-    path: ".impeccable/review/desktop.png",
+    path: test.info().outputPath("desktop.png"),
     fullPage: true,
   });
 });
@@ -204,7 +204,7 @@ test("session tools remain readable in English, dark mode and a narrow viewport"
     englishPanel.getByLabel("ZIP path on environment host", { exact: true }),
   ).toHaveCSS("background-color", "rgb(27, 29, 30)");
   await page.screenshot({
-    path: ".impeccable/review/desktop-en-dark.png",
+    path: test.info().outputPath("desktop-en-dark.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -248,7 +248,7 @@ test("session tools remain readable in English, dark mode and a narrow viewport"
     ),
   ).toBe(true);
   await page.screenshot({
-    path: ".impeccable/review/mobile.png",
+    path: test.info().outputPath("mobile.png"),
     fullPage: true,
   });
 });
